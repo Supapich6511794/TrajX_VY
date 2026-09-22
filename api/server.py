@@ -688,15 +688,17 @@ def flight_time_curve(
 
 
 # --- SID/STAR procedures ----------------------------------------------------
-# Coded terminal procedures come from the AIXM 5.1.1 export (AIRAC 2608),
-# converted to the DFD GeoJSON schema by scripts/ingest_aixm_procedures.py.
-# NavData reads + indexes them on first use.
-_SID_SOURCE = _DATA / "aixm" / "sid_waypoint.geojson"
-_STAR_SOURCE = _DATA / "aixm" / "star_waypoint.geojson"
-_APPROACH_SOURCE = _DATA / "aixm" / "pbn_waypoint.geojson"
+# Coded terminal procedures come from the AIXM 5.1.1 export (AIRAC 2609, VY —
+# Myanmar), converted to the DFD GeoJSON schema by
+# scripts/ingest_aixm_procedures.py. NavData reads + indexes them on first
+# use. (The VT/Thai equivalents still sit under aixm/ — see that folder if
+# this deployment ever needs to switch back.)
+_SID_SOURCE = _DATA / "aixm_vy" / "sid_waypoint.geojson"
+_STAR_SOURCE = _DATA / "aixm_vy" / "star_waypoint.geojson"
+_APPROACH_SOURCE = _DATA / "aixm_vy" / "pbn_waypoint.geojson"
 # ILS / conventional approaches — a fallback so aerodromes with no PBN approach
-# (e.g. VTUN → ILS "I24") are still landable. Merged into the approach layer.
-_ILS_SOURCE = _DATA / "aixm" / "ils_wp.geojson"
+# are still landable. Merged into the approach layer.
+_ILS_SOURCE = _DATA / "aixm_vy" / "ils_wp.geojson"
 
 
 @lru_cache(maxsize=1)

@@ -56,7 +56,14 @@ export const MAIN_NAV_ITEMS: readonly MainNavDef[] = [
     id: "conflicts",
     icon: "conflicts",
     label: "Conflicts",
-    hint: "Conflict detection, resolution and the route/area checks",
+    hint: "Conflict detection and resolution — the separation between flights in the air",
+    kind: "menu",
+  },
+  {
+    id: "plancheck",
+    icon: "plancheck",
+    label: "Plan check",
+    hint: "Checks on the FILED plans, before anything flies — departures that cannot be cleared as filed, and each route against the restricted areas and the published preferred routes",
     kind: "menu",
   },
   {

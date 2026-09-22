@@ -1,8 +1,0 @@
-{
-  "_comment": "Flight-time reference (minutes, airborne ADEP->ADES) per city pair, used by trajectory_sim.validation. Keys are 'ADEP-ADES' ICAO, matched in either direction. VTBS-VTSP = 60 is the brief's own figure (~1h05 gate-to-gate, less for trajectory-only) and is the graded validation pair; the brief specifies validating against the real cat62_sample track in bearcat_navdata.gpkg — when that file is available, replace this with the measured track time. VTBS-WMKK is the spec example. EVERY other routable pair has no brief reference, so it is checked against a distance-based estimate (trajectory_sim.validation.estimate_reference_min) and clearly flagged source='estimate'.",
-  "threshold_min": 5,
-  "routes": {
-    "VTBS-WMKK": 128,
-    "VTBS-VTSP": 60
-  }
-}

@@ -1,7 +1,15 @@
 /**
- * Bangkok FIR holding patterns (AIRAC 2607) — the published racetrack holds at
- * fixes across VT*, loaded from
+ * Holding patterns for this deployment's FIR (VY/Myanmar). The AIP holding
+ * table (published + enroute racetracks) only exists for VT — loaded from
  *   public/data/bangkok_fir_holdings_airac2607/bangkok_fir_holdings_airac2607.geojson
+ * — and there's no VY equivalent to source it from yet, so `HOLDINGS_URL`
+ * below points at a VY path that doesn't exist. The fetch fails closed (see
+ * `fetchHoldings`/`fetchHoldingPatterns`), so those two categories simply
+ * come back empty rather than showing Thai holds to a Myanmar client.
+ *
+ * Missed-approach and HILPT holds (coded inside the approach procedures
+ * themselves, not the AIP table) ARE available for VY — see `ILS_WP_URL` /
+ * `PBN_WP_URL` in `fetchHoldingPatterns` below.
  *
  * Used by CD&R to offer a HOLD resolution: fly one racetrack loop at a holding
  * fix on the route (4 legs ≈ 4 min for a 1-minute leg), which DELAYS the flight
@@ -28,8 +36,11 @@ export interface Holding {
   maxAltFt: number | null;
 }
 
-const HOLDINGS_URL =
-  "/data/bangkok_fir_holdings_airac2607/bangkok_fir_holdings_airac2607.geojson";
+// No VY AIP holding table has been published yet — this 404s and the
+// existing "offline / missing file" fallback below (and in
+// `fetchHoldingPatterns`) returns an empty map, so Published/Enroute holds
+// simply aren't offered rather than falling back to the Thai (VT) table.
+const HOLDINGS_URL = "/data/aixm_vy/holdings_published.geojson";
 
 let _cache: Map<string, Holding> | null = null;
 
@@ -161,13 +172,15 @@ export function holdLegSec(h: Holding, gsKt: number): number {
  *     INSIDE a procedure, identified by their ARINC 424 path terminator:
  *       HM = hold to manual termination  → the MISSED APPROACH hold
  *       HF = hold to fix, one circuit    → HILPT (hold in lieu of proc turn)
- *     (HA is treated as HILPT too; the Thai dataset codes none.)
+ *     (HA is treated as HILPT too; neither the Thai nor the VY dataset codes
+ *     any.)
  *
  * The same physical racetrack is often in BOTH sources — the missed-approach
  * hold is usually also a published hold at that fix. They're deduped on
  * (ident, turn, inbound course ±3°) so each pattern is drawn exactly once, with
  * the more specific procedure-derived category winning. The ±3° tolerance
- * absorbs the rounding between the two files (e.g. UNTAB 36° vs 35°).
+ * absorbs the rounding between the two files (e.g. UNTAB 36° vs 35°, in the
+ * Thai dataset — not verified against VY, which may round differently).
  * ------------------------------------------------------------------------- */
 
 export type HoldingCategory = "published" | "missed" | "enroute" | "hilpt";
@@ -207,8 +220,11 @@ export interface HoldingPattern {
   procedure: string | null;
 }
 
-const ILS_WP_URL = "/data/aixm/ils_wp.geojson";
-const PBN_WP_URL = "/data/aixm/pbn_waypoint.geojson";
+// VY (Myanmar) procedures — the coded approaches carry their own missed-
+// approach and HILPT holds, so this half of the hold system works for this
+// deployment even though the AIP table above (HOLDINGS_URL) doesn't exist yet.
+const ILS_WP_URL = "/data/aixm_vy/ils_wp.geojson";
+const PBN_WP_URL = "/data/aixm_vy/pbn_waypoint.geojson";
 
 /** ICAO maximum holding speeds (kt) by altitude band — the fallback when a
  *  hold codes no speed, used to size the leg and the turn radius. */

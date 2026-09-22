@@ -415,8 +415,9 @@ def _distance_nm(a: tuple[float, float], b: tuple[float, float]) -> float:
 class RowBuilder:
     """Turns resolved procedures into DFD-schema waypoint + line features."""
 
-    def __init__(self, index: AixmIndex) -> None:
+    def __init__(self, index: AixmIndex, icao_region: str = "VT") -> None:
         self.index = index
+        self.icao_region = icao_region
         self.fid = 0
         self.unresolved_fixes = 0
         self.unnamed_procedures = 0
@@ -581,7 +582,7 @@ class RowBuilder:
             "route_type": route_type,
             "transition_identifier": transition["id"],
             "seqno": leg["seqno"],
-            "waypoint_icao_code": "VT" if ident else None,
+            "waypoint_icao_code": self.icao_region if ident else None,
             "waypoint_identifier": ident,
             "waypoint_latitude": lat,
             "waypoint_longitude": lon,
@@ -648,7 +649,9 @@ def _write(path: Path, name: str, features: list[dict[str, Any]]) -> None:
     print(f"  {path.name}: {len(features)} features")
 
 
-def build(input_path: Path, out_dir: Path) -> dict[str, list[dict[str, Any]]]:
+def build(
+    input_path: Path, out_dir: Path, icao_region: str = "VT"
+) -> dict[str, list[dict[str, Any]]]:
     """Parse the AIXM export and return the eight layers, keyed by file stem."""
     print(f"Reading {input_path.name} ...")
     index = AixmIndex()
@@ -659,7 +662,7 @@ def build(input_path: Path, out_dir: Path) -> dict[str, list[dict[str, Any]]]:
         f"{len(index.stars)} STARs, {len(index.approaches)} approaches"
     )
 
-    builder = RowBuilder(index)
+    builder = RowBuilder(index, icao_region)
     out: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for proc in index.sids:
         pts, lines = builder.rows_for(proc, "SID")
@@ -705,8 +708,13 @@ def main() -> None:
     )
     parser.add_argument("--input", type=Path, default=_DEFAULT_INPUT)
     parser.add_argument("--out", type=Path, default=_DEFAULT_OUT)
+    parser.add_argument(
+        "--icao-region",
+        default="VT",
+        help="ICAO region prefix stamped on each waypoint (e.g. VT, VY).",
+    )
     args = parser.parse_args()
-    build(args.input, args.out)
+    build(args.input, args.out, args.icao_region)
 
 
 if __name__ == "__main__":

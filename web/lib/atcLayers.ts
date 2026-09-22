@@ -1,10 +1,13 @@
 /**
- * Loaders for the extra ATC map layers re-added under /public/data:
- *   - Gates    (airports/gateway.geojson)
- *   - PBN      (aixm/pbn_leg.geojson + aixm/pbn_waypoint.geojson)
- *   - ILS      (aixm/ils_leg.geojson + aixm/ils_wp.geojson)
- *   - Airports (airports/Airport_with_AP_Main.csv — carries the Main flag)
- *   - Runways  (airports/runway.csv — threshold points)
+ * Loaders for the extra ATC map layers re-added under /public/data. This
+ * deployment reads the VY (Myanmar) files for everything that has one:
+ *   - Gates    (airports/gateway.geojson) — VT only, no VY equivalent (no
+ *              GateStand feature in the AIXM export) — see LayerOptions'
+ *              Gates tab, which disables the toggle rather than show Thai gates.
+ *   - PBN      (aixm_vy/pbn_leg.geojson + aixm_vy/pbn_waypoint.geojson)
+ *   - ILS      (aixm_vy/ils_leg.geojson + aixm_vy/ils_wp.geojson)
+ *   - Airports (airports/Airport_with_AP_Main_vy.csv — carries the Main flag)
+ *   - Runways  (airports/runway_vy.csv — threshold points)
  *
  * PBN/ILS share the SID/STAR DFD line + waypoint schema, so they reuse
  * `ProcedureLineCollection` / `ProcedureWaypointCollection`.
@@ -13,6 +16,7 @@
 import type {
   FeatureCollection,
   MultiPoint,
+  MultiPolygon,
   Point,
 } from "geojson";
 
@@ -74,30 +78,101 @@ export const fetchGates = (): Promise<GateCollection> =>
   fetchJson<GateCollection>("/data/airports/gateway.geojson");
 
 /* --- PBN / ILS (same schema as SID/STAR) ---------------------------------- */
+// AIXM 2609 (VY/Myanmar). The VT/Thai files this deployment used to read
+// still sit under /data/aixm/ if it ever needs to switch back.
 
 export const fetchPbnLines = (): Promise<ProcedureLineCollection> =>
-  fetchJson<ProcedureLineCollection>("/data/aixm/pbn_leg.geojson");
+  fetchJson<ProcedureLineCollection>("/data/aixm_vy/pbn_leg.geojson");
 export const fetchPbnWaypoints = (): Promise<ProcedureWaypointCollection> =>
-  fetchJson<ProcedureWaypointCollection>("/data/aixm/pbn_waypoint.geojson");
+  fetchJson<ProcedureWaypointCollection>("/data/aixm_vy/pbn_waypoint.geojson");
 export const fetchIlsLines = (): Promise<ProcedureLineCollection> =>
-  fetchJson<ProcedureLineCollection>("/data/aixm/ils_leg.geojson");
+  fetchJson<ProcedureLineCollection>("/data/aixm_vy/ils_leg.geojson");
 export const fetchIlsWaypoints = (): Promise<ProcedureWaypointCollection> =>
-  fetchJson<ProcedureWaypointCollection>("/data/aixm/ils_wp.geojson");
+  fetchJson<ProcedureWaypointCollection>("/data/aixm_vy/ils_wp.geojson");
+
+/* --- Myanmar (VY) procedures — neighbouring-FIR reference layer ----------- */
+/* Same DFD schema as the Thai layers (built by the same ingest script from
+ * a separate VY AIXM export), but SID + STAR + every approach are merged into
+ * one line/waypoint pair: this is context for the map, not a country the sim
+ * or CD&R engine flies — there is no per-type filter split to preserve. */
+
+function mergeCollections<T extends { features: unknown[] }>(
+  collections: T[],
+): T {
+  return {
+    ...collections[0],
+    features: collections.flatMap((c) => c.features),
+  };
+}
+
+export const fetchVyProcedureLines = (): Promise<ProcedureLineCollection> =>
+  Promise.all([
+    fetchJson<ProcedureLineCollection>("/data/aixm_vy/sid_line.geojson"),
+    fetchJson<ProcedureLineCollection>("/data/aixm_vy/star_line.geojson"),
+    fetchJson<ProcedureLineCollection>("/data/aixm_vy/ils_leg.geojson"),
+  ]).then(mergeCollections);
+
+export const fetchVyProcedureWaypoints =
+  (): Promise<ProcedureWaypointCollection> =>
+    Promise.all([
+      fetchJson<ProcedureWaypointCollection>(
+        "/data/aixm_vy/sid_waypoint.geojson",
+      ),
+      fetchJson<ProcedureWaypointCollection>(
+        "/data/aixm_vy/star_waypoint.geojson",
+      ),
+      fetchJson<ProcedureWaypointCollection>("/data/aixm_vy/ils_wp.geojson"),
+    ]).then(mergeCollections);
+
+/** One P/R/D restricted area or FIR/CTA/TMA/CTR boundary polygon — one
+ *  feature per published AirspaceVolume (an area split into stacked altitude
+ *  bands keeps each band's own limits). `activity_note`/`restriction`/
+ *  `hazard`/`remarks` are almost always empty for VY: this export carries no
+ *  AirspaceActivation schedule, unlike the Thai `pdr_activity.json`. */
+export interface AirspaceAreaProperties {
+  type: string;
+  designator: string;
+  name: string;
+  lower: string;
+  upper: string;
+  activity_note: string;
+  restriction: string;
+  hazard: string;
+  remarks: string;
+}
+export type AirspaceAreaCollection = FeatureCollection<
+  MultiPolygon,
+  AirspaceAreaProperties
+>;
+
+export const fetchVyRestrictedAreas = (): Promise<AirspaceAreaCollection> =>
+  fetchJson<AirspaceAreaCollection>("/data/aixm_vy/restricted_areas.geojson");
+export const fetchVyAirspaceBoundaries = (): Promise<AirspaceAreaCollection> =>
+  fetchJson<AirspaceAreaCollection>(
+    "/data/aixm_vy/airspace_boundaries.geojson",
+  );
 
 /* --- Airports (CSV, with Main flag) --------------------------------------- */
+// Derived from the AIXM 2609 (VY/Myanmar) export by
+// scripts/ingest_aixm_airports.py — AIXM carries no ARINC-424 navdata fields
+// (ifr_capability, transition altitude/level, speed limits, runway surface),
+// so those columns are blank here; only identifier/name/position/Main
+// survive from the schema the VT file also uses. The VT/Thai file this
+// deployment used to read is unchanged at Airport_with_AP_Main.csv if it
+// ever needs to switch back.
 
 export interface PanelAirport {
   code: string;
   name: string;
   lat: number;
   lon: number;
-  /** True for the AIP "Main" aerodromes (VTBS/VTBD) — grouped separately. */
+  /** True for the AIP "Main" aerodromes (VYYY/VYMD/VYNT) — grouped separately. */
   main: boolean;
 }
 
 export async function fetchPanelAirports(): Promise<PanelAirport[]> {
   const rows = parseCsv(
-    await fetchText("/data/airports/Airport_with_AP_Main.csv"),
+    await fetchText("/data/airports/Airport_with_AP_Main_vy.csv"),
   );
   return rows
     .map((r) => ({
@@ -114,6 +189,9 @@ export async function fetchPanelAirports(): Promise<PanelAirport[]> {
 }
 
 /* --- Runways (CSV, threshold points) -------------------------------------- */
+// Derived from the same AIXM 2609 (VY/Myanmar) export by
+// scripts/ingest_aixm_airports.py (RunwayDirection + RunwayCentrelinePoint
+// for each threshold's position/bearing, Runway for length/width).
 
 export interface RunwayPoint {
   airport: string;
@@ -129,7 +207,7 @@ export interface RunwayPoint {
 }
 
 export async function fetchRunways(): Promise<RunwayPoint[]> {
-  const rows = parseCsv(await fetchText("/data/airports/runway.csv"));
+  const rows = parseCsv(await fetchText("/data/airports/runway_vy.csv"));
   return rows
     .map((r) => ({
       airport: (r.airport_identifier || "").trim(),

@@ -1,10 +1,13 @@
 /**
  * aip — client loader for the CAAT eAIP navdata cache.
  *
- * The cache (`/data/aip_VT.json`) is produced once per AIRAC cycle by
- * `scripts/ingest_aip.py`. It replaces the old hand-curated
- * `VTPStoVTBS.csv` as the source of waypoint coordinates and airway
- * sequences for the route picker + best-route ranker.
+ * The cache (`/data/aip_VT.json`) was produced once per AIRAC cycle by
+ * `scripts/ingest_aip.py` from the Thai eAIP — a scrape, not something AIXM
+ * carries, so there is no VY (Myanmar) equivalent. The file has been removed
+ * along with the rest of the Thailand data; `fetchAip()` now fails closed
+ * (empty waypoints/airways) instead of throwing, so the route picker and
+ * best-route ranker just see no published fixes/airways until a real VY eAIP
+ * cache exists at this same path/shape.
  *
  * Shape:
  *   {
@@ -45,13 +48,16 @@ export interface AirportOption {
 
 let _cache: Promise<AipData> | null = null;
 
-/** Fetch + memoise the AIP cache for the page's lifetime. */
+/** Fetch + memoise the AIP cache for the page's lifetime. Fails closed (empty
+ *  waypoints/airways) rather than throwing — there is no VY cache yet. */
 export function fetchAip(): Promise<AipData> {
   if (!_cache) {
-    _cache = fetch(AIP_URL, { cache: "no-store" }).then((res) => {
-      if (!res.ok) throw new Error(`Failed to load ${AIP_URL}: ${res.status}`);
-      return res.json() as Promise<AipData>;
-    });
+    _cache = fetch(AIP_URL, { cache: "no-store" })
+      .then((res) => {
+        if (!res.ok) throw new Error(`Failed to load ${AIP_URL}: ${res.status}`);
+        return res.json() as Promise<AipData>;
+      })
+      .catch(() => ({ airac: "", waypoints: {}, airways: {} }) as AipData);
   }
   return _cache;
 }

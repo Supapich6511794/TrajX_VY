@@ -1,0 +1,1681 @@
+{
+ "source": "aixm_export_2609_VY_v5.1.1.xml",
+ "validFrom": "2026-09-03T00:00:00Z",
+ "validTo": "2026-10-01T00:00:00Z",
+ "segments": [
+  {
+   "route": "A201",
+   "from": "ANSOS",
+   "to": "LSO",
+   "direction": "BOTH",
+   "lowerFt": 27000.0,
+   "upperFt": 45000.0,
+   "lengthNm": 238.8
+  },
+  {
+   "route": "A581",
+   "from": "BGO",
+   "to": "BOMAS",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 90.6
+  },
+  {
+   "route": "A581",
+   "from": "BOMAS",
+   "to": "BIGVO",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 35.0
+  },
+  {
+   "route": "A599",
+   "from": "CHILA",
+   "to": "LSO",
+   "direction": "BOTH",
+   "lowerFt": 27000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 280.0
+  },
+  {
+   "route": "A599",
+   "from": "LINSO",
+   "to": "GMA",
+   "direction": "BOTH",
+   "lowerFt": null,
+   "upperFt": null,
+   "lengthNm": 28.6
+  },
+  {
+   "route": "A599",
+   "from": "LSO",
+   "to": "LINSO",
+   "direction": "BOTH",
+   "lowerFt": 27000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 68.4
+  },
+  {
+   "route": "B214",
+   "from": "AKSAG",
+   "to": "LADON",
+   "direction": "BOTH",
+   "lowerFt": 13000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 141.0
+  },
+  {
+   "route": "B463",
+   "from": "ASUMO",
+   "to": "MOXIS",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 45000.0,
+   "lengthNm": 78.3
+  },
+  {
+   "route": "B463",
+   "from": "IKUGI",
+   "to": "BGO",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 45000.0,
+   "lengthNm": 75.0
+  },
+  {
+   "route": "B463",
+   "from": "LSO",
+   "to": "MDY",
+   "direction": "BOTH",
+   "lowerFt": 12000.0,
+   "upperFt": 45000.0,
+   "lengthNm": 109.8
+  },
+  {
+   "route": "B463",
+   "from": "MDY",
+   "to": "ASUMO",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 45000.0,
+   "lengthNm": 58.8
+  },
+  {
+   "route": "B463",
+   "from": "MOXIS",
+   "to": "IKUGI",
+   "direction": "BOTH",
+   "lowerFt": 10000.0,
+   "upperFt": 45000.0,
+   "lengthNm": 64.8
+  },
+  {
+   "route": "B465",
+   "from": "AKSAG",
+   "to": "LPB",
+   "direction": "BOTH",
+   "lowerFt": 13000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 110.0
+  },
+  {
+   "route": "B465",
+   "from": "APAGO",
+   "to": "MDY",
+   "direction": "BOTH",
+   "lowerFt": 27000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 194.6
+  },
+  {
+   "route": "B465",
+   "from": "MDY",
+   "to": "AKSAG",
+   "direction": "BOTH",
+   "lowerFt": 27000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 252.0
+  },
+  {
+   "route": "FR1",
+   "from": "HGU",
+   "to": "HGU54",
+   "direction": "BOTH",
+   "lowerFt": null,
+   "upperFt": 46000.0,
+   "lengthNm": 54.0
+  },
+  {
+   "route": "FR1",
+   "from": "LEGOB",
+   "to": "MIA",
+   "direction": "BOTH",
+   "lowerFt": null,
+   "upperFt": 46000.0,
+   "lengthNm": 60.0
+  },
+  {
+   "route": "FR2",
+   "from": "HGU",
+   "to": "HGU52",
+   "direction": "BOTH",
+   "lowerFt": null,
+   "upperFt": 46000.0,
+   "lengthNm": 52.0
+  },
+  {
+   "route": "FR2",
+   "from": "IBONA",
+   "to": "MDY",
+   "direction": "BOTH",
+   "lowerFt": null,
+   "upperFt": 46000.0,
+   "lengthNm": 46.0
+  },
+  {
+   "route": "FR2",
+   "from": "MDY",
+   "to": "MIA",
+   "direction": "BOTH",
+   "lowerFt": null,
+   "upperFt": 46000.0,
+   "lengthNm": 16.0
+  },
+  {
+   "route": "FR3",
+   "from": "HGU",
+   "to": "HGU56",
+   "direction": "BOTH",
+   "lowerFt": null,
+   "upperFt": 46000.0,
+   "lengthNm": 56.0
+  },
+  {
+   "route": "FR3",
+   "from": "OROGA",
+   "to": "MIA",
+   "direction": "BOTH",
+   "lowerFt": null,
+   "upperFt": 46000.0,
+   "lengthNm": 61.6
+  },
+  {
+   "route": "FR4",
+   "from": "BOGIM",
+   "to": "MIA",
+   "direction": "BOTH",
+   "lowerFt": null,
+   "upperFt": 46000.0,
+   "lengthNm": 60.0
+  },
+  {
+   "route": "FR4",
+   "from": "HGU",
+   "to": "HGU60",
+   "direction": "BOTH",
+   "lowerFt": null,
+   "upperFt": 46000.0,
+   "lengthNm": 60.0
+  },
+  {
+   "route": "FR5",
+   "from": "DOGIP",
+   "to": "MIA",
+   "direction": "BOTH",
+   "lowerFt": null,
+   "upperFt": 46000.0,
+   "lengthNm": 61.0
+  },
+  {
+   "route": "FR5",
+   "from": "HGU",
+   "to": "HGU62",
+   "direction": "BOTH",
+   "lowerFt": null,
+   "upperFt": 46000.0,
+   "lengthNm": 62.0
+  },
+  {
+   "route": "G331",
+   "from": "DADSA",
+   "to": "SUSID",
+   "direction": "BOTH",
+   "lowerFt": 7000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 30.0
+  },
+  {
+   "route": "G331",
+   "from": "DWI",
+   "to": "RENOX",
+   "direction": "BOTH",
+   "lowerFt": 4000.0,
+   "upperFt": 40000.0,
+   "lengthNm": 40.0
+  },
+  {
+   "route": "G331",
+   "from": "PADET",
+   "to": "DADSA",
+   "direction": "BOTH",
+   "lowerFt": 10000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 53.0
+  },
+  {
+   "route": "G331",
+   "from": "RENOX",
+   "to": "PADET",
+   "direction": "BOTH",
+   "lowerFt": 4000.0,
+   "upperFt": 40000.0,
+   "lengthNm": 205.0
+  },
+  {
+   "route": "G458",
+   "from": "MENEX",
+   "to": "APRIL",
+   "direction": "BOTH",
+   "lowerFt": 8000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 9.0
+  },
+  {
+   "route": "G458",
+   "from": "UKERA",
+   "to": "MENEX",
+   "direction": "BOTH",
+   "lowerFt": 8000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 55.0
+  },
+  {
+   "route": "G463",
+   "from": "AVLED",
+   "to": "DORLI",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 195.9
+  },
+  {
+   "route": "G463",
+   "from": "BETNO",
+   "to": "TARED",
+   "direction": "BOTH",
+   "lowerFt": 10000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 86.0
+  },
+  {
+   "route": "G463",
+   "from": "BGO",
+   "to": "PUMEK",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 102.5
+  },
+  {
+   "route": "G463",
+   "from": "DORLI",
+   "to": "NIVOG",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 64.1
+  },
+  {
+   "route": "G463",
+   "from": "NIVOG",
+   "to": "BGO",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 91.4
+  },
+  {
+   "route": "G463",
+   "from": "PUMEK",
+   "to": "BETNO",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 62.2
+  },
+  {
+   "route": "G463",
+   "from": "TANAP",
+   "to": "AVLED",
+   "direction": "BOTH",
+   "lowerFt": 24500.0,
+   "upperFt": 46000.0,
+   "lengthNm": 20.9
+  },
+  {
+   "route": "G472",
+   "from": "PTN",
+   "to": "BGO",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 105.0
+  },
+  {
+   "route": "G472",
+   "from": "SAGOD",
+   "to": "PTN",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 172.6
+  },
+  {
+   "route": "G473",
+   "from": "BGO",
+   "to": "LATAD",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 80.4
+  },
+  {
+   "route": "G473",
+   "from": "LATAD",
+   "to": "MAKAS",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 36.9
+  },
+  {
+   "route": "G473",
+   "from": "MAKAS",
+   "to": "PSL",
+   "direction": "BOTH",
+   "lowerFt": 10000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 103.0
+  },
+  {
+   "route": "G473",
+   "from": "PSL",
+   "to": "CMP",
+   "direction": "BOTH",
+   "lowerFt": 10000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 98.0
+  },
+  {
+   "route": "L301",
+   "from": "DWI",
+   "to": "TANEK",
+   "direction": "BOTH",
+   "lowerFt": 26000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 44.7
+  },
+  {
+   "route": "L301",
+   "from": "RINDA",
+   "to": "SADUS",
+   "direction": "BOTH",
+   "lowerFt": 26000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 37.7
+  },
+  {
+   "route": "L301",
+   "from": "SADUS",
+   "to": "DWI",
+   "direction": "BOTH",
+   "lowerFt": 26000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 333.7
+  },
+  {
+   "route": "L301",
+   "from": "TANEK",
+   "to": "PASTO",
+   "direction": "BOTH",
+   "lowerFt": 8000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 31.0
+  },
+  {
+   "route": "L507",
+   "from": "ARATO",
+   "to": "LUDVI",
+   "direction": "BOTH",
+   "lowerFt": 28000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 70.2
+  },
+  {
+   "route": "L507",
+   "from": "BGO",
+   "to": "ARATO",
+   "direction": "BOTH",
+   "lowerFt": 28000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 92.8
+  },
+  {
+   "route": "L507",
+   "from": "LUDVI",
+   "to": "NUNLI",
+   "direction": "BOTH",
+   "lowerFt": 15000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 59.0
+  },
+  {
+   "route": "L507",
+   "from": "OTADA",
+   "to": "BGO",
+   "direction": "BOTH",
+   "lowerFt": 28000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 98.0
+  },
+  {
+   "route": "L507",
+   "from": "SUMSU",
+   "to": "OTADA",
+   "direction": "BOTH",
+   "lowerFt": 28000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 29.3
+  },
+  {
+   "route": "L507",
+   "from": "TEBOV",
+   "to": "SUMSU",
+   "direction": "BOTH",
+   "lowerFt": 28000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 189.6
+  },
+  {
+   "route": "L515",
+   "from": "IKULA",
+   "to": "OBMOG",
+   "direction": "BOTH",
+   "lowerFt": 28000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 127.0
+  },
+  {
+   "route": "L524",
+   "from": "BORBU",
+   "to": "KAMKO",
+   "direction": "BOTH",
+   "lowerFt": 28000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 135.8
+  },
+  {
+   "route": "L524",
+   "from": "KAKIP",
+   "to": "NURDA",
+   "direction": "FORWARD",
+   "lowerFt": 28000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 41.0
+  },
+  {
+   "route": "L524",
+   "from": "KAMKO",
+   "to": "KAKIP",
+   "direction": "FORWARD",
+   "lowerFt": 28000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 230.6
+  },
+  {
+   "route": "L524",
+   "from": "NURDA",
+   "to": "MIGAR",
+   "direction": "FORWARD",
+   "lowerFt": 10000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 26.0
+  },
+  {
+   "route": "L759",
+   "from": "ANPAN",
+   "to": "SATVA",
+   "direction": "BOTH",
+   "lowerFt": 7000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 30.0
+  },
+  {
+   "route": "L759",
+   "from": "MIPAK",
+   "to": "TAVUN",
+   "direction": "BOTH",
+   "lowerFt": 28000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 167.0
+  },
+  {
+   "route": "L759",
+   "from": "TAVUN",
+   "to": "ANPAN",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 93.0
+  },
+  {
+   "route": "L877",
+   "from": "DWI",
+   "to": "PUMOR",
+   "direction": "FORWARD",
+   "lowerFt": 28000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 31.6
+  },
+  {
+   "route": "L877",
+   "from": "PUMOR",
+   "to": "MIGAR",
+   "direction": "FORWARD",
+   "lowerFt": 10000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 15.0
+  },
+  {
+   "route": "M502",
+   "from": "AKATO",
+   "to": "DALER",
+   "direction": "BOTH",
+   "lowerFt": 28000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 38.6
+  },
+  {
+   "route": "M502",
+   "from": "DALER",
+   "to": "RENOX",
+   "direction": "BOTH",
+   "lowerFt": 28000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 18.3
+  },
+  {
+   "route": "M502",
+   "from": "RENOX",
+   "to": "LALIT",
+   "direction": "BOTH",
+   "lowerFt": 28000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 164.0
+  },
+  {
+   "route": "M506",
+   "from": "DWI",
+   "to": "KAMKO",
+   "direction": "FORWARD",
+   "lowerFt": 28000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 261.2
+  },
+  {
+   "route": "M626",
+   "from": "BGO",
+   "to": "POXEM",
+   "direction": "BOTH",
+   "lowerFt": 28000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 125.4
+  },
+  {
+   "route": "M626",
+   "from": "DALER",
+   "to": "EKAVO",
+   "direction": "BOTH",
+   "lowerFt": 28000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 125.6
+  },
+  {
+   "route": "M626",
+   "from": "DWI",
+   "to": "DALER",
+   "direction": "BOTH",
+   "lowerFt": 28000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 40.7
+  },
+  {
+   "route": "M626",
+   "from": "EKAVO",
+   "to": "MENEX",
+   "direction": "BOTH",
+   "lowerFt": 10000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 33.0
+  },
+  {
+   "route": "M626",
+   "from": "KAKIP",
+   "to": "DWI",
+   "direction": "BOTH",
+   "lowerFt": 28000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 38.6
+  },
+  {
+   "route": "M626",
+   "from": "KEVAM",
+   "to": "KAKIP",
+   "direction": "BOTH",
+   "lowerFt": 28000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 18.0
+  },
+  {
+   "route": "M626",
+   "from": "MENEX",
+   "to": "NONEL",
+   "direction": "BOTH",
+   "lowerFt": 10000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 17.0
+  },
+  {
+   "route": "M626",
+   "from": "POXEM",
+   "to": "KEVAM",
+   "direction": "BOTH",
+   "lowerFt": 28000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 33.6
+  },
+  {
+   "route": "M633",
+   "from": "TANEK",
+   "to": "MUBUS",
+   "direction": "BACKWARD",
+   "lowerFt": 26000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 104.0
+  },
+  {
+   "route": "M770",
+   "from": "LALAT",
+   "to": "OBMOG",
+   "direction": "BOTH",
+   "lowerFt": 28000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 80.3
+  },
+  {
+   "route": "M770",
+   "from": "MEPEL",
+   "to": "SADUS",
+   "direction": "BOTH",
+   "lowerFt": 28000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 51.4
+  },
+  {
+   "route": "M770",
+   "from": "OBMOG",
+   "to": "PADET",
+   "direction": "BOTH",
+   "lowerFt": 28000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 159.4
+  },
+  {
+   "route": "M770",
+   "from": "SADUS",
+   "to": "LALAT",
+   "direction": "BOTH",
+   "lowerFt": 28000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 224.0
+  },
+  {
+   "route": "N895",
+   "from": "PTN",
+   "to": "BETNO",
+   "direction": "BOTH",
+   "lowerFt": 28000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 223.5
+  },
+  {
+   "route": "N895",
+   "from": "SAGOD",
+   "to": "PTN",
+   "direction": "BOTH",
+   "lowerFt": 28000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 172.6
+  },
+  {
+   "route": "P646",
+   "from": "BETNO",
+   "to": "TARED",
+   "direction": "BOTH",
+   "lowerFt": 10000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 86.0
+  },
+  {
+   "route": "P646",
+   "from": "IBITA",
+   "to": "PTN",
+   "direction": "BOTH",
+   "lowerFt": 28000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 202.7
+  },
+  {
+   "route": "P646",
+   "from": "POXEM",
+   "to": "BETNO",
+   "direction": "BOTH",
+   "lowerFt": 28000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 46.2
+  },
+  {
+   "route": "P646",
+   "from": "PTN",
+   "to": "POXEM",
+   "direction": "BOTH",
+   "lowerFt": 28000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 177.4
+  },
+  {
+   "route": "P762",
+   "from": "LALIT",
+   "to": "DWI",
+   "direction": "BOTH",
+   "lowerFt": 28000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 175.6
+  },
+  {
+   "route": "P762",
+   "from": "LULDA",
+   "to": "LALIT",
+   "direction": "BOTH",
+   "lowerFt": 28000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 68.4
+  },
+  {
+   "route": "R207",
+   "from": "MACHI",
+   "to": "LAMUN",
+   "direction": "BOTH",
+   "lowerFt": 9000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 10.0
+  },
+  {
+   "route": "R207",
+   "from": "MDY",
+   "to": "SISUK",
+   "direction": "BOTH",
+   "lowerFt": 12000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 167.0
+  },
+  {
+   "route": "R207",
+   "from": "SISUK",
+   "to": "MACHI",
+   "direction": "BOTH",
+   "lowerFt": 9000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 46.0
+  },
+  {
+   "route": "V1",
+   "from": "BGO",
+   "to": "HHO",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 23000.0,
+   "lengthNm": 206.0
+  },
+  {
+   "route": "V1",
+   "from": "HHO",
+   "to": "LSO",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 23000.0,
+   "lengthNm": 144.0
+  },
+  {
+   "route": "V10",
+   "from": "MIA",
+   "to": "LSO",
+   "direction": "BOTH",
+   "lowerFt": 9000.0,
+   "upperFt": 23000.0,
+   "lengthNm": 124.5
+  },
+  {
+   "route": "V11",
+   "from": "MIA",
+   "to": "MKN",
+   "direction": "BOTH",
+   "lowerFt": 13000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 232.6
+  },
+  {
+   "route": "V11",
+   "from": "MKN",
+   "to": "PT",
+   "direction": "BOTH",
+   "lowerFt": 13000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 116.0
+  },
+  {
+   "route": "V12",
+   "from": "HEHOO",
+   "to": "THAZI",
+   "direction": "BOTH",
+   "lowerFt": 10000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 7.0
+  },
+  {
+   "route": "V12",
+   "from": "HHO",
+   "to": "KG",
+   "direction": "BOTH",
+   "lowerFt": 10000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 162.8
+  },
+  {
+   "route": "V12",
+   "from": "MIA",
+   "to": "HEHOO",
+   "direction": "BOTH",
+   "lowerFt": 10000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 27.0
+  },
+  {
+   "route": "V12",
+   "from": "THAZI",
+   "to": "HHO",
+   "direction": "BOTH",
+   "lowerFt": 10000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 39.0
+  },
+  {
+   "route": "V13",
+   "from": "HHO",
+   "to": "MS",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 139.5
+  },
+  {
+   "route": "V13",
+   "from": "MS",
+   "to": "TCL",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 38.3
+  },
+  {
+   "route": "V14",
+   "from": "HHO",
+   "to": "LK",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 67.6
+  },
+  {
+   "route": "V15",
+   "from": "KG",
+   "to": "TCL",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 52.0
+  },
+  {
+   "route": "V15",
+   "from": "MIA",
+   "to": "KG",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 205.7
+  },
+  {
+   "route": "V16",
+   "from": "KG",
+   "to": "MS",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 51.4
+  },
+  {
+   "route": "V16",
+   "from": "MIA",
+   "to": "KG",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 205.7
+  },
+  {
+   "route": "V17",
+   "from": "BM",
+   "to": "MKN",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 67.2
+  },
+  {
+   "route": "V17",
+   "from": "MIA",
+   "to": "BM",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 168.3
+  },
+  {
+   "route": "V18",
+   "from": "NPT",
+   "to": "LK",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 57.7
+  },
+  {
+   "route": "V19",
+   "from": "LSO",
+   "to": "TCL",
+   "direction": "BOTH",
+   "lowerFt": 10800.0,
+   "upperFt": 26000.0,
+   "lengthNm": 193.0
+  },
+  {
+   "route": "V2",
+   "from": "BGO",
+   "to": "LSO",
+   "direction": "BOTH",
+   "lowerFt": 12000.0,
+   "upperFt": 23000.0,
+   "lengthNm": 346.0
+  },
+  {
+   "route": "V3",
+   "from": "BGO",
+   "to": "LK",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 23000.0,
+   "lengthNm": 147.2
+  },
+  {
+   "route": "V3",
+   "from": "LK",
+   "to": "KG",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 23000.0,
+   "lengthNm": 166.8
+  },
+  {
+   "route": "V4",
+   "from": "LSO",
+   "to": "KG",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 23000.0,
+   "lengthNm": 145.0
+  },
+  {
+   "route": "V5",
+   "from": "BGO",
+   "to": "PA",
+   "direction": "BOTH",
+   "lowerFt": 9000.0,
+   "upperFt": 23000.0,
+   "lengthNm": 71.0
+  },
+  {
+   "route": "V6",
+   "from": "BGO",
+   "to": "MM",
+   "direction": "BOTH",
+   "lowerFt": 10300.0,
+   "upperFt": 28000.0,
+   "lengthNm": 83.8
+  },
+  {
+   "route": "V6",
+   "from": "BOKPN",
+   "to": "KT",
+   "direction": "BOTH",
+   "lowerFt": 10300.0,
+   "upperFt": 28000.0,
+   "lengthNm": 66.7
+  },
+  {
+   "route": "V6",
+   "from": "DWI",
+   "to": "ME",
+   "direction": "BOTH",
+   "lowerFt": 10300.0,
+   "upperFt": 28000.0,
+   "lengthNm": 101.5
+  },
+  {
+   "route": "V6",
+   "from": "ME",
+   "to": "BOKPN",
+   "direction": "BOTH",
+   "lowerFt": 10300.0,
+   "upperFt": 28000.0,
+   "lengthNm": 78.0
+  },
+  {
+   "route": "V6",
+   "from": "MM",
+   "to": "DWI",
+   "direction": "BOTH",
+   "lowerFt": 10300.0,
+   "upperFt": 28000.0,
+   "lengthNm": 143.6
+  },
+  {
+   "route": "V7",
+   "from": "BGO",
+   "to": "DWI",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 23000.0,
+   "lengthNm": 215.6
+  },
+  {
+   "route": "V8",
+   "from": "BGO",
+   "to": "ME",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 315.4
+  },
+  {
+   "route": "V9",
+   "from": "BGO",
+   "to": "KT",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 28000.0,
+   "lengthNm": 449.9
+  },
+  {
+   "route": "W1",
+   "from": "BGO",
+   "to": "MIA",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 28000.0,
+   "lengthNm": 264.4
+  },
+  {
+   "route": "W10",
+   "from": "MIA",
+   "to": "KL",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 138.4
+  },
+  {
+   "route": "W11",
+   "from": "MIA",
+   "to": "KI",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 23000.0,
+   "lengthNm": 256.4
+  },
+  {
+   "route": "W12",
+   "from": "MW",
+   "to": "AN",
+   "direction": "BOTH",
+   "lowerFt": 6500.0,
+   "upperFt": 23000.0,
+   "lengthNm": 58.3
+  },
+  {
+   "route": "W13",
+   "from": "BGO",
+   "to": "NPT",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 139.2
+  },
+  {
+   "route": "W13",
+   "from": "NPT",
+   "to": "MIA",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 125.2
+  },
+  {
+   "route": "W14",
+   "from": "BITAL",
+   "to": "BGN",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 24000.0,
+   "lengthNm": 130.8
+  },
+  {
+   "route": "W14",
+   "from": "TDE",
+   "to": "BITAL",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 24000.0,
+   "lengthNm": 35.3
+  },
+  {
+   "route": "W15",
+   "from": "MELET",
+   "to": "MIA",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 24000.0,
+   "lengthNm": 181.2
+  },
+  {
+   "route": "W15",
+   "from": "TDE",
+   "to": "MELET",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 24000.0,
+   "lengthNm": 35.3
+  },
+  {
+   "route": "W16",
+   "from": "POPIT",
+   "to": "HHO",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 24000.0,
+   "lengthNm": 161.4
+  },
+  {
+   "route": "W16",
+   "from": "TDE",
+   "to": "POPIT",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 24000.0,
+   "lengthNm": 35.3
+  },
+  {
+   "route": "W17",
+   "from": "MIA",
+   "to": "MY",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 58.0
+  },
+  {
+   "route": "W17",
+   "from": "MY",
+   "to": "HL",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 160.0
+  },
+  {
+   "route": "W18",
+   "from": "MIA",
+   "to": "MY",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 58.0
+  },
+  {
+   "route": "W18",
+   "from": "MY",
+   "to": "KL",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 81.2
+  },
+  {
+   "route": "W19",
+   "from": "MIA",
+   "to": "STW",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 198.0
+  },
+  {
+   "route": "W2",
+   "from": "BGO",
+   "to": "STW",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 267.0
+  },
+  {
+   "route": "W20",
+   "from": "NPT",
+   "to": "BGN",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 116.7
+  },
+  {
+   "route": "W21",
+   "from": "NPT",
+   "to": "MW",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 24000.0,
+   "lengthNm": 76.2
+  },
+  {
+   "route": "W22",
+   "from": "NPT",
+   "to": "STW",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 190.0
+  },
+  {
+   "route": "W22",
+   "from": "PSL",
+   "to": "NIROP",
+   "direction": "BOTH",
+   "lowerFt": 7000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 30.0
+  },
+  {
+   "route": "W23",
+   "from": "NPT",
+   "to": "KP",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 151.2
+  },
+  {
+   "route": "W23",
+   "from": "PSL",
+   "to": "POLOB",
+   "direction": "BOTH",
+   "lowerFt": 7000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 30.0
+  },
+  {
+   "route": "W24",
+   "from": "NPT",
+   "to": "TOGER",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 93.3
+  },
+  {
+   "route": "W24",
+   "from": "TOGER",
+   "to": "TDE",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 35.3
+  },
+  {
+   "route": "W25",
+   "from": "SBG",
+   "to": "KL",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 23000.0,
+   "lengthNm": 29.3
+  },
+  {
+   "route": "W26",
+   "from": "IGPOP",
+   "to": "PSL",
+   "direction": "BOTH",
+   "lowerFt": 7000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 29.0
+  },
+  {
+   "route": "W26",
+   "from": "PSL",
+   "to": "GOKON",
+   "direction": "BOTH",
+   "lowerFt": 7000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 30.0
+  },
+  {
+   "route": "W27",
+   "from": "PSL",
+   "to": "REMER",
+   "direction": "BOTH",
+   "lowerFt": 7000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 30.0
+  },
+  {
+   "route": "W29",
+   "from": "GOSTA",
+   "to": "PSL",
+   "direction": "BOTH",
+   "lowerFt": 7000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 30.0
+  },
+  {
+   "route": "W3",
+   "from": "AN",
+   "to": "STW",
+   "direction": "BOTH",
+   "lowerFt": 9000.0,
+   "upperFt": 23000.0,
+   "lengthNm": 68.6
+  },
+  {
+   "route": "W3",
+   "from": "BGO",
+   "to": "MUPIG",
+   "direction": "BOTH",
+   "lowerFt": 9000.0,
+   "upperFt": 23000.0,
+   "lengthNm": 109.2
+  },
+  {
+   "route": "W3",
+   "from": "KP",
+   "to": "AN",
+   "direction": "BOTH",
+   "lowerFt": 9000.0,
+   "upperFt": 23000.0,
+   "lengthNm": 34.6
+  },
+  {
+   "route": "W3",
+   "from": "MN",
+   "to": "KP",
+   "direction": "BOTH",
+   "lowerFt": 9000.0,
+   "upperFt": 23000.0,
+   "lengthNm": 35.9
+  },
+  {
+   "route": "W3",
+   "from": "MUPIG",
+   "to": "TDE",
+   "direction": "BOTH",
+   "lowerFt": 9000.0,
+   "upperFt": 23000.0,
+   "lengthNm": 35.1
+  },
+  {
+   "route": "W3",
+   "from": "TDE",
+   "to": "MN",
+   "direction": "BOTH",
+   "lowerFt": 9000.0,
+   "upperFt": 23000.0,
+   "lengthNm": 41.8
+  },
+  {
+   "route": "W34",
+   "from": "MENEX",
+   "to": "CPN",
+   "direction": "BOTH",
+   "lowerFt": 7000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 35.0
+  },
+  {
+   "route": "W36",
+   "from": "LAMUN",
+   "to": "MACHI",
+   "direction": "BOTH",
+   "lowerFt": 9000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 10.0
+  },
+  {
+   "route": "W36",
+   "from": "MACHI",
+   "to": "DOMKA",
+   "direction": "BOTH",
+   "lowerFt": 9000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 7.4
+  },
+  {
+   "route": "W4",
+   "from": "BGO",
+   "to": "KP",
+   "direction": "BOTH",
+   "lowerFt": 9000.0,
+   "upperFt": 23000.0,
+   "lengthNm": 212.0
+  },
+  {
+   "route": "W4",
+   "from": "KP",
+   "to": "STW",
+   "direction": "BOTH",
+   "lowerFt": 9000.0,
+   "upperFt": 23000.0,
+   "lengthNm": 56.2
+  },
+  {
+   "route": "W42",
+   "from": "MENEX",
+   "to": "EGUBO",
+   "direction": "BOTH",
+   "lowerFt": 16000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 28.0
+  },
+  {
+   "route": "W5",
+   "from": "BGN",
+   "to": "MIA",
+   "direction": "BOTH",
+   "lowerFt": 7000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 67.2
+  },
+  {
+   "route": "W5",
+   "from": "BGO",
+   "to": "BGN",
+   "direction": "BOTH",
+   "lowerFt": 7000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 247.3
+  },
+  {
+   "route": "W6",
+   "from": "BGO",
+   "to": "KL",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 377.3
+  },
+  {
+   "route": "W7",
+   "from": "HL",
+   "to": "KI",
+   "direction": "BOTH",
+   "lowerFt": 10000.0,
+   "upperFt": 24000.0,
+   "lengthNm": 77.6
+  },
+  {
+   "route": "W7",
+   "from": "KL",
+   "to": "HL",
+   "direction": "BOTH",
+   "lowerFt": 10000.0,
+   "upperFt": 24000.0,
+   "lengthNm": 112.2
+  },
+  {
+   "route": "W8",
+   "from": "BGO",
+   "to": "MW",
+   "direction": "BOTH",
+   "lowerFt": 11000.0,
+   "upperFt": 23000.0,
+   "lengthNm": 191.3
+  },
+  {
+   "route": "W9",
+   "from": "BGO",
+   "to": "PTN",
+   "direction": "BOTH",
+   "lowerFt": 10000.0,
+   "upperFt": 26000.0,
+   "lengthNm": 105.0
+  },
+  {
+   "route": "W9",
+   "from": "PEBLI",
+   "to": "PSL",
+   "direction": "BOTH",
+   "lowerFt": 7000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 30.0
+  },
+  {
+   "route": "W9",
+   "from": "PSL",
+   "to": "PIBIK",
+   "direction": "BOTH",
+   "lowerFt": 7000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 30.0
+  },
+  {
+   "route": "Y28",
+   "from": "PEBLI",
+   "to": "PSL",
+   "direction": "BACKWARD",
+   "lowerFt": 7000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 30.0
+  },
+  {
+   "route": "Y28",
+   "from": "PSL",
+   "to": "CRIST",
+   "direction": "BACKWARD",
+   "lowerFt": 9000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 121.0
+  },
+  {
+   "route": "Y29",
+   "from": "PIBAN",
+   "to": "PSL",
+   "direction": "FORWARD",
+   "lowerFt": 7000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 30.0
+  },
+  {
+   "route": "Y3",
+   "from": "MENEX",
+   "to": "DORNA",
+   "direction": "FORWARD",
+   "lowerFt": 8000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 103.0
+  },
+  {
+   "route": "Y5",
+   "from": "CPN",
+   "to": "MENEX",
+   "direction": "FORWARD",
+   "lowerFt": 13000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 35.0
+  },
+  {
+   "route": "Y5",
+   "from": "MENEX",
+   "to": "EGUBO",
+   "direction": "FORWARD",
+   "lowerFt": 13000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 28.0
+  },
+  {
+   "route": "Y8",
+   "from": "BUXEL",
+   "to": "MENEX",
+   "direction": "FORWARD",
+   "lowerFt": 13000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 35.0
+  },
+  {
+   "route": "Y8",
+   "from": "MENEX",
+   "to": "IKERA",
+   "direction": "FORWARD",
+   "lowerFt": 8000.0,
+   "upperFt": 46000.0,
+   "lengthNm": 101.0
+  }
+ ]
+}

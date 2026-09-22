@@ -8,17 +8,21 @@
  *     band (AIP ENR 5.1), which is what the map already draws and what
  *     `lib/cdr/constraints` already tests routes against. It carries NO time
  *     of activity at all, which is why the existing constraint engine treats
- *     every area as permanently hot.
- *   * `/data/aixm/pdr_activity.json` — the timetables, extracted from the AIXM
- *     export by `scripts/extract_aixm_restricted_areas.py`. No geometry.
+ *     every area as permanently hot. VT-only — no VY equivalent exists (no
+ *     published internal sector-style PDR geometry for Myanmar), so this half
+ *     is empty for this deployment until that data shows up.
+ *   * `/data/aixm_vy/pdr_activity.json` — the timetables. No geometry, and
+ *     its designators are bare numbers ("31", "33"...) rather than VT's
+ *     `<ident>A<areacode>` lettered-sub-area scheme below, so the join logic
+ *     here is VT-specific and simply has nothing to join against for VY.
  *
- * The join key needs one wrinkle. The AIXM export splits six areas into
- * lettered sub-areas that the GeoJSON keeps as one ident plus an `areacode`:
- * VTD21 areacode 1/2/3 is VTD21A1/A2/A3 in AIXM, and likewise for VTD30, 33,
- * 34, 59 and 60. Those are matched on `<ident>A<areacode>` first, then on the
- * bare ident. An area that still finds no match keeps `activity: null` and is
- * treated as permanently active downstream — the safe reading, and the one the
- * app had before this module existed.
+ * The join key needs one wrinkle, on the VT side. The AIXM export splits six
+ * areas into lettered sub-areas that the GeoJSON keeps as one ident plus an
+ * `areacode`: VTD21 areacode 1/2/3 is VTD21A1/A2/A3 in AIXM, and likewise for
+ * VTD30, 33, 34, 59 and 60. Those are matched on `<ident>A<areacode>` first,
+ * then on the bare ident. An area that still finds no match keeps
+ * `activity: null` and is treated as permanently active downstream — the
+ * safe reading, and the one the app had before this module existed.
  */
 
 import type { Position } from "geojson";
@@ -27,7 +31,7 @@ import { parseAltFt } from "@/lib/airspace";
 
 import type { PdrActivity, PdrActivityFile, PdrArea } from "./types";
 
-const ACTIVITY_URL = "/data/aixm/pdr_activity.json";
+const ACTIVITY_URL = "/data/aixm_vy/pdr_activity.json";
 
 let _cache: Promise<PdrActivityFile> | null = null;
 

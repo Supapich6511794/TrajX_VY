@@ -50,6 +50,7 @@ export type LayerTabKey =
   | "star"
   | "pbn"
   | "ils"
+  | "vy"
   | "holding"
   | "airway";
 
@@ -104,6 +105,7 @@ export const LAYER_TABS: {
   { key: "star", icon: "arrival", label: "STAR" },
   { key: "pbn", icon: "waypoint", label: "PBN" },
   { key: "ils", icon: "signal", label: "ILS" },
+  { key: "vy", icon: "airspace", label: "Myanmar (VY)" },
   { key: "holding", icon: "holding", label: "Holding" },
   { key: "airway", icon: "airway", label: "Airway" },
 ];
@@ -162,6 +164,15 @@ interface Props {
   star: ProcLayerWiring;
   pbn: ProcLayerWiring;
   ils: ProcLayerWiring;
+  /** Myanmar (VY) SID+STAR+approach tracks, merged into one reference layer —
+   *  neighbouring-FIR context only, no lookup form and no CD&R/sim wiring. */
+  vy: ProcLayerWiring;
+  // Myanmar (VY) restricted areas + airspace boundaries — simple on/off
+  // overlays (no filter/style state), same tab as `vy` above.
+  vyAreasOn: boolean;
+  onVyAreasOn: (on: boolean) => void;
+  vyBoundariesOn: boolean;
+  onVyBoundariesOn: (on: boolean) => void;
   // Holding patterns
   holding: HoldingLayerState;
   onHoldingChange: (s: HoldingLayerState) => void;
@@ -200,6 +211,11 @@ function LayerOptions({
   star,
   pbn,
   ils,
+  vy,
+  vyAreasOn,
+  onVyAreasOn,
+  vyBoundariesOn,
+  onVyBoundariesOn,
   holding,
   onHoldingChange,
   holdingAirportOpts,
@@ -215,11 +231,12 @@ function LayerOptions({
   }, [open, initialTab]);
   if (!open) return null;
 
-  const PROC: Record<"sid" | "star" | "pbn" | "ils", ProcLayerWiring> = {
+  const PROC: Record<"sid" | "star" | "pbn" | "ils" | "vy", ProcLayerWiring> = {
     sid,
     star,
     pbn,
     ils,
+    vy,
   };
 
   return (
@@ -266,17 +283,19 @@ function LayerOptions({
         )}
         {tab === "gates" && (
           <>
-            <label className="lo-check">
+            <label className="lo-check lo-check-off">
               <span>Show Gates</span>
               <input
                 type="checkbox"
                 checked={gatesOn}
+                disabled
                 onChange={(e) => onGatesOn(e.target.checked)}
               />
             </label>
             <p className="lo-empty">
-              Gates are displayed at airports when zoomed in. Toggle visibility
-              above.
+              Need VY gate data to display gates — stand positions are only
+              published for VT airports, so gate dots are disabled for this
+              deployment.
             </p>
           </>
         )}
@@ -360,9 +379,13 @@ function LayerOptions({
             loading={holdingLoading}
           />
         )}
-        {(tab === "sid" || tab === "star" || tab === "pbn" || tab === "ils") && (
+        {(tab === "sid" ||
+          tab === "star" ||
+          tab === "pbn" ||
+          tab === "ils" ||
+          tab === "vy") && (
           <ProcTab
-            kind={tab.toUpperCase() as "SID" | "STAR" | "PBN" | "ILS"}
+            kind={tab.toUpperCase() as "SID" | "STAR" | "PBN" | "ILS" | "VY"}
             state={PROC[tab].state}
             onChange={PROC[tab].onChange}
             airportOpts={PROC[tab].airportOpts}
@@ -371,6 +394,31 @@ function LayerOptions({
             lookup={PROC[tab].lookup}
             onHighlight={onProcHighlight}
           />
+        )}
+        {tab === "vy" && (
+          <>
+            <label className="lo-check">
+              <span>Restricted Areas (P/R/D)</span>
+              <input
+                type="checkbox"
+                checked={vyAreasOn}
+                onChange={(e) => onVyAreasOn(e.target.checked)}
+              />
+            </label>
+            <label className="lo-check">
+              <span>Airspace Boundaries (FIR/CTA/TMA/CTR)</span>
+              <input
+                type="checkbox"
+                checked={vyBoundariesOn}
+                onChange={(e) => onVyBoundariesOn(e.target.checked)}
+              />
+            </label>
+            <p className="lo-empty">
+              This export carries no activation schedule for the restricted
+              areas — they draw with their name and vertical limits only, no
+              active/inactive time window.
+            </p>
+          </>
         )}
       </div>
     </div>
@@ -485,7 +533,7 @@ function ProcTab({
   lookup,
   onHighlight,
 }: {
-  kind: "SID" | "STAR" | "PBN" | "ILS";
+  kind: "SID" | "STAR" | "PBN" | "ILS" | "VY";
   state: ProcLayerState;
   onChange: (s: ProcLayerState) => void;
   airportOpts: string[];
@@ -629,17 +677,33 @@ function HoldingTab({
 
       <div className="lo-field">
         <span className="lo-label">HOLDING PATTERN</span>
-        {HOLDING_CATEGORIES.map((c) => (
-          <label key={c} className={`lo-check lo-hold-cat ${c}`}>
-            <span>{HOLDING_CATEGORY_LABEL[c]}</span>
-            <input
-              type="checkbox"
-              checked={state.categories.has(c)}
-              onChange={() => flipCategory(c)}
-            />
-          </label>
-        ))}
+        {HOLDING_CATEGORIES.map((c) => {
+          // Missed-approach and HILPT holds are coded inside the VY approach
+          // procedures, so they're populated for this deployment. Published
+          // and enroute holds come from the AIP holding table, which only
+          // exists for VT — there's no VY equivalent yet, so those two stay
+          // dimmed and empty rather than showing Thai holds.
+          const needsVy = c === "published" || c === "enroute";
+          return (
+            <label
+              key={c}
+              className={`lo-check lo-hold-cat ${c}${needsVy ? " lo-check-off" : ""}`}
+            >
+              <span>{HOLDING_CATEGORY_LABEL[c]}</span>
+              <input
+                type="checkbox"
+                checked={state.categories.has(c)}
+                disabled={needsVy}
+                onChange={() => flipCategory(c)}
+              />
+            </label>
+          );
+        })}
       </div>
+      <p className="lo-empty">
+        Need VY data: Published and Enroute holds are only in the Thai AIP
+        holding table, so they’re unavailable here.
+      </p>
 
       <MultiSelect
         label="AIRPORT"

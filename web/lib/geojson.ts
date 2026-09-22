@@ -1,6 +1,8 @@
 /**
  * Loader for the ONE real source file: `public/data/airway_waypoint.geojson`
- * (a copy of the user-provided `airway waypoint.geojson`).
+ * (a copy of the user-provided `airway waypoint.geojson`) — VT-only, with no
+ * VY equivalent, and removed along with the rest of the Thailand data.
+ * `fetchAirways()` now fails closed (empty collection) rather than throwing.
  *
  * Nothing here is fabricated. Airways are returned exactly as they appear in
  * the file. Waypoints are *derived* — we read the real lat/lon already stored
@@ -19,15 +21,16 @@ import type {
 
 const SOURCE_URL = "/data/airway_waypoint.geojson";
 const FIR_URL = "/data/fir.geojson";
-// Terminal procedures: the AIXM 2608 export converted to the DFD schema by
-// scripts/ingest_aixm_procedures.py (the superseded DFD files remain under
-// /data/{sid,star,pbn,ils}/).
-const SID_LINES_URL = "/data/aixm/sid_line.geojson";
-const STAR_LINES_URL = "/data/aixm/star_line.geojson";
-const SID_WPTS_URL = "/data/aixm/sid_waypoint.geojson";
-const STAR_WPTS_URL = "/data/aixm/star_waypoint.geojson";
-const PBN_WPTS_URL = "/data/aixm/pbn_waypoint.geojson";
-const ILS_WPTS_URL = "/data/aixm/ils_wp.geojson";
+// Terminal procedures: the AIXM 2609 (VY/Myanmar) export converted to the DFD
+// schema by scripts/ingest_aixm_procedures.py. The VT/Thai equivalents this
+// deployment used to read still sit under /data/aixm/ if it ever needs to
+// switch back.
+const SID_LINES_URL = "/data/aixm_vy/sid_line.geojson";
+const STAR_LINES_URL = "/data/aixm_vy/star_line.geojson";
+const SID_WPTS_URL = "/data/aixm_vy/sid_waypoint.geojson";
+const STAR_WPTS_URL = "/data/aixm_vy/star_waypoint.geojson";
+const PBN_WPTS_URL = "/data/aixm_vy/pbn_waypoint.geojson";
+const ILS_WPTS_URL = "/data/aixm_vy/ils_wp.geojson";
 
 // `no-cache` (revalidate), not `force-cache` (serve stale forever): the bundled
 // geojson is edited in place when a procedure is corrected, so a hard-cached
@@ -275,8 +278,8 @@ export async function staticRunways(
   return { SID: [...dep].sort(), STAR: [...arr].sort() };
 }
 
-// Memoised airport -> every runway ident published in the AIP runway table
-// (airports/runway.csv). Covers ALL Thai aerodromes, including those with no
+// Memoised airport -> every runway ident published in the runway table
+// (airports/runway_vy.csv). Covers ALL VY aerodromes, including those with no
 // coded SID/STAR, so the runway pickers are never empty for a real airport.
 let _aipRunwayIndex: Promise<Map<string, string[]>> | null = null;
 
@@ -450,15 +453,18 @@ export async function fetchStarLines(): Promise<ProcedureLineCollection> {
  * Fetch worldwide FIR boundaries. This file is large (~15 MB), so callers
  * should only invoke it lazily (when the user enables the FIR layer), not
  * on initial page load.
+ *
+ * This was a VT-only file with no VY equivalent, removed with the rest of
+ * the Thailand data — fails closed (empty collection) rather than throwing.
  */
 export async function fetchFir(): Promise<FirCollection> {
-  const res = await fetch(FIR_URL, { cache: "no-cache" });
-  if (!res.ok) {
-    throw new Error(
-      `Failed to load ${FIR_URL}: ${res.status} ${res.statusText}`,
-    );
+  try {
+    const res = await fetch(FIR_URL, { cache: "no-cache" });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return (await res.json()) as FirCollection;
+  } catch {
+    return { type: "FeatureCollection", features: [] } as FirCollection;
   }
-  return (await res.json()) as FirCollection;
 }
 
 /**
@@ -487,44 +493,62 @@ const _SECTOR_FILE: Record<SectorKey, string> = Object.fromEntries(
   SECTORS.map((s) => [s.key, s.file]),
 ) as Record<SectorKey, string>;
 
-/** Fetch one airspace-sector overlay. Loaded lazily when its layer is toggled
- *  on; the file is small and rarely changes, so the HTTP cache may keep it. */
+/**
+ * Fetch one airspace-sector overlay. Loaded lazily when its layer is toggled
+ * on; the file is small and rarely changes, so the HTTP cache may keep it.
+ *
+ * `sectors_corrected/` is Bangkok ACC's own internal sector split — not
+ * published in any AIP/AIXM feed, so there is no VY equivalent and the
+ * Thai files have been removed. Fails closed (empty collection) rather than
+ * throwing: the Sector tab, sector reports and dynamic-sectorization
+ * features all see zero sectors until a real VY sector agreement exists at
+ * this same path/shape.
+ */
 export async function fetchSector(key: SectorKey): Promise<SectorCollection> {
-  // sectors_corrected: vertical limits fixed against AIP Thailand ENR 2.1 /
-  // 5.1 (AIRAC 2026-07-09) — see the folder's CORRECTIONS.md. Membership is
-  // altitude-aware, so these corrected upper/lower bands are what decides which
-  // volume actually contains the aircraft.
   const url = `/data/sectors_corrected/${_SECTOR_FILE[key]}.geojson`;
-  const res = await fetch(url, { cache: "no-cache" });
-  if (!res.ok) {
-    throw new Error(`Failed to load ${url}: ${res.status} ${res.statusText}`);
+  try {
+    const res = await fetch(url, { cache: "no-cache" });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return (await res.json()) as SectorCollection;
+  } catch {
+    return { type: "FeatureCollection", features: [] } as SectorCollection;
   }
-  return (await res.json()) as SectorCollection;
 }
 
 /** Airway reference points (MultiPoint with `waypoint_identifier`): the VOR
- *  navaids and the (very many) reporting points along the airways. */
+ *  navaids and the (very many) reporting points along the airways.
+ *
+ *  VT-only, user-supplied files with no VY equivalent, removed with the rest
+ *  of the Thailand data — these fail closed (empty collection). */
 export type AirwayPointCollection = import("geojson").FeatureCollection;
 
+function emptyFeatureCollection<T extends { type: "FeatureCollection" }>(): T {
+  return { type: "FeatureCollection", features: [] } as unknown as T;
+}
+
 export function fetchAirwayVor(): Promise<AirwayPointCollection> {
-  return fetchJson<AirwayPointCollection>("/data/airways/airway_vor.geojson");
+  return fetchJson<AirwayPointCollection>(
+    "/data/airways/airway_vor.geojson",
+  ).catch(() => emptyFeatureCollection<AirwayPointCollection>());
 }
 
 export function fetchAirwayReporting(): Promise<AirwayPointCollection> {
   return fetchJson<AirwayPointCollection>(
     "/data/airways/airways_reporting.geojson",
-  );
+  ).catch(() => emptyFeatureCollection<AirwayPointCollection>());
 }
 
-/** Fetch the raw airway-segment FeatureCollection from the source file. */
+/** Fetch the raw airway-segment FeatureCollection from the source file. Fails
+ *  closed (empty collection) — see the module docstring: VT-only, no VY
+ *  equivalent, removed with the rest of the Thailand data. */
 export async function fetchAirways(): Promise<AirwayCollection> {
-  const res = await fetch(SOURCE_URL, { cache: "no-store" });
-  if (!res.ok) {
-    throw new Error(
-      `Failed to load ${SOURCE_URL}: ${res.status} ${res.statusText}`,
-    );
+  try {
+    const res = await fetch(SOURCE_URL, { cache: "no-store" });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return (await res.json()) as AirwayCollection;
+  } catch {
+    return emptyFeatureCollection<AirwayCollection>();
   }
-  return (await res.json()) as AirwayCollection;
 }
 
 /**

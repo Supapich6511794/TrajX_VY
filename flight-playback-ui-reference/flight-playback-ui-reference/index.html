@@ -1,0 +1,1166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Flight Playback UI Reference</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Source+Sans+3:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg: #f4f6f8;
+    --surface: #ffffff;
+    --surface-2: #eceff3;
+    --ink: #141c24;
+    --ink-2: #3d4d5c;
+    --muted: #61717f;
+    --line: #d9e0e7;
+    --line-strong: #bcc7d1;
+    --accent: #0e6f84;
+    --accent-ink: #06515f;
+    --accent-soft: #e2f1f4;
+    --warn: #8f5206;
+    --warn-soft: #fbf1e2;
+    --warn-line: #e6cfa8;
+    --shadow: 0 1px 2px rgba(20, 28, 36, .07), 0 8px 24px -16px rgba(20, 28, 36, .25);
+
+    --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+    --body: "Source Sans 3", "Helvetica Neue", Arial, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0d1218;
+      --surface: #141b23;
+      --surface-2: #1b242e;
+      --ink: #e6ecf2;
+      --ink-2: #b9c6d2;
+      --muted: #8496a5;
+      --line: #24303c;
+      --line-strong: #364654;
+      --accent: #4cc6da;
+      --accent-ink: #9ae0ec;
+      --accent-soft: #12303a;
+      --warn: #e9b463;
+      --warn-soft: #2b2317;
+      --warn-line: #4a3c22;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 10px 28px -18px rgba(0, 0, 0, .8);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0d1218;
+    --surface: #141b23;
+    --surface-2: #1b242e;
+    --ink: #e6ecf2;
+    --ink-2: #b9c6d2;
+    --muted: #8496a5;
+    --line: #24303c;
+    --line-strong: #364654;
+    --accent: #4cc6da;
+    --accent-ink: #9ae0ec;
+    --accent-soft: #12303a;
+    --warn: #e9b463;
+    --warn-soft: #2b2317;
+    --warn-line: #4a3c22;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 10px 28px -18px rgba(0, 0, 0, .8);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 0 28px 96px; }
+
+  /* ---------- masthead ---------- */
+  .masthead { border-bottom: 1px solid var(--line); padding: 44px 0 28px; }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 14px;
+  }
+  h1 {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: clamp(30px, 4.4vw, 46px);
+    line-height: 1.06;
+    letter-spacing: -.02em;
+    margin: 0 0 14px;
+    text-wrap: balance;
+  }
+  .standfirst {
+    font-size: 18px;
+    color: var(--ink-2);
+    max-width: 66ch;
+    margin: 0 0 26px;
+  }
+  .facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .facts div { background: var(--surface); padding: 12px 14px; }
+  .facts dt {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 4px;
+  }
+  .facts dd {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: 13.5px;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- layout ---------- */
+  .cols { display: grid; grid-template-columns: 196px minmax(0, 1fr); gap: 52px; padding-top: 40px; }
+  @media (max-width: 900px) { .cols { grid-template-columns: 1fr; gap: 28px; } }
+
+  nav.index { position: sticky; top: 24px; align-self: start; font-size: 14px; }
+  @media (max-width: 900px) {
+    nav.index { position: static; border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; background: var(--surface); }
+  }
+  nav.index p {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 10px;
+  }
+  nav.index ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+  nav.index a {
+    color: var(--ink-2);
+    text-decoration: none;
+    display: block;
+    padding: 3px 0;
+    border-left: 2px solid transparent;
+    padding-left: 10px;
+  }
+  nav.index a:hover { color: var(--accent); border-left-color: var(--accent); }
+  nav.index a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  main { min-width: 0; }
+  section { padding-bottom: 16px; }
+  section + section { margin-top: 54px; padding-top: 30px; border-top: 1px solid var(--line); }
+  h2 {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 25px;
+    letter-spacing: -.01em;
+    margin: 0 0 8px;
+    scroll-margin-top: 20px;
+  }
+  h3 {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 17px;
+    margin: 34px 0 6px;
+    letter-spacing: -.005em;
+  }
+  h4 {
+    font-family: var(--mono);
+    font-weight: 500;
+    font-size: 12px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 26px 0 8px;
+  }
+  p { max-width: 68ch; margin: 0 0 14px; }
+  .lede { color: var(--ink-2); max-width: 68ch; }
+  code, .mono { font-family: var(--mono); font-size: .875em; }
+  code {
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: .08em .34em;
+    color: var(--accent-ink);
+    white-space: nowrap;
+  }
+  a { color: var(--accent); }
+
+  /* ---------- figures ---------- */
+  figure { margin: 18px 0 6px; }
+  figure img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--line-strong);
+    border-radius: 5px;
+    background: var(--surface-2);
+    box-shadow: var(--shadow);
+  }
+  figcaption {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 8px;
+    max-width: 74ch;
+  }
+  figcaption b { color: var(--ink-2); font-weight: 600; }
+  figure.narrow img { max-width: 600px; }
+  .pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(258px, 1fr)); gap: 20px; }
+  .pair figure { margin: 8px 0 0; }
+  .trio { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 18px; }
+
+  /* ---------- keyed callout list ---------- */
+  ol.keyed { list-style: none; margin: 16px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(288px, 1fr)); gap: 2px 26px; counter-reset: k; }
+  ol.keyed li { display: grid; grid-template-columns: 26px 1fr; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--line); align-items: baseline; }
+  ol.keyed li::before {
+    counter-increment: k;
+    content: counter(k);
+    font-family: var(--mono);
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-radius: 50%;
+    width: 22px; height: 22px;
+    display: grid; place-items: center;
+    font-variant-numeric: tabular-nums;
+  }
+  ol.keyed b { font-weight: 600; }
+  ol.keyed span { color: var(--ink-2); font-size: 14.5px; }
+
+  /* ---------- tables ---------- */
+  .scroll { overflow-x: auto; margin: 14px 0 4px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+  th, td { text-align: left; padding: 8px 13px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  thead th {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 500;
+    background: var(--surface-2);
+    white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.id { font-family: var(--mono); font-size: 12.5px; color: var(--accent-ink); white-space: nowrap; }
+  td.nm { font-weight: 600; white-space: nowrap; }
+  td small { color: var(--muted); }
+
+  /* ---------- notes ---------- */
+  .note {
+    border: 1px solid var(--warn-line);
+    background: var(--warn-soft);
+    border-radius: 6px;
+    padding: 14px 16px;
+    margin: 18px 0;
+  }
+  .note p { margin: 0; max-width: 74ch; }
+  .note p + p { margin-top: 8px; }
+  .note .tag {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--warn);
+    display: block;
+    margin-bottom: 5px;
+  }
+  .flat { border: 1px solid var(--line); background: var(--surface); }
+  .flat .tag { color: var(--accent); }
+
+  ul.tight { margin: 8px 0 14px; padding-left: 20px; max-width: 68ch; }
+  ul.tight li { margin-bottom: 5px; color: var(--ink-2); }
+  ul.tight li b { color: var(--ink); font-weight: 600; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 8px 0 16px; }
+  .chips span {
+    font-family: var(--mono);
+    font-size: 12px;
+    border: 1px solid var(--line-strong);
+    border-radius: 3px;
+    padding: 2px 7px;
+    color: var(--ink-2);
+    background: var(--surface);
+  }
+
+  footer { margin-top: 56px; padding-top: 22px; border-top: 1px solid var(--line); font-size: 13.5px; color: var(--muted); }
+  footer p { max-width: 74ch; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+
+
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">UI specification &middot; for external development handoff</p>
+    <h1>Flight Playback UI Reference</h1>
+    <p class="standfirst">
+      Every screen and control in <b>Cat's Flight Playback</b> — the AEROTHAI flight-track replay
+      viewer served at <code>:5173</code> — captured from the running application and annotated.
+      This documents the interface <em>as it exists today</em>; it is not a proposal for changes.
+    </p>
+    <dl class="facts">
+      <div><dt>Application</dt><dd>flight-animation-main</dd></div>
+      <div><dt>Build served</dt><dd>dist-historical</dd></div>
+      <div><dt>Stack</dt><dd>React 19 &middot; Leaflet 1.9</dd></div>
+      <div><dt>Captured at</dt><dd>1440 &times; 900 &middot; @2x</dd></div>
+      <div><dt>Surfaces</dt><dd>51 figures</dd></div>
+    </dl>
+  </header>
+
+  <div class="cols">
+    <nav class="index">
+      <p>Contents</p>
+      <ol>
+        <li><a href="#overview">Overview</a></li>
+        <li><a href="#anatomy">Screen anatomy</a></li>
+        <li><a href="#loader">Dataset loader</a></li>
+        <li><a href="#replay">Replay core</a></li>
+        <li><a href="#display">Display controls</a></li>
+        <li><a href="#filter">Filter panel</a></li>
+        <li><a href="#layers">Layers panels</a></li>
+        <li><a href="#tools">Target tools</a></li>
+        <li><a href="#analysis">Analysis panels</a></li>
+        <li><a href="#environment">Weather &amp; terrain</a></li>
+        <li><a href="#interaction">Interaction reference</a></li>
+        <li><a href="#notes">Notes for the developer</a></li>
+      </ol>
+    </nav>
+
+    <main>
+
+      <!-- ============================================ OVERVIEW -->
+      <section id="overview">
+        <h2>Overview</h2>
+        <p class="lede">
+          The viewer replays recorded flight tracks over a Leaflet map on a scrubable UTC timeline.
+          It is a single-page application: one map canvas fills the window, and every panel is an
+          overlay docked to an edge of it. There are no separate routes except the dataset-creation
+          page.
+        </p>
+
+        <h4>Who uses it</h4>
+        <p>
+          ANSP operational and engineering staff — air traffic controllers, CNS engineers, airspace
+          planners, flow management (ATFM) and the airspace management cell. The vocabulary
+          throughout is ICAO/AIP standard: flight levels, nautical miles, knots, UTC, runway
+          designators, AIRAC cycles. One panel set serves all roles; there are no per-role views.
+        </p>
+
+        <h4>Stack</h4>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Concern</th><th>Choice</th></tr></thead>
+            <tbody>
+              <tr><td class="nm">Framework</td><td>React 19.2 + TypeScript 5.9, built by Vite (<code>rolldown-vite</code> 7.2.5)</td></tr>
+              <tr><td class="nm">Map</td><td>Leaflet 1.9.4 with react-leaflet 5 and <code>leaflet-rotatedmarker</code> for aircraft heading</td></tr>
+              <tr><td class="nm">State</td><td>zustand 5 — one flat store, exposed for debugging as <code>window.flightStore</code></td></tr>
+              <tr><td class="nm">Parsing</td><td>papaparse 5.5 for CSV ingest</td></tr>
+              <tr><td class="nm">Long lists</td><td><code>@tanstack/react-virtual</code> — the flight list and results list are virtualised</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          The Leaflet map instance is also published as <code>window.mapInstance</code>. Both globals
+          are the intended hooks for headless driving and are relied on by the offline MP4 render
+          pipeline, so treat them as a contract rather than incidental debug leakage.
+        </p>
+
+        <h4>How it is served</h4>
+        <p>
+          Caddy serves a static build and reverse-proxies the data APIs, so the front end makes only
+          same-origin requests. Two ports run two build modes of the same source:
+        </p>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Path</th><th>Target</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td class="id">:5173</td><td class="id">dist-historical</td><td>Historical replay — the build documented here</td></tr>
+              <tr><td class="id">:5174</td><td class="id">dist-live</td><td>Live mode, same source, different mode flag</td></tr>
+              <tr><td class="id">/api/*</td><td class="id">127.0.0.1:8011</td><td>Dataset/database backend; response buffering disabled for streaming</td></tr>
+              <tr><td class="id">/sur-air-api/*</td><td class="id">172.16.21.158:80</td><td>Surveillance REST API (Recent tab)</td></tr>
+              <tr><td class="id">/sur-air-ws/*</td><td class="id">172.16.21.158:80</td><td>Surveillance websocket (live stream)</td></tr>
+              <tr><td class="id">/aixm-hub/*</td><td class="id">127.0.0.1:5000</td><td>Aeronautical data (airspace, procedures)</td></tr>
+              <tr><td class="id">/cns-hub/*</td><td class="id">127.0.0.1:5000</td><td>CNS coverage polygons</td></tr>
+              <tr><td class="id">fallback</td><td class="id">public/</td><td>Static app data — airports, runways, cached GeoJSON</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          Cache policy matters when rebuilding: <code>/assets/*</code> is immutable for a year,
+          while HTML, <code>.json</code> and <code>.geojson</code> are served <code>no-cache</code>
+          so data refreshes without a version bump. Build modes are
+          <code>historical</code>, <code>live</code> and <code>sim</code>; in development they run on
+          ports 5175, 5176 and 5177 respectively.
+        </p>
+
+        <div class="note flat">
+          <span class="tag">About the data in these screenshots</span>
+          <p>
+            Every figure was captured against a <b>synthetic dataset generated for this
+            document</b> — 25 fabricated flights over a 2 h 27 min window. Callsigns and operator
+            codes (<code>DEM</code>, <code>SMP</code>, <code>TST</code>, <code>SYN</code>,
+            <code>EXA</code>, <code>MOC</code>) are invented and deliberately not real ICAO airline
+            designators. No operational surveillance data appears anywhere on this page.
+          </p>
+          <p>
+            Aerodrome codes and the VTBS runway thresholds are real, because they are public AIP
+            data and the movement filters, runway panel and holding detector need true geometry to
+            behave normally. Dataset names visible in list controls have also been replaced. Three figures — the sector timeline strip — could only come from a database dataset; they are flagged where they appear and their identifiers were rewritten before capture.
+          </p>
+        </div>
+      </section>
+
+      <!-- ============================================ ANATOMY -->
+      <section id="anatomy">
+        <h2>Screen anatomy</h2>
+        <p class="lede">
+          One map fills the viewport. A command bar spans the top, the timeline sits directly under
+          it, and everything else is a corner-docked overlay. Panels open over the map rather than
+          reflowing it, so the map never resizes while the user works.
+        </p>
+        <figure>
+          <img src="shots/00-anatomy-annotated.png" alt="The replay screen with ten numbered regions outlined: command bar, clock, timeline, flight count, search, dataset chip, zoom cluster, phase legend, weather and terrain buttons, and basemap switcher.">
+          <figcaption>The replay screen at rest, 25 flights loaded, cursor at 02:42:58 UTC.</figcaption>
+        </figure>
+        <ol class="keyed">
+          <li><b>Command bar</b><span>Panel toggles, playback transport and speed. Full inventory below.</span></li>
+          <li><b>Cursor clock</b><span>Current replay time, always UTC, to the second.</span></li>
+          <li><b>Timeline</b><span>Scrubber across the dataset's full extent. Drag to seek.</span></li>
+          <li><b>Flight count</b><span>Loaded flight total; also the toggle for the flight list.</span></li>
+          <li><b>Search</b><span>Type-ahead over callsign and aerodrome; arrow keys and Enter to pick.</span></li>
+          <li><b>Dataset chip</b><span>Name of the loaded dataset — provenance at a glance.</span></li>
+          <li><b>Zoom cluster</b><span>Zoom in, out, and Reset back to the default extent.</span></li>
+          <li><b>Phase legend</b><span>Colour key for vertical phase: climb, cruise, descend, unknown.</span></li>
+          <li><b>Weather &amp; terrain</b><span>Opens the two environmental overlay panels.</span></li>
+          <li><b>Basemap switcher</b><span>Dark, Light, Street, Satellite.</span></li>
+        </ol>
+      </section>
+
+      <!-- ============================================ LOADER -->
+      <section id="loader">
+        <h2>Dataset loader</h2>
+        <p class="lede">
+          The application opens on a modal loader over the map. Nothing else is usable until a
+          dataset is loaded. Five source tabs are present in the historical build; each has its own
+          fields, and all share the filter block underneath (departure/destination, aerodrome,
+          operator, callsign, UTC time window) so the fetch can be narrowed before it runs.
+        </p>
+
+        <div class="pair">
+          <figure>
+            <img src="shots/01-loader-airborne.png" alt="Loader on the Airborne tab with a dataset dropdown and a Load Dataset button.">
+            <figcaption><b>Airborne</b> — pick a prepared <code>flight_features</code> dataset from the backend and load it.</figcaption>
+          </figure>
+          <figure>
+            <img src="shots/02-loader-ground.png" alt="Loader on the Ground tab.">
+            <figcaption><b>Ground</b> — CAT021 ground-movement source, for surface tracks.</figcaption>
+          </figure>
+          <figure>
+            <img src="shots/03-loader-csv.png" alt="Loader on the CSV tab showing a Select CSV File button and the required column list.">
+            <figcaption><b>CSV</b> — local file upload. States its column contract inline.</figcaption>
+          </figure>
+          <figure>
+            <img src="shots/04-loader-recent.png" alt="Loader on the Recent tab with a date field and filter inputs.">
+            <figcaption><b>Recent</b> — fetches directly from the surveillance REST API by date.</figcaption>
+          </figure>
+          <figure>
+            <img src="shots/05-loader-aireon.png" alt="Loader on the Aireon tab.">
+            <figcaption><b>Aireon</b> — space-based ADS-B archive. The one source carrying a true ground vector.</figcaption>
+          </figure>
+          <figure>
+            <img src="shots/60-flight-features-creator.png" alt="The Create Flight Feature Dataset page with a form on the left and a list of existing datasets on the right.">
+            <figcaption><b>Create New Dataset</b> — the only other route, at <code>#/flight-features</code>. Builds a named dataset, then deep-links back into the viewer.</figcaption>
+          </figure>
+        </div>
+
+        <h3>CSV contract</h3>
+        <p>
+          The CSV path is the simplest way to get tracks in, and the one to build against when
+          testing without backend access. Rows are grouped into flights by <code>flight_key</code>
+          and sorted by time.
+        </p>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Column</th><th>Requirement</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td class="id">flight_key</td><td>required</td><td>Groups rows into one track. Any stable string.</td></tr>
+              <tr><td class="id">timestamp_utc</td><td>required</td><td>ISO 8601 UTC, e.g. <code>2026-03-04T02:41:30Z</code>.</td></tr>
+              <tr><td class="id">latitude</td><td>required</td><td>Decimal degrees.</td></tr>
+              <tr><td class="id">longitude</td><td>required</td><td>Decimal degrees.</td></tr>
+              <tr><td class="id">flight_level</td><td>optional</td><td>Hundreds of feet. <code>0.0</code> on the ground.</td></tr>
+              <tr><td class="id">acid</td><td>optional</td><td>Callsign shown in labels and the detail card.</td></tr>
+              <tr><td class="id">actype</td><td>optional</td><td>ICAO type designator; drives wake category.</td></tr>
+              <tr><td class="id">dep</td><td>optional</td><td>Departure aerodrome — feeds the movement filters.</td></tr>
+              <tr><td class="id">dest</td><td>optional</td><td>Destination aerodrome.</td></tr>
+              <tr><td class="id">ias_dap</td><td>optional</td><td>Indicated airspeed, kt.</td></tr>
+              <tr><td class="id">mag_heading_dap</td><td>optional</td><td>Magnetic heading, degrees — rotates the target symbol.</td></tr>
+              <tr><td class="id">rate_cd</td><td>optional</td><td>Climb/descend rate, ft/min. Positive is climb.</td></tr>
+              <tr><td class="id">vert</td><td>optional</td><td>Vertical state: <code>1</code> climb, <code>2</code> descend, <code>0</code> or <code>3</code> cruise.</td></tr>
+              <tr><td class="id">mode_a_code</td><td>optional</td><td>Squawk; selectable as a trail colour attribute.</td></tr>
+              <tr><td class="id">cfl</td><td>optional</td><td>Cleared flight level.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note">
+          <span class="tag">Gap worth knowing before you build</span>
+          <p>
+            The CSV parser builds each point as a fixed tuple that has <b>no ground-speed slot</b> —
+            there is no column you can add to populate <code>FlightPoint.gs</code>. Several
+            behaviours gate on ground speed and therefore stay silent on CSV input. This is covered
+            concretely under <a href="#notes">Notes for the developer</a>.
+          </p>
+        </div>
+      </section>
+
+      <!-- ============================================ REPLAY CORE -->
+      <section id="replay">
+        <h2>Replay core</h2>
+
+        <h3>Command bar</h3>
+        <figure>
+          <img src="shots/11-toolbar.png" alt="The full command bar: home, Filter, Trails, Labels, Symbology, Targets, transport controls, speed selector, Record, then Airspace, Routes, IFPs, Airports, CNS, Runway, Holding.">
+          <figcaption>Every control carries a stable DOM id, listed below — useful for tests and for headless driving.</figcaption>
+        </figure>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Control</th><th>DOM id</th><th>Behaviour</th></tr></thead>
+            <tbody>
+              <tr><td class="nm">Filter</td><td class="id">#btn-filter</td><td>Toggles the filter panel, docked left.</td></tr>
+              <tr><td class="nm">Trails</td><td class="id">#btn-trails-dropdown</td><td>Trail on/off, length, fade and colour attribute.</td></tr>
+              <tr><td class="nm">Labels</td><td class="id">#btn-tags-dropdown</td><td>Target label visibility.</td></tr>
+              <tr><td class="nm">Symbology</td><td class="id">#btn-symbology-dropdown</td><td>Controller-working-position symbology and speed vectors.</td></tr>
+              <tr><td class="nm">Targets</td><td class="id">#btn-targets</td><td>Hides the aircraft symbols, leaving trails only.</td></tr>
+              <tr><td class="nm">Transport</td><td><small>unlabelled</small></td><td>Jump to start, play/pause, jump to end.</td></tr>
+              <tr><td class="nm">Speed</td><td><small>select</small></td><td>Playback rate multiplier.</td></tr>
+              <tr><td class="nm">Record</td><td class="id">#btn-record</td><td>Screen capture of the replay. See the caveat in Notes.</td></tr>
+              <tr><td class="nm">Airspace</td><td class="id">#btn-layers-airspace</td><td>Opens the layers panel on the airspace group.</td></tr>
+              <tr><td class="nm">Routes</td><td class="id">#btn-layers-routes</td><td>Layers panel, ATS route group.</td></tr>
+              <tr><td class="nm">IFPs</td><td class="id">#btn-layers-ifps</td><td>Layers panel, instrument flight procedures.</td></tr>
+              <tr><td class="nm">Airports</td><td class="id">#btn-layers-airports</td><td>Layers panel, aerodrome features.</td></tr>
+              <tr><td class="nm">CNS</td><td class="id">#btn-layers-cns</td><td>Layers panel, CNS coverage.</td></tr>
+              <tr><td class="nm">Runway</td><td class="id">#btn-aman</td><td>Runway movements / arrival-manager panel.</td></tr>
+              <tr><td class="nm">Holding</td><td class="id">#btn-holding</td><td>Detected holding patterns.</td></tr>
+              <tr><td class="nm">Flight count</td><td class="id">#flight-panel-toggle</td><td>Opens the flight list, docked right.</td></tr>
+              <tr><td class="nm">Weather / Terrain</td><td class="id">#btn-weather-corner</td><td>Also <code>#btn-terrain-corner</code>. Bottom-right overlays.</td></tr>
+              <tr><td class="nm">Basemap</td><td class="id">#btn-basemap-dark</td><td>Also <code>-light</code>, <code>-street</code>, <code>-satellite</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Timeline</h3>
+        <figure>
+          <img src="shots/12-timeline.png" alt="The timeline strip: UTC clock at the left, a scrubber bar with a round handle across the rest of the width.">
+          <figcaption>The clock reads the cursor, not wall time. The scrubber spans the dataset's own extent, so its range changes with each load.</figcaption>
+        </figure>
+
+        <h3>Targets and trails</h3>
+        <p>
+          Aircraft are drawn as heading-rotated symbols coloured by vertical phase. Trails are off by
+          default; once enabled they decay over a chosen window so the display stays readable in
+          dense traffic.
+        </p>
+        <div class="pair">
+          <figure>
+            <img src="shots/10-replay-overview.png" alt="Replay with 21 aircraft symbols spread across Thailand and the Gulf, no trails.">
+            <figcaption>Targets only — the default state after loading.</figcaption>
+          </figure>
+          <figure>
+            <img src="shots/14-replay-with-trails.png" alt="The same traffic picture with dotted trails behind each aircraft.">
+            <figcaption>Trails on, 15-minute decay.</figcaption>
+          </figure>
+        </div>
+        <figure>
+          <img src="shots/14b-symbology-closeup.png" alt="Close view of a few aircraft symbols with trails, showing the chevron shape and phase colours.">
+          <figcaption>Close-up over the VTBS finals: the symbol is a chevron rotated to magnetic heading, and phase colour is applied per trail segment rather than to the whole track.</figcaption>
+        </figure>
+        <figure>
+          <img src="shots/13-phase-legend.png" alt="Phase legend: green Climb, blue Cruise, orange Descend, grey Unknown.">
+          <figcaption>The phase key, pinned bottom-left. <b>Unknown</b> appears where <code>vert</code> and <code>rate_cd</code> are both absent.</figcaption>
+        </figure>
+
+        <h3>Flight list and target selection</h3>
+        <div class="pair">
+          <figure>
+            <img src="shots/18-flight-list.png" alt="Right-docked flight list with 25 checkbox rows of flight keys and a Toggle All control.">
+            <figcaption>The flight list: per-flight visibility with <b>Toggle All</b>. Virtualised, so it stays responsive on large datasets.</figcaption>
+          </figure>
+          <figure>
+            <img src="shots/19-target-locked.png" alt="A locked flight showing a detail card with callsign, flight level and a vertical profile, plus its full route drawn on the map.">
+            <figcaption>Locking a target opens its detail card and draws its <b>entire route</b> — including the part still in the future, which is a trap when producing replay video.</figcaption>
+          </figure>
+        </div>
+        <h3>Sector timeline strip</h3>
+        <p>
+          When the loaded dataset has ATC sector data, the locked-flight card gains a second ribbon
+          beneath the altitude profile: a Gantt of which sector was controlling the flight, drawn on
+          the <b>same time axis</b> as the profile and under the same playhead, so a level-off and
+          the handoff that went with it line up vertically.
+        </p>
+        <figure class="narrow">
+          <img src="shots/20-sector-timeline-strip.png" alt="The altitude ribbon of a locked flight: a climb to FL170, cruise, then descent, with a cyan playhead; beneath it a coloured bar divided into four labelled sector segments S1S, S6S, SMU and SMT.">
+          <figcaption>A VTBS&ndash;VTSM flight handed through four sectors. The profile and the strip share one axis and one playhead — here the cursor sits in <code>S6S</code>, just before top of descent.</figcaption>
+        </figure>
+        <figure class="narrow">
+          <img src="shots/20b-sector-strip-detail.png" alt="Close view of the sector strip: four adjacent coloured segments labelled S1S, S6S, SMU and SMT, with a thin cyan cursor line.">
+          <figcaption>The strip alone. Segment width is the control period's duration; colour is derived from the sector name, so a sector keeps its colour across flights.</figcaption>
+        </figure>
+        <p>
+          Each segment is one control period. The label is clipped to the segment's width — the
+          fourth here reads <code>SMT</code> because the period is too short to fit
+          <code>SMTWR</code> — and the full name plus its source is on the hover title. A period with
+          zero measurable duration still renders, as a 2 px sliver, so a momentary handoff is never
+          invisible. The distinct sector names seen across the loaded set are collected into
+          <code>sectorColorLegend</code>.
+        </p>
+        <p>
+          En route (ACC) periods are capped at the recorded enroute-out handoff. Where no handoff was
+          recorded, they are capped at the Bangkok FIR boundary — computed by walking backwards from
+          the last track point against the FIR outline — and only then fall back to the end of the
+          track. Approach and tower periods always run to the end of the track. Without that capping
+          an ACC label would otherwise linger past the FIR on departures, or sit behind the arrival
+          sectors on arrivals.
+        </p>
+        <div class="note">
+          <span class="tag">This is the one figure pair from real data</span>
+          <p>
+            Sector periods come from a <b>date-gated backend lookup keyed by flight key</b>, so a
+            synthetic track can never populate them — these two figures were captured from a database
+            dataset. The callsign, the dataset name and the date were rewritten in the DOM before
+            capture. Sector designators and the relative timings are genuine, because they are the
+            thing being documented.
+          </p>
+          <p>
+            In the wider view below, every value taken from the <b>filed flight plan or the airframe
+            record</b> is redacted — registration, RFL, off-block/T-O, landing est/act, EET,
+            alternate, equipment and the filed route. Field labels are left in place, so the card's
+            layout still reads. Values derived from the <b>track itself</b> are genuine: the
+            aerodrome pair, first and last times, IAS, track, ROCD, geometric altitude, the
+            controlling sector, and the profile and strip.
+          </p>
+        </div>
+
+        <figure>
+          <img src="shots/20c-sector-strip-in-context.png" alt="The full replay screen with a single flight locked. The detail card on the left shows callsign, aerodrome pair, altitude profile with the sector strip beneath it, live readouts and controlling sector, with the flight-plan rows redacted as grey bars.">
+          <figcaption>Where the strip actually sits: inside the locked-flight card, below the altitude profile. The grey bars are redacted flight-plan and airframe fields — see the note above. The card playhead and the main scrubber both sit at 55% of the track.</figcaption>
+        </figure>
+
+        <div class="pair">
+          <figure>
+            <img src="shots/24-targets-off.png" alt="The map with aircraft symbols hidden, only trails visible.">
+            <figcaption><b>Targets off</b> — trails without symbols, for reading flow and route structure.</figcaption>
+          </figure>
+          <figure>
+            <img src="shots/25-ui-hidden.png" alt="The map with all overlay panels and the command bar hidden.">
+            <figcaption><b>UI hidden</b> — all chrome removed for clean capture. Store flag <code>uiHidden</code>.</figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <!-- ============================================ DISPLAY -->
+      <section id="display">
+        <h2>Display controls</h2>
+        <p class="lede">
+          Three dropdowns hang off the command bar. They are display-only — none of them filter
+          which flights are present, they change how the present ones are drawn.
+        </p>
+
+        <div class="trio">
+          <figure>
+            <img src="shots/15-dropdown-trails.png" alt="Trails dropdown with OFF/ON, a length list, a fade toggle and a long Colour by attribute list.">
+            <figcaption><b>Trails</b></figcaption>
+          </figure>
+          <figure>
+            <img src="shots/16-dropdown-labels.png" alt="Labels dropdown with a single Show labels toggle.">
+            <figcaption><b>Labels</b></figcaption>
+          </figure>
+          <figure>
+            <img src="shots/17-dropdown-symbology.png" alt="Symbology dropdown with a CWP symbology toggle, vector minutes and ring radius options.">
+            <figcaption><b>Symbology</b></figcaption>
+          </figure>
+        </div>
+
+        <h4>Trails — length</h4>
+        <div class="chips">
+          <span>1 min</span><span>2 min</span><span>5 min</span><span>10 min</span>
+          <span>15 min</span><span>30 min</span><span>1 hour</span><span>Full track</span>
+        </div>
+        <h4>Trails — colour by</h4>
+        <div class="chips">
+          <span>None</span><span>Callsign</span><span>Type</span><span>Route</span><span>Squawk</span>
+          <span>ICAO 24-bit</span><span>Op type</span><span>Flight rule</span><span>Flow</span>
+          <span>Scope</span><span>Sector</span><span>FL</span><span>CFL</span><span>Selected alt</span>
+          <span>IAS</span><span>GS</span><span>Mach</span><span>HDG</span><span>VS</span>
+        </div>
+        <p>
+          Nineteen attributes, each rendering a legend appropriate to its kind — a categorical swatch
+          list for callsign or type, a continuous ramp for FL, IAS or vertical speed. <b>Fade</b> is
+          independent of length and tapers trail opacity with age.
+        </p>
+
+        <h4>Symbology</h4>
+        <p>
+          <b>CWP symbology</b> switches targets to controller-working-position presentation.
+          <b>Vector</b> draws a speed vector projecting the aircraft's position ahead by
+          <code>Off / 1 / 2 / 3 / 6 / 9</code> minutes. <b>New ring</b> presets the default radius
+          for range rings added from the target menu, from 3 NM to 6 NM in half-mile steps.
+        </p>
+        <div class="pair">
+          <figure>
+            <img src="shots/58-cwp-symbology.png" alt="Traffic drawn in CWP symbology with speed vectors extending ahead of each target.">
+            <figcaption>CWP symbology with 3-minute vectors across the whole picture.</figcaption>
+          </figure>
+          <figure>
+            <img src="shots/58b-cwp-symbology-closeup.png" alt="Close view of CWP symbology showing vector lines and a ringed target.">
+            <figcaption>Close-up: the vector length is the distance the aircraft covers in the selected interval.</figcaption>
+          </figure>
+        </div>
+
+        <h4>Basemaps</h4>
+        <div class="trio">
+          <figure>
+            <img src="shots/21-basemap-light.png" alt="The replay on a light basemap.">
+            <figcaption><b>Light</b> — for print and daylight use.</figcaption>
+          </figure>
+          <figure>
+            <img src="shots/22-basemap-street.png" alt="The replay on a street basemap with place names and roads.">
+            <figcaption><b>Street</b> — full topographic context.</figcaption>
+          </figure>
+          <figure>
+            <img src="shots/23-basemap-satellite.png" alt="The replay on satellite imagery.">
+            <figcaption><b>Satellite</b> — imagery, for terrain and aerodrome context.</figcaption>
+          </figure>
+        </div>
+        <p>
+          <b>Dark</b> is the default and the one the target palette is tuned for; phase colours lose
+          contrast against Street and Satellite, which is worth knowing before choosing a basemap for
+          a screenshot or a video.
+        </p>
+      </section>
+
+      <!-- ============================================ FILTER -->
+      <section id="filter">
+        <h2>Filter panel</h2>
+        <p class="lede">
+          Docked left, 280 px wide, opened by <code>#btn-filter</code>. Criteria are staged and then
+          committed with <b>Apply</b>, which shows the matching count — the map does not churn while
+          the user is still composing a query. <b>Clear</b> resets to the unfiltered set.
+        </p>
+        <figure>
+          <img src="shots/30-filter-panel.png" alt="Filter panel showing an airport block with DEP/DEST toggles and aerodrome chips, an expanded FLIGHT section, three collapsed sections, Apply and Clear buttons, and a results list.">
+          <figcaption>The panel as opened, with the <b>Flight</b> section already expanded. An always-visible airport block sits above four collapsible sections, with the results list at the foot.</figcaption>
+        </figure>
+
+        <h4>Airport block — always visible</h4>
+        <ul class="tight">
+          <li><b>DEP / DEST</b> — which end of the route the aerodrome selection applies to.</li>
+          <li><b>Quick chips</b> — <code>BKK TMA</code>, <code>VTBS</code>, <code>VTBD</code>, <code>VTCC</code>, <code>VTUU</code> and a dropdown for the rest.</li>
+          <li><b>Range rings</b> — concentric rings at 25 NM steps out to 200 NM from the chosen aerodrome.</li>
+          <li><b>Procedures</b> — draws SID, STAR, ILS and PBN procedures for that aerodrome in one action.</li>
+        </ul>
+
+        <h4>Collapsible sections</h4>
+        <p>
+          Four sections, of which <b>Flight</b> is expanded on open — it is the one visible in the
+          figure above. It holds free-text search scoped to <code>flight_key</code> or
+          <code>acid</code>, operator selection with an option to colour targets by operator, and an
+          aircraft type selector. The other three open on demand:
+        </p>
+        <div class="pair">
+          <figure>
+            <img src="shots/32-filter-route.png" alt="ROUTE section expanded.">
+            <figcaption><b>Route</b> — origin and destination criteria beyond the quick chips.</figcaption>
+          </figure>
+          <figure>
+            <img src="shots/33-filter-flight-type.png" alt="FLIGHT TYPE section expanded with checkbox groups.">
+            <figcaption><b>Flight type</b> — operation type, flight rules and scope, as checkbox groups.</figcaption>
+          </figure>
+          <figure>
+            <img src="shots/34-filter-altitude-phase.png" alt="ALTITUDE & PHASE section expanded with a flight level range slider and vertical phase checkboxes.">
+            <figcaption><b>Altitude &amp; phase</b> — flight-level band plus vertical phase (climb, cruise, descend).</figcaption>
+          </figure>
+        </div>
+
+        <h4>Filter state</h4>
+        <p>
+          The committed filter is one object in the store. Its defaults show the expected value
+          types, which is the quickest way to drive filtering programmatically:
+        </p>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Key</th><th>Default</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td class="id">searchText</td><td class="id">''</td><td>Free text.</td></tr>
+              <tr><td class="id">searchFields</td><td class="id">['flight_key','acid']</td><td>Which fields the text applies to.</td></tr>
+              <tr><td class="id">flMin / flMax</td><td class="id">0 / 500</td><td><code>flMax</code> is reset to the dataset's own ceiling on load.</td></tr>
+              <tr><td class="id">actype</td><td class="id">''</td><td>Single string, not an array.</td></tr>
+              <tr><td class="id">dep / dest</td><td class="id">'' / ''</td><td><b>Strings</b> — passing an array throws inside the matcher.</td></tr>
+              <tr><td class="id">opTypes</td><td class="id">['S','N','G','M','X','UNKNOWN']</td><td>Operation type; all selected means unfiltered.</td></tr>
+              <tr><td class="id">frules</td><td class="id">['I','V','Y','Z','UNKNOWN']</td><td>ICAO flight rules.</td></tr>
+              <tr><td class="id">scopes</td><td class="id">['DOMESTIC','INTL','UNKNOWN']</td><td>Flight scope.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="pair">
+          <figure>
+            <img src="shots/36-filter-applied-panel.png" alt="Filter panel after applying a departure filter, showing an active criteria badge and a shortened results list.">
+            <figcaption>With <code>dep: 'VTBS'</code> applied. A collapsed section carries a badge naming its active criteria, so nothing hides silently.</figcaption>
+          </figure>
+          <figure>
+            <img src="shots/37-filter-applied-map.png" alt="The map showing only the flights matching the applied filter.">
+            <figcaption>The map after Apply — only VTBS departures remain.</figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <!-- ============================================ LAYERS -->
+      <section id="layers">
+        <h2>Layers panels</h2>
+        <p class="lede">
+          Five command-bar buttons open the same right-docked panel on different groups. Each group
+          lists layer rows with a checkbox and, where the layer has many features, an expander
+          revealing a searchable item checklist with <b>Select all</b> and <b>Clear</b>. Every group
+          also offers <b>Show all</b> / <b>Hide all</b>, and the panel footer names the data source
+          and AIRAC cycle in force.
+        </p>
+
+        <div class="pair">
+          <figure>
+            <img src="shots/40-layers-airspace.png" alt="Airspace group with six layer rows: FIR, ACC sectors, BAPP sectors, TMA, CTR, Danger/Restricted/Prohibited.">
+            <figcaption><b>Airspace</b> — footer reads <code>Airspace VT · AIRAC 2609 · latest</code>.</figcaption>
+          </figure>
+          <figure>
+            <img src="shots/41-layers-airspace-expanded.png" alt="The FIR row expanded into a searchable checklist of FIR names with Select all and Clear.">
+            <figcaption>FIR expanded — individual volumes, searchable, with a <b>Show Labels</b> option.</figcaption>
+          </figure>
+          <figure>
+            <img src="shots/42-layers-routes.png" alt="Routes group with a single Airways row.">
+            <figcaption><b>Routes</b> — ATS airways, expandable to individual route designators.</figcaption>
+          </figure>
+          <figure>
+            <img src="shots/43-layers-ifps.png" alt="IFPs group listing SID, STAR, Approach, ILS/LOC, VOR/DME, NDB, Other, RNP APCH, Holding and PANS-OPS areas, with display options.">
+            <figcaption><b>IFPs</b> — procedures for any of 40 aerodromes, on its own AIRAC cycle (<code>2602</code>).</figcaption>
+          </figure>
+          <figure>
+            <img src="shots/44-layers-airports.png" alt="Airports group with Airports, Runways and Gates rows.">
+            <figcaption><b>Airports</b> — aerodromes, runways and gates/stands.</figcaption>
+          </figure>
+          <figure>
+            <img src="shots/45-layers-cns.png" alt="CNS Coverage group with an altitude selector and four coverage rows.">
+            <figcaption><b>CNS</b> — coverage volumes, evaluated at a selected altitude.</figcaption>
+          </figure>
+        </div>
+
+        <h4>Layer inventory</h4>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Group</th><th>Rows</th></tr></thead>
+            <tbody>
+              <tr><td class="nm">Airspace</td><td>FIR &middot; ACC sectors (BACC) &middot; BAPP sectors &middot; TMA &middot; CTR &middot; Danger/Restricted/Prohibited</td></tr>
+              <tr><td class="nm">Routes</td><td>Airways</td></tr>
+              <tr><td class="nm">IFPs</td><td>SID &middot; STAR &middot; Approach &middot; ILS/LOC &middot; VOR/DME &middot; NDB &middot; Other &middot; RNP APCH &middot; Holding &middot; PANS-OPS areas<br><small>Display options: Waypoint Labels, Altitude Constraints</small></td></tr>
+              <tr><td class="nm">Airports</td><td>Airports &middot; Runways &middot; Gates</td></tr>
+              <tr><td class="nm">CNS</td><td>NAV coverage (VOR/DME) &middot; COM coverage (VHF) &middot; SURV coverage (radar) &middot; DME/DME coverage<br><small>Altitude: FL030, FL050, FL060, FL090, FL110, FL160, FL200, FL290, FL350, FL430</small></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <figure>
+          <img src="shots/46-map-airspace-on.png" alt="The map with airspace boundaries drawn as outlined polygons over the traffic picture.">
+          <figcaption>Airspace drawn over the replay. Boundaries render as unfilled outlines so targets and trails stay legible underneath.</figcaption>
+        </figure>
+      </section>
+
+      <!-- ============================================ TOOLS -->
+      <section id="tools">
+        <h2>Target tools</h2>
+        <p class="lede">
+          Right-clicking a target opens a short menu of measurement tools. Each is a two-step
+          interaction on a pair of aircraft — except the range ring, which applies to one — and each
+          persists until cleared, so several can be live at once.
+        </p>
+        <figure>
+          <img src="shots/54-target-context-menu.png" alt="Context menu on a target titled with its flight key, listing RBL, SEP, BRL and TRACK RING 3 NM.">
+          <figcaption>The menu is titled with the target's full <code>flight_key</code>.</figcaption>
+        </figure>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Item</th><th>Meaning</th><th>Interaction</th></tr></thead>
+            <tbody>
+              <tr><td class="nm">RBL</td><td>Range and bearing line</td><td>Pick this target, then a second one.</td></tr>
+              <tr><td class="nm">SEP</td><td>Separation monitor</td><td>Pair of targets; reports separation continuously.</td></tr>
+              <tr><td class="nm">BRL</td><td>Bearing line</td><td>From the target to a chosen point.</td></tr>
+              <tr><td class="nm">Track ring</td><td>Range ring around the target</td><td>Single target; radius from the Symbology default.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="trio">
+          <figure>
+            <img src="shots/55-measure-pair.png" alt="Two targets joined by a measurement line labelled with distance, vertical separation, bearing and closure rate.">
+            <figcaption><b>RBL</b> — reads horizontal distance, vertical difference, bearing, and closure rate with a <b>closing</b> or <b>diverging</b> word.</figcaption>
+          </figure>
+          <figure>
+            <img src="shots/56-separation-pair.png" alt="Two targets with a separation monitor line between them.">
+            <figcaption><b>SEP</b> — a persistent separation monitor on a pair.</figcaption>
+          </figure>
+          <figure>
+            <img src="shots/57-range-halo.png" alt="A target surrounded by a circular range ring.">
+            <figcaption><b>Track ring</b> — a fixed-radius halo, here 5 NM.</figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <!-- ============================================ ANALYSIS -->
+      <section id="analysis">
+        <h2>Analysis panels</h2>
+        <p class="lede">
+          Two panels do not merely display the data — they derive events from track geometry. Both
+          explain their own detection rules in an inline footnote, which is the authoritative
+          statement of what they count.
+        </p>
+
+        <h3>Runway movements</h3>
+        <figure>
+          <img src="shots/50-aman-runway.png" alt="Runway movements panel with an aerodrome selector set to VTBS, per-runway counters, a timeline axis from minus 10 to plus 20 minutes, movement rows, and an explanatory footnote.">
+          <figcaption>Opened by <code>#btn-aman</code>. Aerodrome selector, per-runway counters, and a ladder of movements on a cursor-relative axis.</figcaption>
+        </figure>
+        <ul class="tight">
+          <li><b>Aerodrome selector</b> — every VT aerodrome; the per-runway ends update to match.</li>
+          <li><b>Sequence numbers on targets</b> — writes the arrival sequence number onto the map symbols.</li>
+          <li><b>Per-runway counters</b> — movement totals for the whole dataset, per runway end.</li>
+          <li><b>Ladder axis</b> — from 10 minutes before the cursor to 20 minutes after.</li>
+          <li><b>Row kinds</b> — arrival, departure or go-around, with aircraft type and wake category.</li>
+          <li><b>Gap</b> — time since the previous movement, and for arrivals the distance behind the previous arrival at the threshold; flagged below 3 NM or the wake minimum.</li>
+          <li><b>Compression advisory</b> (yellow) — raised while a follower is projected to end up inside required spacing plus 0.5 NM with a minute or more to act; cleared when the projection recovers.</li>
+          <li><b>Spacing alert</b> (orange) — an approach that got within 4 NM of its leader while more than 10 kt faster; the map ring persists to landing or go-around.</li>
+        </ul>
+        <p>
+          A <code>~</code> against a time means it was extrapolated from the first or last radar
+          point at that aircraft's ground speed rather than observed directly.
+        </p>
+
+        <h3>Holding</h3>
+        <div class="pair">
+          <figure>
+            <img src="shots/51-holding.png" alt="Holding panel with a table of Flight, Fix, Course, FL, Since, For and Laps columns, one row for SMP512, and a footnote describing the detection rule.">
+            <figcaption>One detected hold: <code>SMP512</code> at the <code>OPERA</code> fix, 262&deg;, FL108, 3 laps.</figcaption>
+          </figure>
+          <figure>
+            <img src="shots/51b-holding-racetrack.png" alt="Close view of an aircraft flying a racetrack holding pattern, the trail showing the closed oval.">
+            <figcaption>The same hold on the map — the trail closes on itself, which is exactly what the detector looks for.</figcaption>
+          </figure>
+        </div>
+        <p>
+          A hold is a track that closes on itself: back within 0.54 NM of a point 100 s or more
+          earlier after roughly a full turn, level within 1,500 ft. Laps at one place merge into a
+          single entry. Circuits and go-arounds at a field — below 2,500 ft within 6 NM — are
+          excluded. <b>Fix</b> names the published pattern whose racetrack centre lies within 2 NM,
+          otherwise the hold is reported as ad hoc. Clicking a row jumps the cursor to the hold's
+          start.
+        </p>
+      </section>
+
+      <!-- ============================================ ENVIRONMENT -->
+      <section id="environment">
+        <h2>Weather &amp; terrain</h2>
+        <p class="lede">
+          Two independent overlay panels, docked bottom-right, each with its own legend. Both pull
+          from external sources, so both can be empty when those sources are unreachable.
+        </p>
+        <div class="pair">
+          <figure>
+            <img src="shots/52-weather.png" alt="Weather panel listing METAR wind barbs, precipitation from radar and IMERG, and cloud height options, each with a legend.">
+            <figcaption><b>Weather</b> — four overlays, each with its own scale.</figcaption>
+          </figure>
+          <figure>
+            <img src="shots/53-terrain.png" alt="Terrain elevation rendered in green bands over the map with a banded legend in feet.">
+            <figcaption><b>Terrain</b> — banded elevation, labelled in feet to match the altitude vocabulary used everywhere else.</figcaption>
+          </figure>
+        </div>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Overlay</th><th>Source</th><th>Legend</th></tr></thead>
+            <tbody>
+              <tr><td class="nm">METAR</td><td>Station observations</td><td>Wind barbs; approximate condition VFR / MVFR / IFR / LIFR, with no ceiling term</td></tr>
+              <tr><td class="nm">Precipitation</td><td>TMD weather radar</td><td>Radar reflectivity mosaic</td></tr>
+              <tr><td class="nm">Precipitation</td><td>IMERG</td><td>Rain rate: light, moderate, heavy, intense</td></tr>
+              <tr><td class="nm">Cloud tops</td><td>IR satellite (Himawari)</td><td>Cloud-top height, plus raw IR imagery</td></tr>
+              <tr><td class="nm">Terrain</td><td>DEM</td><td>Bands to &gt; 7,870 ft</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ============================================ INTERACTION -->
+      <section id="interaction">
+        <h2>Interaction reference</h2>
+
+        <h4>Mouse</h4>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Gesture</th><th>Result</th></tr></thead>
+            <tbody>
+              <tr><td class="nm">Hover target</td><td>Tooltip: flight key, IAS, heading, flight level.</td></tr>
+              <tr><td class="nm">Click target</td><td>Locks the flight — detail card, full route, and the camera follows it.</td></tr>
+              <tr><td class="nm">Right-click target</td><td>Opens the measurement menu.</td></tr>
+              <tr><td class="nm">Drag timeline</td><td>Seeks the replay.</td></tr>
+              <tr><td class="nm">Shift + drag map</td><td>Rotates the map; the cursor changes to a grab handle while Shift is held.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h4>Keyboard</h4>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Key</th><th>Context</th><th>Result</th></tr></thead>
+            <tbody>
+              <tr><td class="id">Escape</td><td>Map</td><td>Clears all locked flights.</td></tr>
+              <tr><td class="id">Shift</td><td>Map</td><td>Held: arms map rotation.</td></tr>
+              <tr><td class="id">&larr; &rarr;</td><td>Loader tabs</td><td>Moves between source tabs.</td></tr>
+              <tr><td class="id">&uarr; &darr;</td><td>Search</td><td>Moves through suggestions.</td></tr>
+              <tr><td class="id">Enter</td><td>Search</td><td>Selects the highlighted suggestion.</td></tr>
+              <tr><td class="id">Escape</td><td>Search</td><td>Closes the suggestion list and blurs the field.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h4>URL parameters</h4>
+        <p>
+          Deep links open the viewer preloaded, which is how the dataset-creation page hands off and
+          how reports link to a specific flight.
+        </p>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Pattern</th><th>Effect</th></tr></thead>
+            <tbody>
+              <tr><td class="id">?dataset=&lt;name&gt;&amp;autoload=1</td><td>Opens the Airborne tab on that named dataset and loads it.</td></tr>
+              <tr><td class="id">?tab=database&amp;date=&amp;callsign=&amp;autoload=1</td><td>Builds the dataset if missing, then plays that one flight.</td></tr>
+              <tr><td class="id">?tab=surair&amp;date=&amp;airport=&amp;operator=&amp;callsign=&amp;time_start=&amp;time_end=&amp;autoload=1</td><td>Opens Recent, pre-fills the filters, and fetches.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          <code>autoload=1</code> is what turns a pre-filled form into an actual fetch; without it
+          the parameters populate the loader and wait for the user.
+        </p>
+      </section>
+
+      <!-- ============================================ NOTES -->
+      <section id="notes">
+        <h2>Notes for the developer</h2>
+        <p class="lede">
+          Behaviours that are not visible in a screenshot, and that cost time to rediscover.
+        </p>
+
+        <div class="note">
+          <span class="tag">CSV input cannot drive the runway panel</span>
+          <p>
+            Arrival and departure detection both gate on ground speed: the arrival test requires
+            <code>(p.gs ?? 0) &gt;= 60</code> and the departure roll requires <code>&gt;= 100</code>
+            (<code>src/utils/aman/playback/movements.ts</code>). The CSV parser builds each point as
+            a fixed tuple with no ground-speed field, so <code>gs</code> is always null on this path
+            and <b>neither arrivals nor departures are ever detected from a CSV dataset</b>.
+          </p>
+          <p>
+            The go-around detector works from flight-level climb instead, so it does fire — which is
+            why the panel in this document reports go-arounds against a runway that, in the synthetic
+            data, only has departures. Load a database, Recent or Aireon dataset to exercise the
+            panel properly. Adding a ground-speed column to the CSV contract would be a small,
+            self-contained improvement.
+          </p>
+        </div>
+
+        <div class="note">
+          <span class="tag">Sector timelines cannot come from CSV</span>
+          <p>
+            The strip reads <code>sectorTimelines</code>, populated by a backend fetch of ATC control
+            periods, not computed in the browser. That request is <b>gated on the date derived from
+            the loaded flights</b> and its response is <b>keyed by flight key</b>, so a synthetic or
+            renamed track matches nothing and the collection stays empty — the strip then does not
+            render at all, even though <code>sectorEnrouteAvailable</code> reads true. Only a
+            database, Recent or Aireon dataset populates it. See the strip under
+            <a href="#replay">Replay core</a>.
+          </p>
+          <p>
+            The fetch is debounced so a progressive multi-batch load issues one request rather than
+            one per batch, and superseded requests are aborted — an earlier version saturated
+            Chrome's six-connection-per-origin limit and starved every other request to the backend.
+            Live mode never fetches at all; the overlay is a historical-playback feature.
+          </p>
+        </div>
+
+        <div class="note">
+          <span class="tag">Record needs a secure context and a real click</span>
+          <p>
+            The <b>Record</b> button uses <code>getDisplayMedia</code>, which requires both a secure
+            context and a genuine user gesture. It cannot be driven headlessly and does nothing over
+            plain HTTP on a non-localhost origin. Offline video is produced by a separate
+            Playwright pipeline that drives <code>setCurrentTime</code> frame by frame and pipes
+            screenshots to <code>ffmpeg</code>, rather than through this button.
+          </p>
+        </div>
+
+        <div class="note">
+          <span class="tag">Locking a flight reveals the future</span>
+          <p>
+            Locking a target draws its complete route, coloured by phase — including the portion
+            after the cursor. For a replay intended to show only what had happened by a given moment,
+            those polylines have to be removed after locking; they are not recreated on time change.
+            Locking also attaches a follow camera that calls <code>panTo</code> on every time step.
+          </p>
+        </div>
+
+        <div class="note flat">
+          <span class="tag">Data-driven vs compiled in</span>
+          <p>
+            Aeronautical content — airspace volumes, procedures, airways, CNS coverage — is fetched
+            from the hubs behind <code>/aixm-hub</code> and <code>/cns-hub</code> and carries its own
+            AIRAC cycle, shown in each panel footer. Note the two cycles are independent: airspace
+            was on <code>2609</code> while procedures were on <code>2602</code> at capture time, so
+            do not assume one cycle across the app.
+          </p>
+          <p>
+            Aerodrome and runway reference data are static files under <code>public/airports/</code>.
+            Trail line weight is a compile-time constant, not a user setting.
+          </p>
+        </div>
+
+        <h4>Reproducing these captures</h4>
+        <p>
+          The figures were produced by driving the running application with Playwright against the
+          synthetic dataset, at a fixed 1440 &times; 900 viewport and device scale factor 2. The
+          store setters and <code>window.mapInstance</code> were used to reach each state
+          deterministically rather than clicking through the UI, and cursor times were derived from
+          the dataset itself so that each panel was captured at a moment where it had something to
+          show.
+        </p>
+      </section>
+
+      <footer>
+        <p>
+          Prepared for external development handoff from the <code>dist-historical</code> build
+          served at <code>:5173</code>. All flight data shown is synthetic. Panel contents, control
+          identifiers and detection rules were read from the running application and its source, not
+          reconstructed from memory.
+        </p>
+      </footer>
+
+    </main>
+  </div>
+</div>
+
+</body>
+</html>

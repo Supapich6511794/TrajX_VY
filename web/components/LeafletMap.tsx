@@ -59,7 +59,11 @@ import type {
   Waypoint,
 } from "@/lib/types";
 import type { AirportOption } from "@/lib/aip";
-import type { GateCollection, RunwayPoint } from "@/lib/atcLayers";
+import type {
+  AirspaceAreaCollection,
+  GateCollection,
+  RunwayPoint,
+} from "@/lib/atcLayers";
 import {
   SECTORS,
   type AirwayPointCollection,
@@ -115,6 +119,14 @@ interface Props {
   pbnWpts?: ProcedureWaypointCollection | null;
   ilsLines?: ProcedureLineCollection | null;
   ilsWpts?: ProcedureWaypointCollection | null;
+  /** Myanmar (VY) SID+STAR+approach tracks, pre-merged into one reference
+   *  collection — see `sid`/`star` above for the Thai layers this mirrors. */
+  vyLines?: ProcedureLineCollection | null;
+  vyWpts?: ProcedureWaypointCollection | null;
+  /** Myanmar (VY) restricted areas (P/R/D) and airspace boundaries
+   *  (FIR/CTA/TMA/CTR) — simple on/off polygon overlays, null when hidden. */
+  vyAreas?: AirspaceAreaCollection | null;
+  vyBoundaries?: AirspaceAreaCollection | null;
   /** Layer Options state per procedure layer (routes/waypoints on,
    *  airport+procedure filters, opacity, line thickness). */
   /** Every holding pattern in the FIR + the Holding tab's layer state. Null
@@ -125,6 +137,7 @@ interface Props {
   star?: ProcLayerState;
   pbn?: ProcLayerState;
   ils?: ProcLayerState;
+  vy?: ProcLayerState;
   /** Aerodromes for the Airports layer — every one not in `hiddenAirports`
    *  is drawn as a pin. */
   airports?: AirportOption[];
@@ -332,11 +345,14 @@ const SID_COLOR = "#34d399";
 const STAR_COLOR = "#f472b6";
 const PBN_COLOR = "#fbbf24";
 const ILS_COLOR = "#ef4444";
+/** Myanmar (VY) reference layer — a distinct blue-grey so it never reads as
+ *  one of the Thai procedure colours above. */
+const VY_COLOR = "#60a5fa";
 const GATE_COLOR = "#fb923c";
 const RUNWAY_COLOR = "#e5e7eb";
 
 /** Procedure-style layer kinds (share line/waypoint schema + rendering). */
-type ProcKind = "SID" | "STAR" | "PBN" | "ILS";
+type ProcKind = "SID" | "STAR" | "PBN" | "ILS" | "VY";
 
 /** A track the user clicked, for the parent to resolve via the API. */
 export interface ProcedureSelection {
@@ -604,15 +620,6 @@ function profileBadge(text: string, color: string): L.DivIcon {
 /** Small pill badge identifying which route a polyline belongs to (R1, R2…)
  *  when several routes are flown at once. The pill is drawn just off the
  *  start endpoint so it doesn't overlap the green Start dot. */
-function routeIndexBadge(text: string, color: string): L.DivIcon {
-  return L.divIcon({
-    className: "route-index-badge",
-    iconSize: [26, 18],
-    iconAnchor: [-6, 28],
-    html: `<span class="route-index-pill" style="background:${color};color:#06283d">${text}</span>`,
-  });
-}
-
 /** Permanent gate-identifier pill, drawn just off the gate dot once zoomed in.
  *  Separate from the dot's hover tooltip (Leaflet allows one tooltip per
  *  marker), so hovering the dot still shows the full "ICAO - Gate <id>". */
@@ -800,12 +807,17 @@ export default function LeafletMap({
   pbnWpts,
   ilsLines,
   ilsWpts,
+  vyLines,
+  vyWpts,
+  vyAreas,
+  vyBoundaries,
   holdings,
   holding,
   sid,
   star,
   pbn,
   ils,
+  vy,
   airports,
   hiddenAirports,
   gates,
@@ -1136,6 +1148,79 @@ export default function LeafletMap({
   const ilsWptLayer = useMemo(
     () => buildWaypointLayer(ilsWpts, ils, ILS_COLOR),
     [ilsWpts, ils],
+  );
+
+  // Myanmar (VY) reference layer — same machinery as PBN/ILS: no click-to-fetch
+  // (the procedures API resolves Thai SID/STAR only) and no CD&R/sim wiring,
+  // just a filterable, styleable overlay for cross-border situational context.
+  const vyLayer = useMemo(
+    () => buildProcedureLayer(vyLines, vy, "VY", VY_COLOR),
+    [vyLines, vy],
+  );
+  const vyWptLayer = useMemo(
+    () => buildWaypointLayer(vyWpts, vy, VY_COLOR),
+    [vyWpts, vy],
+  );
+
+  // Myanmar (VY) restricted areas (P/R/D) — no activation schedule in this
+  // export (see LayerOptions' VY tab note), so these draw as always-active
+  // shapes: name + vertical limits only, no time-window logic.
+  const vyAreasLayer = useMemo(
+    () =>
+      vyAreas && (
+        <GeoJSON
+          key={`vy-areas-${vyAreas.features.length}`}
+          data={vyAreas}
+          style={(f) => {
+            const t = f?.properties?.type;
+            const color =
+              t === "P" ? "#ef4444" : t === "D" ? "#f97316" : "#facc15";
+            return {
+              color,
+              weight: 1.5,
+              opacity: 0.85,
+              fillColor: color,
+              fillOpacity: 0.15,
+              dashArray: "6 4",
+            };
+          }}
+          onEachFeature={(f, layer) => {
+            const p = f.properties ?? {};
+            layer.bindPopup(
+              `<strong>${p.type}${p.designator} — ${p.name}</strong><br/>${p.lower} – ${p.upper}`,
+            );
+          }}
+        />
+      ),
+    [vyAreas],
+  );
+
+  // Myanmar (VY) airspace boundaries (FIR/CTA/TMA/CTR) — plain classification
+  // outlines, not an operational sector split (there is no Myanmar equivalent
+  // of the BACC sector layer).
+  const vyBoundariesLayer = useMemo(
+    () =>
+      vyBoundaries && (
+        <GeoJSON
+          key={`vy-bnd-${vyBoundaries.features.length}`}
+          data={vyBoundaries}
+          style={() => ({
+            color: VY_COLOR,
+            weight: 1,
+            opacity: 0.6,
+            fillColor: VY_COLOR,
+            fillOpacity: 0.03,
+            dashArray: "4 4",
+          })}
+          onEachFeature={(f, layer) => {
+            const p = f.properties ?? {};
+            layer.bindPopup(
+              `<strong>${p.name || p.type}</strong><br/>${p.type} · ${p.lower} – ${p.upper}`,
+            );
+          }}
+        />
+      ),
+    [vyBoundaries],
   );
 
   // Live map zoom (updated by ZoomWatcher) — gates only label when zoomed in.
@@ -1522,7 +1607,6 @@ export default function LeafletMap({
     );
   }, [previewRoutes]);
 
-  const multiRoute = trajectories.length > 1;
 
   // Per-route cache of the STATIC layer (line + fixes + endpoint markers), keyed
   // by flight and invalidated only when that flight's points or the shared style
@@ -1556,7 +1640,6 @@ export default function LeafletMap({
     const pointBudget =
       trajectories.length <= 20 ? 900 : trajectories.length <= 100 ? 300 : 0;
     const styleSig = [
-      multiRoute,
       showTrails,
       flColorTrails,
       colorBy,
@@ -1768,14 +1851,6 @@ export default function LeafletMap({
               </HoverFix>
             ))}
 
-            {multiRoute && (
-              <Marker
-                position={line[0]}
-                interactive={false}
-                icon={routeIndexBadge(`R${ti + 1}`, color)}
-              />
-            )}
-
             <EndpointMarker
               position={line[0]}
               fill="#22c55e"
@@ -1823,7 +1898,6 @@ export default function LeafletMap({
     }
   }, [
     trajectories,
-    multiRoute,
     hiddenKeys,
     typeFilter,
     showTrails,
@@ -1992,10 +2066,14 @@ export default function LeafletMap({
       {starLayer}
       {pbnLayer}
       {ilsLayer}
+      {vyBoundariesLayer}
+      {vyAreasLayer}
+      {vyLayer}
       {sidWptLayer}
       {starWptLayer}
       {pbnWptLayer}
       {ilsWptLayer}
+      {vyWptLayer}
       {holdingLayer}
       {gateLayer}
       {runwayLayer}

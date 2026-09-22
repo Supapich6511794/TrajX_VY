@@ -1,18 +1,18 @@
 "use client";
 
 /**
- * Conflicts menu — everything that answers "is this plan safe to fly".
+ * Conflicts menu — separation between aircraft in the air.
  *
- * Moved verbatim from the map's Conflict Detection dropdown, with the
- * departure-conflict check folded in (it used to be a separate chip because it
- * comes out of the PLANS rather than the traffic, and had to be reachable
- * before anything was generated — under one tab that distinction is a row, not
- * a second button).
+ * Everything here reads the REPLAY: it needs two flights on the clock, it is
+ * measured in miles and minutes to CPA, and it is answered by a vector, a level
+ * or a speed. That is the whole tab, and the badge counts one kind of thing.
  *
- * Two neighbours are deliberately NOT here. Arrival sequencing has its own
+ * Three neighbours are deliberately NOT here. Arrival sequencing has its own
  * tab, being about the landing order rather than about separation; sector
  * information and dynamic sectorisation have the Sector tab, being about the
- * workload the airspace carries rather than about whether a plan is safe.
+ * workload the airspace carries. The departure-conflict and route/area checks
+ * moved to the Plan check tab — they are read off the FILED plans and answered
+ * before anything flies, so they were never the same question as these rows.
  */
 
 import { memo } from "react";
@@ -31,11 +31,6 @@ export interface ConflictsMenuProps {
   monitoring: boolean;
   unresolvedCount: number;
   logCount: number;
-  pdrActionable: number;
-  /** Departure conflicts come from the filed plans, not from the replay. */
-  depConflictCount: number;
-  depPanelOpen: boolean;
-  onOpenDepartures: () => void;
   autoResolve: boolean;
   autoResolveMode: AutoResolveMode;
   autoModeOptions: readonly AutoModeOption[];
@@ -53,10 +48,6 @@ function ConflictsMenu({
   monitoring,
   unresolvedCount,
   logCount,
-  pdrActionable,
-  depConflictCount,
-  depPanelOpen,
-  onOpenDepartures,
   autoResolve,
   autoResolveMode,
   autoModeOptions,
@@ -103,43 +94,6 @@ function ConflictsMenu({
         <NavIcon name="log" size={15} />
         Conflict log
         {logCount > 0 && <span className="cdr-menu-count">{logCount}</span>}
-      </button>
-      {/* Departure conflicts come out of the PLANS, so this row works before
-          anything has been generated — unlike the rows above it, which need
-          traffic on the clock. */}
-      <button
-        type="button"
-        role="menuitem"
-        className={depPanelOpen ? "active" : ""}
-        disabled={depConflictCount === 0}
-        onClick={() => {
-          onOpenDepartures();
-          onPicked();
-        }}
-        title={
-          depConflictCount === 0
-            ? "No filed departure can't be cleared as it stands"
-            : `${depConflictCount} filed departures cannot be cleared as they stand`
-        }
-      >
-        <NavIcon name="departure" size={15} />
-        Departure conflict
-        {depConflictCount > 0 && (
-          <span className="cdr-menu-count">{depConflictCount}</span>
-        )}
-      </button>
-      <button
-        type="button"
-        role="menuitem"
-        className={cdrView === "pdr" ? "active" : ""}
-        onClick={() => pick("pdr")}
-        title="Check each filed route against the Prohibited/Danger/Restricted areas and the published preferred routes (PDR, ENR 1.10)"
-      >
-        <NavIcon name="restricted" size={15} />
-        Route &amp; area check
-        {pdrActionable > 0 && (
-          <span className="cdr-menu-count">{pdrActionable}</span>
-        )}
       </button>
 
       <div className="cdr-menu-sep" role="separator" />

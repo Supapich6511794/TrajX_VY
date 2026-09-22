@@ -24,6 +24,7 @@ export type NavIconName =
   | "trajectory"
   | "filter"
   | "conflicts"
+  | "plancheck"
   | "sector"
   | "sequencing"
   | "basemap"
@@ -89,6 +90,15 @@ const PATHS: Record<NavIconName, ReactNode> = {
   ),
   filter: <path d="M4 5h16l-6.3 7.4V20l-3.4-2.2v-5.4z" />,
   conflicts: <path d="M13.2 3 5.5 13.8h5.1L10.4 21l7.9-10.9h-5.2z" />,
+  /* A filed plan with a tick against it — the checks that run before a flight
+     is airborne, rather than the separation that is watched once it is. */
+  plancheck: (
+    <>
+      <path d="M13.5 3.5H6a1.5 1.5 0 0 0-1.5 1.5v14A1.5 1.5 0 0 0 6 20.5h7" />
+      <path d="M8 8h6M8 11.5h4" />
+      <path d="m14.5 15.5 2.5 2.5 4-4.5" />
+    </>
+  ),
   // A block of airspace with a working boundary through it — which is what a
   // sector is, and what dynamic sectorisation moves.
   sector: (

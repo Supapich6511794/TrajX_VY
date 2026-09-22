@@ -9,16 +9,15 @@
  *     FORWARD   start -> end only
  *     BACKWARD  end -> start only
  *
- * In AIRAC 2608, 229 of 751 segments are one-way across 65 routes, so a filed
- * route can be made entirely of valid fixes on a real airway and still be
- * unflyable because it runs up a one-way street. Nothing else in the app can
- * see that: the fix list resolves, the geometry is fine, and the route reaches
- * the destination.
+ * In AIRAC 2609 (VY), 15 of 186 segments are one-way across 86 routes, so a
+ * filed route can be made entirely of valid fixes on a real airway and still
+ * be unflyable because it runs up a one-way street. Nothing else in the app
+ * can see that: the fix list resolves, the geometry is fine, and the route
+ * reaches the destination.
  *
  * Each segment also carries its own level band, which is the other thing a fix
- * list hides — Y8 is 13 000 ft and above north of Surat Thani but 7 000 ft and
- * above south of it, so an RFL legal on one half of a route can be below the
- * airway on the other.
+ * list hides — a route can be legal on one half and below the airway's coded
+ * floor on the other.
  *
  * Pure and DOM-free; the data comes from `scripts/ingest_aixm_route_segments.py`.
  */
@@ -39,7 +38,7 @@ export interface RouteSegment {
   lengthNm: number | null;
 }
 
-/** `/data/aixm/route_segments.json`. */
+/** `/data/aixm_vy/route_segments.json`. */
 export interface RouteSegmentFile {
   source: string;
   validFrom: string;
@@ -47,7 +46,7 @@ export interface RouteSegmentFile {
   segments: RouteSegment[];
 }
 
-const SEGMENTS_URL = "/data/aixm/route_segments.json";
+const SEGMENTS_URL = "/data/aixm_vy/route_segments.json";
 
 let _cache: Promise<RouteSegmentFile> | null = null;
 

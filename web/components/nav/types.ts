@@ -32,6 +32,7 @@ export type MainNavId =
   | "tool"
   | "trajectory"
   | "conflicts"
+  | "plancheck"
   | "sector"
   | "sequencing"
   | "basemap"
@@ -40,8 +41,8 @@ export type MainNavId =
   | "export";
 
 /** The CD&R views that share the left rail with the departure-conflict panel.
- *  Lives here rather than in MapApp so the Conflicts menu can name them too
- *  without importing the shell it is rendered by. */
+ *  Lives here rather than in MapApp so the Conflicts and Plan check menus can
+ *  name them too without importing the shell they are rendered by. */
 export type CdrView =
   | "notifications"
   | "dashboard"

@@ -32,6 +32,7 @@ import MainNavigation, {
 import NavIcon from "@/components/nav/NavIcon";
 import BasemapMenu from "@/components/nav/menus/BasemapMenu";
 import ConflictsMenu from "@/components/nav/menus/ConflictsMenu";
+import PlanCheckMenu from "@/components/nav/menus/PlanCheckMenu";
 import SectorMenu from "@/components/nav/menus/SectorMenu";
 import LayersMenu from "@/components/nav/menus/LayersMenu";
 import ToolMenu from "@/components/nav/menus/ToolMenu";
@@ -84,6 +85,11 @@ import {
   fetchPbnLines,
   fetchPbnWaypoints,
   fetchRunways,
+  fetchVyAirspaceBoundaries,
+  fetchVyProcedureLines,
+  fetchVyProcedureWaypoints,
+  fetchVyRestrictedAreas,
+  type AirspaceAreaCollection,
   type GateCollection,
   type PanelAirport,
   type RunwayPoint,
@@ -813,6 +819,7 @@ export default function MapApp() {
   const [star, setStar] = useState<ProcLayerState>(DEFAULT_PROC_LAYER);
   const [pbn, setPbn] = useState<ProcLayerState>(DEFAULT_PROC_LAYER);
   const [ils, setIls] = useState<ProcLayerState>(DEFAULT_PROC_LAYER);
+  const [vy, setVy] = useState<ProcLayerState>(DEFAULT_PROC_LAYER);
   const [holdingLayer, setHoldingLayer] = useState<HoldingLayerState>(
     DEFAULT_HOLDING_LAYER,
   );
@@ -834,6 +841,17 @@ export default function MapApp() {
   const [ilsWpts, setIlsWpts] = useState<ProcedureWaypointCollection | null>(
     null,
   );
+  const [vyLines, setVyLines] = useState<ProcedureLineCollection | null>(
+    null,
+  );
+  const [vyWpts, setVyWpts] = useState<ProcedureWaypointCollection | null>(
+    null,
+  );
+  const [vyAreasOn, setVyAreasOn] = useState(false);
+  const [vyAreas, setVyAreas] = useState<AirspaceAreaCollection | null>(null);
+  const [vyBoundariesOn, setVyBoundariesOn] = useState(false);
+  const [vyBoundaries, setVyBoundaries] =
+    useState<AirspaceAreaCollection | null>(null);
   // Holding patterns for the map layer (distinct from the CD&R holdings index
   // below: this one is categorised + drawable). Fetched on first enable.
   const [holdingPatterns, setHoldingPatterns] = useState<
@@ -3590,6 +3608,45 @@ export default function MapApp() {
       );
   }, [ils.waypoints, ilsWpts]);
 
+  // Myanmar (VY) reference layer — same lazy-load pattern as PBN/ILS.
+  const vyNeedLines = layersOpen || vy.routes;
+  useEffect(() => {
+    if (!vyNeedLines || vyLines) return;
+    fetchVyProcedureLines()
+      .then(setVyLines)
+      .catch((e: unknown) =>
+        setError(e instanceof Error ? e.message : "Failed to load VY lines"),
+      );
+  }, [vyNeedLines, vyLines]);
+  useEffect(() => {
+    if (!vy.waypoints || vyWpts) return;
+    fetchVyProcedureWaypoints()
+      .then(setVyWpts)
+      .catch((e: unknown) =>
+        setError(e instanceof Error ? e.message : "Failed to load VY fixes"),
+      );
+  }, [vy.waypoints, vyWpts]);
+  useEffect(() => {
+    if (!vyAreasOn || vyAreas) return;
+    fetchVyRestrictedAreas()
+      .then(setVyAreas)
+      .catch((e: unknown) =>
+        setError(
+          e instanceof Error ? e.message : "Failed to load VY restricted areas",
+        ),
+      );
+  }, [vyAreasOn, vyAreas]);
+  useEffect(() => {
+    if (!vyBoundariesOn || vyBoundaries) return;
+    fetchVyAirspaceBoundaries()
+      .then(setVyBoundaries)
+      .catch((e: unknown) =>
+        setError(
+          e instanceof Error ? e.message : "Failed to load VY airspace boundaries",
+        ),
+      );
+  }, [vyBoundariesOn, vyBoundaries]);
+
   // SID/STAR line data — fetched once the Layer Options panel is opened
   // (so the filter dropdowns can populate) or a routes layer is enabled.
   const sidNeedLines = layersOpen || sid.routes;
@@ -3697,6 +3754,10 @@ export default function MapApp() {
   const ilsOpts = useMemo(
     () => procOpts(ilsLines, ils.airports),
     [ilsLines, ils.airports],
+  );
+  const vyOpts = useMemo(
+    () => procOpts(vyLines, vy.airports),
+    [vyLines, vy.airports],
   );
 
   // Cascading index for the direct lookup form: airport -> procedure ->
@@ -3923,16 +3984,18 @@ export default function MapApp() {
   const navSlots = useMemo<Partial<Record<MainNavId, MainNavSlot>>>(() => {
     const hasFlights = trajectories.length > 0;
     const noFlightsHint = "Generate a flight first";
-    // Departure conflicts come out of the filed PLANS, so this tab is worth
-    // opening before anything has been replayed; the live checks need traffic.
-    const conflictsReady = trajectories.length >= 2 || depConflicts.length > 0;
+    // The live checks measure one aircraft against another, so they need two
+    // on the clock. The plan checks read the FILED plans instead, which is why
+    // they are worth opening before anything has been replayed — and why the
+    // departure half is reachable even with nothing generated at all.
+    const conflictsReady = trajectories.length >= 2;
+    const planCheckReady = hasFlights || depConflicts.length > 0;
     const sectorsAnyOn = SECTORS.some((sec) => sectorsOn[sec.key]);
-    // One number, not two summed: while the replay is monitoring, the live
-    // count is the urgent one; before that it is the filed departures that
-    // cannot be cleared. Each row in the menu still carries its own count.
-    const alertCount = cdrMonitoring
-      ? unresolvedConflicts.length
-      : depConflicts.length;
+    // Only the live count. It used to fall back to the filed departures when
+    // the replay was not monitoring, which made one badge stand for two
+    // different problems; the departures have their own tab to be counted on
+    // now.
+    const alertCount = cdrMonitoring ? unresolvedConflicts.length : 0;
 
     return {
       home: {
@@ -4005,11 +4068,9 @@ export default function MapApp() {
 
       conflicts: {
         active:
-          depPanelOpen ||
-          (cdrView !== null &&
-            cdrView !== "arrivals" &&
-            cdrView !== "sectorinfo" &&
-            cdrView !== "dynsector"),
+          cdrView === "notifications" ||
+          cdrView === "dashboard" ||
+          cdrView === "log",
         disabled: !conflictsReady,
         hint: conflictsReady
           ? undefined
@@ -4027,16 +4088,36 @@ export default function MapApp() {
             monitoring={cdrMonitoring}
             unresolvedCount={unresolvedConflicts.length}
             logCount={conflictLogCount.total}
-            pdrActionable={pdrActionable}
-            depConflictCount={depConflicts.length}
-            depPanelOpen={depPanelOpen}
-            onOpenDepartures={openDepPanel}
             autoResolve={autoResolve}
             autoResolveMode={autoResolveMode}
             autoModeOptions={AUTO_MODE_OPTIONS}
             onAutoResolveMode={setAutoResolveMode}
             onRerunAutoPass={() => setAutoPassNonce((n) => n + 1)}
             autoPass={autoPass}
+            onPicked={close}
+          />
+        ),
+      },
+
+      // What is wrong with the plans as FILED — answered by re-timing a
+      // departure or re-filing a route, not by a vector, which is why these
+      // two are no longer rows under Conflicts.
+      plancheck: {
+        active: depPanelOpen || cdrView === "pdr",
+        disabled: !planCheckReady,
+        hint: planCheckReady ? undefined : noFlightsHint,
+        badge:
+          depConflicts.length > 0
+            ? { text: String(depConflicts.length), tone: "alert" }
+            : null,
+        menu: (close) => (
+          <PlanCheckMenu
+            cdrView={cdrView}
+            onOpenView={openCdrView}
+            depConflictCount={depConflicts.length}
+            depPanelOpen={depPanelOpen}
+            onOpenDepartures={openDepPanel}
+            pdrActionable={pdrActionable}
             onPicked={close}
           />
         ),
@@ -4168,7 +4249,7 @@ export default function MapApp() {
 
           Two screens do without it. The preview page has one thing to do and
           one way back, and its own header says both. The OPENING screen has
-          nothing to navigate: no flight exists, so nine of the eleven tabs are
+          nothing to navigate: no flight exists, so seven of the eleven tabs are
           dead, and a row of greyed-out words is a worse first impression than
           no row at all. It appears the moment there is something to look at —
           a flight generated, or the scrim stepped past. */}
@@ -4647,6 +4728,22 @@ export default function MapApp() {
                 index: ilsIndex,
                 lookup: (a, n, t) => lookupProcedure("ILS", a, n, t),
               }}
+              vy={{
+                state: vy,
+                onChange: setVy,
+                airportOpts: vyOpts.airports,
+                procOpts: vyOpts.procedures,
+                // No lookup form for this tab (see LayerOptions' ProcTab) —
+                // Myanmar procedures aren't served by the (Thai-only)
+                // procedures API, so this index/lookup pair is never read.
+                index: {},
+                lookup: () =>
+                  Promise.reject(new Error("VY procedures have no lookup")),
+              }}
+              vyAreasOn={vyAreasOn}
+              onVyAreasOn={setVyAreasOn}
+              vyBoundariesOn={vyBoundariesOn}
+              onVyBoundariesOn={setVyBoundariesOn}
               holding={holdingLayer}
               onHoldingChange={setHoldingLayer}
               holdingAirportOpts={holdingOpts.airports}
@@ -4679,12 +4776,17 @@ export default function MapApp() {
               pbnWpts={pbnWpts}
               ilsLines={ilsLines}
               ilsWpts={ilsWpts}
+              vyLines={vyLines}
+              vyWpts={vyWpts}
+              vyAreas={vyAreasOn ? vyAreas : null}
+              vyBoundaries={vyBoundariesOn ? vyBoundaries : null}
               holdings={holdingPatterns}
               holding={holdingLayer}
               sid={sid}
               star={star}
               pbn={pbn}
               ils={ils}
+              vy={vy}
               airports={airportList}
               hiddenAirports={hiddenAirports}
               gates={gatesOn ? gates : null}

@@ -8234,27 +8234,6 @@ select.fp-input {
 }
 
 /* ============================================================= *
- *  Multi-route R1/R2 badge near the start endpoint
- * ============================================================= */
-.route-index-badge {
-  background: transparent !important;
-  border: none !important;
-}
-
-.route-index-pill {
-  display: inline-block;
-  padding: 2px 7px;
-  font-size: 10px;
-  font-weight: 800;
-  font-family: var(--font-ui);
-  font-variant-numeric: tabular-nums;
-  border-radius: 4px;
-  border: 1.5px solid rgba(15, 23, 42, 0.7);
-  letter-spacing: 0.05em;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
-}
-
-/* ============================================================= *
  *  Altitude colour legend — bottom-left HUD
  * ============================================================= */
 .alt-legend {

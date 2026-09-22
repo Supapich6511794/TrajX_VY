@@ -10,6 +10,12 @@
  *
  * Routes are DIRECTIONAL (adep→ades ≠ ades→adep) and split by RNAV vs
  * Non-RNAV capability.
+ *
+ * This is a Thai eAIP scrape with no VY equivalent; the file has been
+ * removed with the rest of the Thailand data. `fetchAipRoutes()` fails
+ * closed (empty list) rather than throwing, so the Generator just falls
+ * back to its computed best-route for every pair until a real VY published-
+ * route table exists at this same path/shape.
  */
 
 import type { Fix } from "./aip";
@@ -37,7 +43,8 @@ interface AipRoutesFile {
 
 let _cache: Promise<AipRoute[]> | null = null;
 
-/** Fetch + memoise the predefined-route table for the page's lifetime. */
+/** Fetch + memoise the predefined-route table for the page's lifetime. Fails
+ *  closed (empty list) rather than throwing — there is no VY table yet. */
 export function fetchAipRoutes(): Promise<AipRoute[]> {
   if (!_cache) {
     _cache = fetch(AIP_ROUTES_URL, { cache: "no-store" })
@@ -47,7 +54,8 @@ export function fetchAipRoutes(): Promise<AipRoute[]> {
         }
         return res.json() as Promise<AipRoutesFile>;
       })
-      .then((j) => j.routes ?? []);
+      .then((j) => j.routes ?? [])
+      .catch(() => []);
   }
   return _cache;
 }
