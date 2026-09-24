@@ -18,6 +18,18 @@ export interface TileSource {
    *  grading and leaves these unset. */
   className?: string;
   labelClassName?: string;
+  /** Deepest zoom this source actually has tiles for. Esri's Gray Canvas
+   *  services top out at 16 everywhere (verified over both Bangkok and
+   *  Yangon: 16 draws real streets, 17 returns the SAME placeholder tile —
+   *  "Map data not yet available" — for both), unlike World_Imagery
+   *  satellite, which has real detail well past 16. Left unset it defaults
+   *  to Leaflet's normal 18, so zooming in past a canvas source's real
+   *  coverage silently swaps in that placeholder graphic instead of the
+   *  street-name/PDR context the map needs at close range — worse for
+   *  Myanmar's smaller aerodromes, which need a tighter zoom to read than a
+   *  big Bangkok view does. Setting this makes Leaflet stop fetching past
+   *  that level and upscale the last real tile instead. */
+  maxNativeZoom?: number;
 }
 
 /**
@@ -45,6 +57,7 @@ const ESRI_DARK: TileSource = {
   url: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
   attribution: "Tiles &copy; Esri — Esri, DeLorme, NAVTEQ",
   className: "basemap-dark-base",
+  maxNativeZoom: 16,
 };
 
 /**
@@ -59,6 +72,7 @@ const ESRI_LIGHT: TileSource = {
   labelUrl:
     "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}",
   attribution: "Tiles &copy; Esri — Esri, DeLorme, NAVTEQ",
+  maxNativeZoom: 16,
 };
 
 /** Tile sources per basemap. `dark` follows the dark UI theme. */

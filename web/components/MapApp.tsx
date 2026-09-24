@@ -2862,7 +2862,7 @@ export default function MapApp() {
   // panel needs `blockers` to say WHICH aircraft rejected every candidate, and
   // `widened` marks results that only exist because the fallback envelope ran.
   const planAdvisory = useMemo<PlanAdvisoryResult>(() => {
-    const none = { resolutions: [], blockers: [], widened: false };
+    const none = { resolutions: [], blockers: [], rejected: [], widened: false };
     if (!selectedConflictId) return none;
     const c = planConflicts.find((x) => x.id === selectedConflictId);
     if (!c) return none;
@@ -5099,6 +5099,7 @@ export default function MapApp() {
                       }
                       onEditBlockerPlan={(b) => handleOpenPlan(b.id)}
                       widened={planAdvisory.widened}
+                      rejected={planAdvisory.rejected}
                     />
                   ) : null
                 }
@@ -5333,7 +5334,19 @@ export default function MapApp() {
                     restricted={restrictedAreas}
                     holdings={holdings}
                     sector={sectorOfConflict(c, c.tCpaAbsSec)}
-                    onApply={(m) => commitManeuver(m)}
+                    // Pass `c` explicitly rather than letting commitManeuver fall
+                    // back to its own planConflicts/cdr.conflicts lookup by
+                    // selectedConflictId: a synthesised blocker pair's id (see
+                    // `blk` above) is deliberately NOT in either of those lists,
+                    // so that lookup always misses for it, `appliedFixes` never
+                    // gets the entry, and "Fix <blocker> →" silently applies
+                    // the maneuver to the trajectory without ever showing up as
+                    // fixed anywhere in the UI. Passing `c` directly (the same
+                    // object already resolved above, real or synthesised) is
+                    // exactly the workaround auto-resolve already uses for the
+                    // same reason ("which has no selected conflict" — see
+                    // commitManeuver's `forConflict` param).
+                    onApply={(m) => commitManeuver(m, { id: c.id, a: c.a, b: c.b })}
                     onClose={() => {
                       setPreviewModalOpen(false);
                       setBlockerPair(null);

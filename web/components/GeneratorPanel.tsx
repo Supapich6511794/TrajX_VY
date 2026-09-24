@@ -19,12 +19,11 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import IdentCombobox, { type ComboOption } from "@/components/IdentCombobox";
 import RouteBuilder from "@/components/RouteBuilder";
 import {
-  fetchAirports,
   fetchAirwaysMap,
   fetchAllFixes,
-  type AirportOption,
   type Fix,
 } from "@/lib/aip";
+import { fetchPanelAirports, type PanelAirport } from "@/lib/atcLayers";
 import {
   staticApproaches,
   staticProcedureRunways,
@@ -65,7 +64,7 @@ import {
   type Cat62Table,
   type FlightTimeCurveResult,
 } from "@/lib/cat62";
-import { kBestRoutes, type RouteOption } from "@/lib/routeFinder";
+import type { RouteOption } from "@/lib/routeFinder";
 import {
   soleApproachFor,
   soleProcedure,
@@ -73,6 +72,7 @@ import {
 } from "@/lib/procedureLink";
 import {
   autoResolveDepartures,
+  departsFromKnownField,
   eobtToMs,
   findDepartureConflicts,
   fmtInterval,
@@ -274,6 +274,10 @@ interface PlanDraft {
   eobt: string;
   gsKt: number;
   rfl: number;
+  /** Transit level (hundreds of ft) when the flight is only passing through —
+   *  set by an import of a track file that carries `entry_fl`. Not an editable
+   *  field: it rides along with the plan so Generate flies it at level. */
+  entryFl?: number;
   routeMode: RouteMode;
   routeStr: string;
   builtWpts: string[];
@@ -484,13 +488,14 @@ const AIRCRAFT = [
   ["DH8D", "DH8D — Dash 8 Q400"],
 ] as const;
 
-/** Fallback airport list used only until the AIP airports load (free
- *  typing of any ICAO is always allowed). The live list comes from the
- *  CAAT eAIP AD section — all 46 Thai aerodromes. */
+/** Fallback airport list used only until the real airport CSV loads (free
+ *  typing of any ICAO is always allowed). The live list comes from
+ *  `fetchPanelAirports()` — all 48 Myanmar (VY) aerodromes from the AIXM
+ *  2609 export. These three are the AIP "Main" aerodromes. */
 const AIRPORTS_FALLBACK: ComboOption[] = [
-  { code: "VTBS", label: "Suvarnabhumi · Bangkok" },
-  { code: "VTSP", label: "Phuket" },
-  { code: "VTCC", label: "Chiang Mai" },
+  { code: "VYYY", label: "Yangon Intl" },
+  { code: "VYMD", label: "Mandalay Intl" },
+  { code: "VYNT", label: "Naypyitaw Intl" },
 ];
 
 /** Title-case an ALL-CAPS AIP airport name for the dropdown label. */
@@ -586,6 +591,7 @@ function GeneratorPanel({
   const [eobt, setEobt] = useState("");
   const [gsKt, setGsKt] = useState(450);
   const [rfl, setRfl] = useState(350);
+  const [entryFl, setEntryFl] = useState<number | undefined>(undefined);
 
   // Surveillance Profile — output sampling cadence (seconds) applied to the
   // whole generation. 5 s = en-route radar (default), 4 s = CAT62 terminal,
@@ -683,6 +689,7 @@ function GeneratorPanel({
     eobt,
     gsKt,
     rfl,
+    entryFl,
     routeMode,
     routeStr,
     builtWpts,
@@ -725,6 +732,7 @@ function GeneratorPanel({
     setEobt(d.eobt);
     setGsKt(d.gsKt);
     setRfl(d.rfl);
+    setEntryFl(d.entryFl);
     setRouteMode(d.routeMode);
     setRouteStr(d.routeStr);
     setBuiltWpts(d.builtWpts);
@@ -850,15 +858,16 @@ function GeneratorPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [readyText]);
 
-  // Full Thai navdata from the CAAT eAIP cache — all fixes, all airways,
-  // and all aerodromes — loaded once on mount.
+  // Fixes/airways from the (currently empty, pending a VY eAIP cache) AIP
+  // loader, plus the real 48-aerodrome VY airport list from the AIXM-derived
+  // CSV — loaded once on mount.
   const [allFixes, setAllFixes] = useState<Fix[]>([]);
   const [airwaysMap, setAirwaysMap] = useState<Record<string, string[]>>({});
-  const [airports, setAirports] = useState<AirportOption[]>([]);
+  const [airports, setAirports] = useState<PanelAirport[]>([]);
   const [showAllRoutes, setShowAllRoutes] = useState(false);
   useEffect(() => {
     let cancelled = false;
-    Promise.all([fetchAllFixes(), fetchAirwaysMap(), fetchAirports()])
+    Promise.all([fetchAllFixes(), fetchAirwaysMap(), fetchPanelAirports()])
       .then(([fixes, aw, aps]) => {
         if (cancelled) return;
         setAllFixes(fixes);
@@ -871,8 +880,8 @@ function GeneratorPanel({
     };
   }, []);
 
-  // Airport combobox options — from the AIP AD section when loaded, else
-  // a tiny fallback. Free typing of any ICAO is always allowed.
+  // Airport combobox options — from the real VY airport CSV when loaded,
+  // else a tiny fallback. Free typing of any ICAO is always allowed.
   const airportOptions: ComboOption[] = useMemo(
     () =>
       airports.length
@@ -1045,19 +1054,28 @@ function GeneratorPanel({
    *  "Auto fix all", which re-runs the scan over its own working copy. */
   const toDepartureFlights = useCallback(
     (drafts: PlanDraft[]): DepartureFlight[] =>
-      drafts.map((d, i) => ({
-        id: d.id,
-        callsign: d.callsign.trim() || planLabel(d, i),
-        actype: d.actype,
-        adep: d.adep.trim().toUpperCase(),
-        ades: d.ades.trim().toUpperCase(),
-        eobtMs: eobtToMs(d.eobt),
-        depRwy: d.depRwy,
-        trackDeg: initialTrackOf(d),
-        gsKt: d.gsKt,
-        rfl: d.rfl,
-      })),
-    [initialTrackOf],
+      // flatMap (not filter-then-map) so `planLabel`'s index still means the
+      // plan's position in the list — a blank callsign reads "Plan 5", not
+      // "Plan 2" because the four before it were dropped.
+      drafts.flatMap((d, i) =>
+        !departsFromKnownField(d, airportLL)
+          ? []
+          : [
+              {
+                id: d.id,
+                callsign: d.callsign.trim() || planLabel(d, i),
+                actype: d.actype,
+                adep: d.adep.trim().toUpperCase(),
+                ades: d.ades.trim().toUpperCase(),
+                eobtMs: eobtToMs(d.eobt),
+                depRwy: d.depRwy,
+                trackDeg: initialTrackOf(d),
+                gsKt: d.gsKt,
+                rfl: d.rfl,
+              },
+            ],
+      ),
+    [initialTrackOf, airportLL],
   );
 
   // --- PDR route check over the FILED PLANS ---------------------------------
@@ -1170,7 +1188,15 @@ function GeneratorPanel({
               ? pathFromFixes(fixes, {
                   startMs: eobtMs,
                   gsKt: d.gsKt,
-                  altFt: climbCruiseDescentFt({ rflFt: d.rfl * 100 }),
+                  altFt: climbCruiseDescentFt({
+                    rflFt: d.rfl * 100,
+                    // A flight only passing through is at level at the fix it
+                    // crosses in at — and so is any flight whose ADEP/ADES has
+                    // no coordinates here, since the route's first/last fix
+                    // then stands in for that crossing. Matches the engine.
+                    startAtLevel: !!d.entryFl || !dep,
+                    endAtLevel: !arr,
+                  }),
                 })
               : [],
         });
@@ -1505,8 +1531,17 @@ function GeneratorPanel({
         }));
       }
     }
-    if (allFixes.length === 0 || !depLL || !desLL) return [];
-    return kBestRoutes(allFixes, airwaysMap, depLL, desLL, { k: 6 });
+    // No published route for this pair (there is no VY aip_routes table
+    // yet — see aipRoutes.ts). Deliberately NOT falling back to
+    // kBestRoutes' nearest-fix graph search here: that would suggest an
+    // ATS route for literally any two airports whose coordinates happen
+    // to be known, whether or not a SID/STAR/ATS-route chain actually
+    // connects them — exactly the "every combination" behaviour this
+    // deployment must not show. Real fixes (allFixes/airwaysMap) still
+    // power the map preview and the Manual/RouteBuilder waypoint search;
+    // only the auto-suggestion path is disabled until a real
+    // reachability-checked VY route table exists.
+    return [];
   }, [pairReady, dep, des, airportLL, allFixes, airwaysMap, aipRoutes]);
 
   // Whether the current pair resolves to ANY published AIP route, so the UI
@@ -2439,6 +2474,7 @@ function GeneratorPanel({
     if (r.eobt) p.eobt = r.eobt;
     if (r.rfl != null) p.rfl = r.rfl;
     if (r.gsKt != null) p.gsKt = r.gsKt;
+    if (r.entryFl != null) p.entryFl = r.entryFl;
     if (r.sid) p.sid = r.sid;
     if (r.star) p.star = r.star;
     if (r.approach) p.approach = r.approach;
@@ -2642,6 +2678,7 @@ function GeneratorPanel({
               eobt: d.eobt,
               gs_kt: d.gsKt,
               rfl: d.rfl,
+              ...(d.entryFl ? { entry_fl: d.entryFl } : {}),
               output_every_s: outputEveryS,
               // ...overrides, // DISABLED: speed schedule (advanced)
               ...(c.sid ? { sid: c.sid } : {}),
@@ -2808,6 +2845,7 @@ function GeneratorPanel({
             eobt,
             gs_kt: gsKt,
             rfl,
+            ...(entryFl ? { entry_fl: entryFl } : {}),
             output_every_s: outputEveryS,
             ...(c.sid ? { sid: c.sid } : {}),
             ...(c.star ? { star: c.star } : {}),

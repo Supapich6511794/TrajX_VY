@@ -650,7 +650,14 @@ function buildSuggestions(
         startMs: input.eobtMs,
         gsKt: input.gsKt,
         altFt: input.terminals
-          ? climbCruiseDescentFt({ rflFt: input.rflFt })
+          ? climbCruiseDescentFt({
+              rflFt: input.rflFt,
+              // No aerodrome anchor at an end = the route's first / last point
+              // is where the flight crosses in / out of the area, at level —
+              // the same rule the filed plan's own path is built with.
+              startAtLevel: !dep,
+              endAtLevel: !arr,
+            })
           : input.rflFt,
       });
       activeAreas = [

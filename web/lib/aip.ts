@@ -1,23 +1,32 @@
 /**
- * aip — client loader for the CAAT eAIP navdata cache.
+ * aip — client loader for the VY (Myanmar) navdata cache.
  *
- * The cache (`/data/aip_VT.json`) was produced once per AIRAC cycle by
- * `scripts/ingest_aip.py` from the Thai eAIP — a scrape, not something AIXM
- * carries, so there is no VY (Myanmar) equivalent. The file has been removed
- * along with the rest of the Thailand data; `fetchAip()` now fails closed
- * (empty waypoints/airways) instead of throwing, so the route picker and
- * best-route ranker just see no published fixes/airways until a real VY eAIP
- * cache exists at this same path/shape.
+ * The cache (`/data/aip_VY.json`) is built once per AIRAC cycle by
+ * `scripts/ingest_aixm_waypoints.py` from the AIXM 5.1.1 export — every
+ * DesignatedPoint/Navaid position, airways stitched from
+ * `route_segments.json`, and airports from the AIXM-derived CSV. Same
+ * shape as the retired Thai `aip_VT.json` this replaces, so every consumer
+ * here is unchanged. `fetchAip()` still fails closed (empty
+ * waypoints/airways/airports) on a fetch error rather than throwing.
+ *
+ * IMPORTANT: `allFixes`/`airwaysMap` from here feed BOTH the map preview
+ * (`resolveRoutePreview`, RouteBuilder's waypoint search) AND, in
+ * `GeneratorPanel.tsx`, the `kBestRoutes` nearest-fix graph search that
+ * used to back "Suggested" for any ADEP/ADES pair. That fallback has been
+ * deliberately disabled there — real fix data alone is not permission to
+ * suggest a route between two airports with no actual SID/STAR/ATS-route
+ * connection; see the comment at `bestRoutes` in GeneratorPanel.tsx.
  *
  * Shape:
  *   {
- *     airac: "2026-05-14",
- *     waypoints: { VANKO: { lat, lon }, ... },
- *     airways:   { Y8: ["BKK","MOTNA",...], ... }
+ *     airac: "2026-09-03T00:00:00Z",
+ *     waypoints: { AKSAG: { lat, lon }, ... },
+ *     airways:   { B465: ["APAGO","MDY","AKSAG","LPB"], ... },
+ *     airports:  { VYYY: { lat, lon, elev_ft, name }, ... }
  *   }
  */
 
-const AIP_URL = "/data/aip_VT.json";
+const AIP_URL = "/data/aip_VY.json";
 
 export interface AipAirport {
   lat: number;

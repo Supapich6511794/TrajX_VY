@@ -13,7 +13,7 @@
  */
 
 import { fmtNm } from "@/lib/cdr/format";
-import type { Blocker } from "@/lib/cdr/planAdvisory";
+import type { Blocker, RejectedCandidate } from "@/lib/cdr/planAdvisory";
 import type { Maneuver } from "@/lib/cdr/types";
 
 interface Props {
@@ -27,6 +27,16 @@ interface Props {
    *  dead-end "no resolution" into something actionable: which aircraft is in
    *  the way, so the controller knows what to move first. */
   blockers?: Blocker[];
+  /** Every candidate the search actually tried and dropped, with why — the
+   *  full audit trail `blockers` only aggregates. Collapsed by default (it's
+   *  a "show your work" detail, not the headline); omitted = no section, as
+   *  before. See `RejectedCandidate` for the reason vocabulary — in
+   *  particular "secondary-conflict" (clears the pair, hits a third
+   *  aircraft) is kept visually distinct from "unresolved-primary" (never
+   *  cleared the pair at all), per the resolution spec's requirement that a
+   *  candidate creating a secondary conflict never reads as equivalent to
+   *  one that simply didn't work. */
+  rejected?: RejectedCandidate[];
   /** The blocker's OWN conflict, when it has one. Naming the aircraft to move
    *  is only useful if it can be reached: this is what the button opens. Null
    *  means it is not in conflict itself — there is nothing to resolve, only an
@@ -51,6 +61,57 @@ const TYPE_LABEL: Record<Maneuver["type"], string> = {
   speed: "SPD",
   hold: "HOLD",
 };
+
+/** Short badge text per rejection reason — kept distinct on purpose:
+ *  "Secondary" (this maneuver would CREATE a new conflict) reads as a
+ *  different kind of problem from "Unresolved" (it never cleared the
+ *  original pair), matching the resolution spec's insistence that the two
+ *  not be conflated. */
+const REJECT_LABEL: Record<RejectedCandidate["reason"], string> = {
+  "secondary-conflict": "Secondary",
+  "unresolved-primary": "Unresolved",
+  "constraint-reject": "Constraint",
+  "arrival-protected": "Arrival",
+};
+
+/** One collapsed-by-default row of the rejected-candidate audit trail. */
+function RejectedRow({ r, nameOf }: { r: RejectedCandidate; nameOf: (id: string) => string }) {
+  return (
+    <li className="cdr-rejected-row">
+      <span className={`cdr-rejected-badge reason-${r.reason}`}>
+        {REJECT_LABEL[r.reason]}
+      </span>
+      <span className="cdr-rejected-text">
+        <strong>{nameOf(r.target)}</strong> {r.instruction}
+        <span className="cdr-rejected-detail">{r.detail}</span>
+      </span>
+    </li>
+  );
+}
+
+/** Collapsible "show your work" trail — every candidate the search tried and
+ *  dropped. Native `<details>` rather than component state: it's supporting
+ *  detail nobody needs open by default, and this way there's nothing to wire
+ *  up or reset when the conflict selection changes. */
+function RejectedTrail({
+  rejected,
+  nameOf,
+}: {
+  rejected: RejectedCandidate[];
+  nameOf: (id: string) => string;
+}) {
+  if (rejected.length === 0) return null;
+  return (
+    <details className="cdr-adv-rejected">
+      <summary>Rejected candidates ({rejected.length})</summary>
+      <ul className="cdr-rejected-list">
+        {rejected.map((r, i) => (
+          <RejectedRow key={`${r.target}-${r.type}-${i}`} r={r} nameOf={nameOf} />
+        ))}
+      </ul>
+    </details>
+  );
+}
 
 /** Compact cost string per maneuver kind. */
 function costLabel(m: Maneuver): string {
@@ -81,6 +142,7 @@ export default function SuggestionCards({
   onWorkBlocker,
   onEditBlockerPlan,
   widened,
+  rejected,
 }: Props) {
   if (suggestions.length === 0) {
     // Almost every "no resolution" is really "a third aircraft is in the way":
@@ -134,6 +196,7 @@ export default function SuggestionCards({
             </div>
           </>
         )}
+        {rejected && <RejectedTrail rejected={rejected} nameOf={nameOf} />}
       </div>
     );
   }
@@ -181,6 +244,7 @@ export default function SuggestionCards({
           </div>
         );
       })}
+      {rejected && <RejectedTrail rejected={rejected} nameOf={nameOf} />}
     </div>
   );
 }

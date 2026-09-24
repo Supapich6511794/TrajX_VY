@@ -286,3 +286,26 @@ describe("pathFromFixes with a profile", () => {
     expect(findIncursions(profiled, [boxArea()]).length).toBeGreaterThan(0);
   });
 });
+
+describe("climbCruiseDescentFt — a flight only passing through", () => {
+  it("is at cruise from the first point when the route starts at a crossing fix, not an aerodrome", () => {
+    const level = climbCruiseDescentFt({ rflFt: 35000, startAtLevel: true, endAtLevel: true });
+    expect(level(0, 300)).toBe(35000);
+    expect(level(150, 300)).toBe(35000);
+    expect(level(300, 300)).toBe(35000);
+  });
+  it("still climbs from the ground when only the END is a crossing fix", () => {
+    const p = climbCruiseDescentFt({ rflFt: 35000, endAtLevel: true });
+    expect(p(0, 300)).toBe(0);
+    expect(p(300, 300)).toBe(35000);
+  });
+  it("still descends to the ground when only the START is a crossing fix", () => {
+    const p = climbCruiseDescentFt({ rflFt: 35000, startAtLevel: true });
+    expect(p(0, 300)).toBe(35000);
+    expect(p(300, 300)).toBe(0);
+  });
+  it("is unchanged from before when neither option is given", () => {
+    const p = climbCruiseDescentFt({ rflFt: 33000, depElevFt: 10, arrElevFt: 10 });
+    expect(p(0, 300)).toBe(10);
+  });
+});

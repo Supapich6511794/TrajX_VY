@@ -1,9 +1,10 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { parseFlightFile } from "@/lib/flightFile";
+import type { RouteSegmentFile } from "@/lib/pdr/airwayDirection";
 
 /**
  * Round-trip: a real server download export (GeoJSON / CSV) must re-import with
@@ -78,5 +79,108 @@ describe("parseFlightFile — trajectory round-trip", () => {
     const idents = r.trajectory!.route.map((w) => w.ident);
     expect(idents).toContain("NOBER");
     expect(idents).toContain("SURGU");
+  });
+});
+
+/**
+ * A track re-filed as an FPL (e.g. `make_cat062_fpl.py`'s VY sibling) carries
+ * only the crossing fixes it was seen at — dep/dest/acid/wp1../wp3, no route
+ * string, no SID/STAR, no airport it can offer a filed plan for. Without this,
+ * every such row lands in the panel with "Enter an Item-15 route string" and
+ * can never generate.
+ */
+describe("parseFlightFile — bare waypoint columns (no route string)", () => {
+  const csv = [
+    "dep,dest,acid,actype,rfl,dof,time,entry_fl,wp1,wp2,wp3",
+    "VHHH,OBBI,BCS547,A333,340,20250603,0007,340,AKSAG,MDY,APAGO",
+  ].join("\n");
+
+  // `fetchRouteSegments` (imported by flightFile.ts) memoises its result in a
+  // module-level variable, so each case here resets the module registry and
+  // re-imports fresh — otherwise the first case's fetch outcome would leak
+  // into the second regardless of how `fetch` is stubbed for it.
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it("builds a DCT-joined route from wp1/wp2/wp3 when the segment table is unreachable", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new Error("network down")),
+    );
+    const { parseFlightFile: parse } = await import("@/lib/flightFile");
+
+    const file = new File([csv], "track.csv");
+    const recs = await parse(file);
+
+    expect(recs).toHaveLength(1);
+    const r = recs[0];
+    expect(r.callsign).toBe("BCS547");
+    expect(r.adep).toBe("VHHH");
+    expect(r.ades).toBe("OBBI");
+    expect(r.rfl).toBe(340);
+    expect(r.route).toBe("DCT AKSAG DCT MDY DCT APAGO DCT");
+    // No combined eobt/etd/departure_time column — built from dof + time.
+    expect(r.eobt).toBe("2025-06-03T00:07");
+  });
+
+  it("leaves eobt undefined when dof or time is missing or malformed", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
+    const { parseFlightFile: parse } = await import("@/lib/flightFile");
+
+    const noTime = [
+      "dep,dest,acid,actype,rfl,dof,wp1",
+      "VHHH,OBBI,BCS547,A333,340,20250603,AKSAG",
+    ].join("\n");
+    const recs = await parse(new File([noTime], "track.csv"));
+    expect(recs[0].eobt).toBeUndefined();
+  });
+
+  it("labels a span with its real ATS route designator when the published segment table joins the two fixes", async () => {
+    const segments: RouteSegmentFile = {
+      source: "test",
+      validFrom: "",
+      validTo: "",
+      segments: [
+        {
+          route: "A599",
+          from: "AKSAG",
+          to: "MDY",
+          direction: "BOTH",
+          lowerFt: null,
+          upperFt: null,
+          lengthNm: null,
+        },
+        // MDY-APAGO is deliberately absent: that span should stay DCT.
+      ],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, json: async () => segments }),
+    );
+    const { parseFlightFile: parse } = await import("@/lib/flightFile");
+
+    const file = new File([csv], "track.csv");
+    const recs = await parse(file);
+
+    expect(recs[0].route).toBe("AKSAG A599 MDY DCT APAGO");
+  });
+});
+
+describe("parseFlightFile — entry_fl (transit level)", () => {
+  it("reads entry_fl as the transit level, and treats 0 as 'from the ground'", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
+    const { parseFlightFile: parse } = await import("@/lib/flightFile");
+    const csv = [
+      "dep,dest,acid,actype,rfl,dof,time,entry_fl,wp1,wp2",
+      "OERK,ZSPD,CES270,A332,350,20250603,0002,350,CHILA,LSO",
+      "VYMD,VYTL,UBZ1226,AT76,0,20250603,0100,0,VYMD,VYTL",
+    ].join("\n");
+    const recs = await parse(new File([csv], "track.csv"));
+    expect(recs[0].entryFl).toBe(350);
+    expect(recs[1].entryFl).toBeUndefined();
+    vi.unstubAllGlobals();
+    vi.resetModules();
   });
 });

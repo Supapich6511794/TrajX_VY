@@ -24,6 +24,11 @@
  */
 
 import type { RouteWaypoint, TrajectoryPoint } from "@/lib/trajectory/types";
+import {
+  fetchRouteSegments,
+  type RouteSegment,
+} from "@/lib/pdr/airwayDirection";
+import { matchAtsRoute } from "@/lib/routeMatch";
 
 /** A full 4D trajectory recovered from an uploaded export, so it can be shown
  *  AS-IS (no regeneration). Present only when the file carried per-point samples
@@ -47,6 +52,11 @@ export interface FlightRecord {
    *  is read back so a filed speed survives the round trip — and because the
    *  departure-separation check compares filed speeds (Doc 4444 §5.6.2). */
   gsKt?: number;
+  /** TRANSIT level (hundreds of ft): the flight is already at this level when
+   *  it reaches its first fix and is only passing through — from a track/FPL
+   *  export's `entry_fl`. Absent (or 0 in the file) = an ordinary flight that
+   *  starts on the ground. */
+  entryFl?: number;
   /** Item-15 style route string. */
   route?: string;
   /** SID name spliced at ADEP / STAR name spliced at ADES (optional). */
@@ -116,6 +126,56 @@ function numOrUndef(raw: unknown): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+/**
+ * `dof` (YYYYMMDD) + `time` (HHMM, or HH:MM) combined into the project's
+ * naive-UTC EOBT shape, "YYYY-MM-DDTHH:mm" — the form a track/FPL export
+ * carries when it has no single combined `eobt`/`etd`/`departure_time`
+ * column, just a date-of-flight and a time-of-day. Undefined when either
+ * piece is missing or doesn't parse, so a malformed pair never produces a
+ * bogus EOBT that silently misdates the flight.
+ */
+function eobtFromDofTime(o: Record<string, unknown>): string | undefined {
+  const keys = Object.keys(o);
+  const dofKey = keys.find((k) => k.toLowerCase() === "dof");
+  const timeKey = keys.find((k) => k.toLowerCase() === "time");
+  const dof = dofKey != null ? String(o[dofKey] ?? "").trim() : "";
+  const time = timeKey != null ? String(o[timeKey] ?? "").trim() : "";
+  const d = dof.match(/^(\d{4})(\d{2})(\d{2})$/);
+  const t = time.match(/^(\d{2}):?(\d{2})$/);
+  if (!d || !t) return undefined;
+  return `${d[1]}-${d[2]}-${d[3]}T${t[1]}:${t[2]}`;
+}
+
+/**
+ * A bare waypoint chain (`wp1`, `wp2`, `wp3`, …/`wp10` — no Item-15 route
+ * string) as a DCT-joined route, e.g. "DCT AKSAG DCT MDY DCT APAGO DCT".
+ *
+ * Some sources (a track/FPL export re-filed from surveillance, rather than a
+ * real filed plan) carry only the crossing fixes, never a route string. DCT
+ * everywhere is a placeholder, not a claim about how the flight is really
+ * connected — `upgradeDctRoutes` below replaces spans that a published ATS
+ * route actually joins, once the segment table is fetched. Stops at the
+ * first missing/blank `wpN`, since a padded triple (`wp3` blank when only two
+ * fixes are known) should not produce a trailing "DCT DCT".
+ */
+function wpRouteFrom(o: Record<string, unknown>): string | undefined {
+  const keys = Object.keys(o);
+  const wps: string[] = [];
+  for (let i = 1; i <= 20; i++) {
+    const hit = keys.find((k) => k.toLowerCase() === `wp${i}`);
+    const v = hit != null ? o[hit] : undefined;
+    if (v == null || String(v).trim() === "") break;
+    wps.push(String(v).trim().toUpperCase());
+  }
+  return wps.length > 0 ? `DCT ${wps.join(" DCT ")} DCT` : undefined;
+}
+
+/** A level of 0 means "on the ground", not a level — drop it. */
+function positiveOrUndef(raw: unknown): number | undefined {
+  const n = numOrUndef(raw);
+  return n != null && n > 0 ? n : undefined;
+}
+
 function fromObject(o: Record<string, unknown>): FlightRecord {
   const get = (...keys: string[]) => {
     for (const k of keys) {
@@ -130,10 +190,11 @@ function fromObject(o: Record<string, unknown>): FlightRecord {
     actype: get("actype", "aircraft_type", "aircraft", "type")?.toUpperCase(),
     adep: get("adep", "dep", "origin")?.toUpperCase(),
     ades: get("ades", "des", "dest", "destination")?.toUpperCase(),
-    eobt: normEobt(get("eobt", "etd", "departure_time")),
+    eobt: normEobt(get("eobt", "etd", "departure_time")) ?? eobtFromDofTime(o),
     rfl: numOrUndef(get("rfl", "fl", "level")),
     gsKt: numOrUndef(get("gs", "gs_kt", "ground_speed", "speed_kt")),
-    route: get("route", "route_string", "item15"),
+    entryFl: positiveOrUndef(get("entry_fl", "entryfl", "entry_level")),
+    route: get("route", "route_string", "item15") ?? wpRouteFrom(o),
     sid: get("sid", "sid_name")?.toUpperCase(),
     star: get("star", "star_name")?.toUpperCase(),
     approach: get("approach", "iap", "approach_name")?.toUpperCase(),
@@ -521,6 +582,44 @@ function parseGeojson(obj: unknown): FlightRecord[] {
   return mergeSameFlightRoutes(records);
 }
 
+/** True for exactly the shape `wpRouteFrom` produces — every other token is
+ *  the literal "DCT" — so a route the user (or another source) typed with a
+ *  real DCT leg is never touched. */
+const DCT_ONLY_RE = /^DCT( [A-Z0-9]+ DCT)+$/;
+
+/**
+ * Replace a `wpRouteFrom` route with the ATS route(s) that actually connect
+ * its fixes, per the published segment table (`route_segments.json`, AIXM
+ * ENR 3) — see `matchAtsRoute` for how a pair of fixes is matched (not just
+ * directly-adjacent spans: the whole network is walked, and a multi-route
+ * path collapses to one span per route, e.g. "APAGO Y8 AKSAG" rather than
+ * naming Y8 once per intermediate fix it happens to pass through). A hop the
+ * network genuinely doesn't connect (or only against a one-way segment's
+ * direction) stays DCT for that span.
+ *
+ * A network failure (no segment table reachable) leaves every route as
+ * plain DCT rather than throwing — the import still succeeds, just without
+ * the airway labels.
+ */
+async function upgradeDctRoutes(
+  records: FlightRecord[],
+): Promise<FlightRecord[]> {
+  if (!records.some((r) => r.route && DCT_ONLY_RE.test(r.route))) {
+    return records;
+  }
+  let segments: RouteSegment[];
+  try {
+    segments = (await fetchRouteSegments()).segments;
+  } catch {
+    return records;
+  }
+  return records.map((r) => {
+    if (!r.route || !DCT_ONLY_RE.test(r.route)) return r;
+    const fixes = r.route.split(" ").filter((_, i) => i % 2 === 1);
+    return { ...r, route: matchAtsRoute(fixes, segments) };
+  });
+}
+
 /**
  * Parse one uploaded file. Resolves to every flight record found (CSV/JSON
  * arrays may hold many; GeoJSON yields one route).
@@ -530,7 +629,10 @@ export async function parseFlightFile(file: File): Promise<FlightRecord[]> {
   const name = file.name.toLowerCase();
 
   if (name.endsWith(".csv")) {
-    return isTrajectoryCsv(text) ? parseTrajectoryCsv(text) : parseCsv(text);
+    const records = isTrajectoryCsv(text)
+      ? parseTrajectoryCsv(text)
+      : parseCsv(text);
+    return upgradeDctRoutes(records);
   }
 
   let json: unknown;

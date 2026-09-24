@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   autoResolveDepartures,
+  departsFromKnownField,
   departureRequirement,
   eobtToMs,
   initialBearingDeg,
@@ -469,5 +470,21 @@ describe("EOBT helpers", () => {
   it("quotes whole intervals in minutes", () => {
     expect(fmtInterval(120)).toBe("2 min");
     expect(fmtInterval(90)).toBe("90 s");
+  });
+});
+
+describe("departsFromKnownField", () => {
+  const fields = new Set(["VYYY", "VYMD"]);
+  it("counts a plan that takes off from an aerodrome the system knows", () => {
+    expect(departsFromKnownField({ adep: "vyyy" }, fields)).toBe(true);
+  });
+  it("does not count a flight only passing through, even from a known field", () => {
+    expect(departsFromKnownField({ adep: "VYYY", entryFl: 350 }, fields)).toBe(false);
+  });
+  it("does not count a departure from a foreign field this system has no coordinates for", () => {
+    expect(departsFromKnownField({ adep: "VHHH" }, fields)).toBe(false);
+  });
+  it("drops nothing while the aerodrome list is still loading", () => {
+    expect(departsFromKnownField({ adep: "VHHH" }, new Set())).toBe(true);
   });
 });

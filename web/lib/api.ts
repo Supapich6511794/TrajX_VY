@@ -36,6 +36,10 @@ export interface GenerateInput {
   gs_kt: number;
   /** Requested Flight Level in hundreds of feet (FL330 → 330). */
   rfl: number;
+  /** TRANSIT level (hundreds of ft): already at this level at the first fix,
+   *  only passing through — no climb from the ground. Omit for an ordinary
+   *  flight. */
+  entry_fl?: number;
   /** Surveillance Profile: seconds between emitted track points (and the
    *  UTC timestamps in exports). 5 = en-route radar (default), 4 = CAT62
    *  terminal, 1 = high-rate. Output density only — flight time/validation

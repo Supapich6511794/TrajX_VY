@@ -365,6 +365,30 @@ export function resolvedEobtMs(
 }
 
 /**
+ * Does this plan actually take off from the aerodrome it names?
+ *
+ * The departure check is a tower's: two aircraft cleared off the same field a
+ * minute apart. It only means something for a plan that starts on the ground at
+ * a field this system knows. A flight that is merely PASSING THROUGH the area
+ * (`entryFl` set) is at level when it arrives, and one whose ADEP has no
+ * coordinates here is departing a foreign field that is not this tower's
+ * business — for both, the EOBT is a time they cross into the area, not an
+ * off-block time, so "two departures from VHHH 40 s apart" is not an event that
+ * occurs. Counting them buried the real departures under dozens of false ones.
+ *
+ * `knownFields` empty means the aerodrome list has not loaded yet; nothing is
+ * dropped on a guess in that case.
+ */
+export function departsFromKnownField(
+  plan: { adep: string; entryFl?: number },
+  knownFields: { readonly size: number; has(icao: string): boolean },
+): boolean {
+  if (plan.entryFl) return false;
+  if (knownFields.size === 0) return true;
+  return knownFields.has(plan.adep.trim().toUpperCase());
+}
+
+/**
  * Every pair of filed departures that cannot both be cleared as filed.
  *
  * Grouped by aerodrome, then walked in take-off order so each flight is checked

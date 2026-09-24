@@ -374,6 +374,64 @@ describe("planResolutions — blocked-by diagnostics", () => {
   });
 });
 
+// Resolution spec §5/§9/§13 Test 2: a candidate that resolves the primary
+// conflict but creates a new one with a third aircraft must be rejected AND
+// explained — not just silently dropped like every other failed candidate.
+describe("planResolutions — rejected-candidate audit trail", () => {
+  it("records a candidate that clears the pair but creates a secondary conflict", () => {
+    const { flights, trajById } = headOnWithShadows([{ id: "SHADOW", altFt: 37000 }]);
+    const [conflict] = scanFlightPlanConflicts(flights, cfg);
+    const res = planResolutions({ conflict, flights, trajById, simT: 0, cfg, restricted: [] });
+
+    const secondary = res.rejected.filter((r) => r.reason === "secondary-conflict");
+    expect(secondary.length).toBeGreaterThan(0);
+    // Every secondary-conflict rejection names WHO it would newly conflict
+    // with, and that aircraft is the third party (SHADOW), never the
+    // original conflict partner.
+    for (const r of secondary) {
+      expect(r.conflictWith?.callsign).toBe("SHADOW");
+      expect([conflict.a, conflict.b]).not.toContain(r.conflictWith?.id);
+    }
+  });
+
+  it("distinguishes 'still conflicts with the original partner' from 'secondary conflict'", () => {
+    // No shadow aircraft here — every rejection (if any) must be about the
+    // pair itself, never mislabelled as a secondary conflict with a third
+    // party that doesn't exist in this scenario.
+    const { flights, trajById } = headOn();
+    const [conflict] = scanFlightPlanConflicts(flights, cfg);
+    const res = planResolutions({ conflict, flights, trajById, simT: 0, cfg, restricted: [] });
+    for (const r of res.rejected) {
+      expect(r.reason).not.toBe("secondary-conflict");
+    }
+  });
+
+  it("keeps the rejected trail out of the plain generator's output (additive only)", () => {
+    const { flights, trajById } = headOnWithShadows([{ id: "SHADOW", altFt: 37000 }]);
+    const [conflict] = scanFlightPlanConflicts(flights, cfg);
+    const args = { conflict, flights, trajById, simT: 0, cfg, restricted: [] };
+    const rich = planResolutions(args);
+    const plain = generatePlanResolutions(args);
+    expect(rich.rejected.length).toBeGreaterThan(0);
+    expect(plain.map((r) => r.instruction)).toEqual(
+      rich.resolutions.map((r) => r.instruction),
+    );
+  });
+
+  it("every rejected candidate carries a human-readable instruction and detail", () => {
+    const { flights, trajById } = headOnWithShadows([{ id: "SHADOW", altFt: 37000 }]);
+    const [conflict] = scanFlightPlanConflicts(flights, cfg);
+    const res = planResolutions({ conflict, flights, trajById, simT: 0, cfg, restricted: [] });
+    expect(res.rejected.length).toBeGreaterThan(0);
+    for (const r of res.rejected) {
+      expect(r.instruction).not.toBe("");
+      expect(r.detail).not.toBe("");
+      expect(r.target).toBeTruthy();
+      expect(r.targetCallsign).toBeTruthy();
+    }
+  });
+});
+
 describe("planResolutions — wide fallback envelope", () => {
   // Boxed in vertically: co-routed traffic sits at every semicircular-legal
   // level within ±2000 of the pair (eastbound THA1 may use odd → FL370/FL330,

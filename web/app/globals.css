@@ -9731,6 +9731,77 @@ select.fp-input {
   font-size: 9px;
   letter-spacing: 0.3px;
 }
+/* Rejected-candidate audit trail — collapsed <details>, so it never competes
+   with the cards above it for attention. */
+.cdr-adv-rejected {
+  margin-top: 8px;
+}
+.cdr-adv-rejected summary {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.cdr-adv-rejected summary:hover {
+  color: var(--text-dim);
+}
+.cdr-rejected-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cdr-rejected-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 5px 7px;
+  border-radius: 6px;
+  background: var(--inset);
+  border: 1px solid var(--hairline);
+  font-size: 11px;
+}
+.cdr-rejected-badge {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+/* Secondary reads as a distinct kind of problem from every other rejection —
+   this maneuver would CREATE a new conflict, not just fail to fix the old
+   one — so it alone gets the "danger" red rather than the neutral/amber the
+   other reasons share. */
+.cdr-rejected-badge.reason-secondary-conflict {
+  background: #ef444422;
+  color: #fca5a5;
+}
+.cdr-rejected-badge.reason-unresolved-primary {
+  background: #f59e0b22;
+  color: #fcd9a0;
+}
+.cdr-rejected-badge.reason-constraint-reject {
+  background: #64748b22;
+  color: var(--text-dim);
+}
+.cdr-rejected-badge.reason-arrival-protected {
+  background: #64748b22;
+  color: var(--text-dim);
+}
+.cdr-rejected-text {
+  color: var(--text);
+  line-height: 1.4;
+}
+.cdr-rejected-detail {
+  display: block;
+  color: var(--muted);
+  font-size: 10.5px;
+}
 .cdr-card {
   background: var(--inset);
   border: 1px solid var(--hairline);

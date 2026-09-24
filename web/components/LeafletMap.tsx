@@ -2015,6 +2015,7 @@ export default function LeafletMap({
           attribution={tiles.attribution}
           url={tiles.url}
           className={tiles.className}
+          maxNativeZoom={tiles.maxNativeZoom}
         />
       )}
       {/* A tile source may carry a second overlay layer (Esri splits place
@@ -2025,6 +2026,7 @@ export default function LeafletMap({
           key={basemap + "-labels"}
           url={tiles.labelUrl}
           className={tiles.labelClassName}
+          maxNativeZoom={tiles.maxNativeZoom}
         />
       )}
 

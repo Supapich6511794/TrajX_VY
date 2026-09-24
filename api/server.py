@@ -106,10 +106,12 @@ from trajectory_sim.performance import UnknownAircraftPerformance
 # Project root = parent of this `api/` package.
 _ROOT = Path(__file__).resolve().parent.parent
 _DATA = _ROOT / "web" / "public" / "data"
-# Thai navdata now comes from the CAAT eAIP, parsed once per AIRAC cycle
-# into this JSON cache by scripts/ingest_aip.py (waypoints + airways).
-# Replaces the hand-curated VTPStoVTBS.csv / airway_waypoint.geojson.
-_AIP_PATH = _DATA / "aip_VT.json"
+# VY (Myanmar) navdata, built once per AIRAC cycle from the AIXM 5.1.1
+# export by scripts/ingest_aixm_waypoints.py (waypoints + airways +
+# airports, same shape as the retired Thai aip_VT.json this replaces — see
+# that script's docstring for why the coordinates couldn't come from
+# anywhere else already in the pipeline).
+_AIP_PATH = _DATA / "aip_VY.json"
 _OUT_DIR = _ROOT / "api" / "_outputs"
 _OUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -178,6 +180,14 @@ class GenerateRequest(BaseModel):
     # Requested Flight Level in hundreds of feet (FL330 -> 330). Drives
     # the Phase 2 vertical profile (altitude + climb/cruise/descent).
     rfl: int = 330
+    # TRANSIT level, in hundreds of feet. Set for a flight that is only passing
+    # through the area: already at this level when it reaches the FIRST fix of
+    # the route, and (unless it lands at an aerodrome the AIP knows) still at it
+    # at the last. Without it every route starts on the ground at its first fix
+    # and climbs — which for an FIR-crossing track filed only by its crossing
+    # fixes puts an aircraft at 0 ft on top of every other flight that enters at
+    # the same fix. None/0 = an ordinary flight from the ground (unchanged).
+    entry_fl: int | None = None
     # 0-based index when several routes are flown under the same
     # (callsign, EOBT). Used to suffix the flight_key (e.g. "_R2") so
     # each file/PK is unique; the Callsign column itself stays the
@@ -2362,6 +2372,28 @@ def _generate_one(req: GenerateRequest) -> dict[str, object]:
     adep = req.adep.strip().upper()
     ades = req.ades.strip().upper()
     actype = req.actype.strip().upper() or _DEFAULT_ACTYPE
+
+    # Transit flight: starts at its entry level (capped by what the airframe can
+    # actually reach) instead of on the ground, and ends at that level too unless
+    # it lands somewhere the AIP has coordinates for — then it descends to that
+    # aerodrome as usual. `None` for both = the ordinary ground-to-ground flight.
+    #
+    # An aerodrome with no coordinates (a foreign field) can't be where the route
+    # starts or ends: the route's first / last fix then stands in for the point the
+    # aircraft crosses into / out of the area, so it is at level there — not on the
+    # ground at a fix in mid-air. That holds with or without an explicit
+    # `entry_fl`, which only says WHICH level the aircraft entered at.
+    transit_start_ft: float | None = None
+    transit_end_ft: float | None = None
+    _ceiling_ft = reachable_ceiling_ft(actype)
+    _level_ft = min(float(req.entry_fl or req.rfl) * 100.0, _ceiling_ft)
+    if req.entry_fl and req.entry_fl > 0:
+        transit_start_ft = min(float(req.entry_fl) * 100.0, _ceiling_ft)
+    elif _airport_ll(adep) is None:
+        transit_start_ft = _level_ft
+    if _airport_ll(ades) is None:
+        transit_end_ft = transit_start_ft if transit_start_ft is not None else _level_ft
+
     if not adep or not ades:
         raise HTTPException(400, "ADEP and ADES are required.")
     if adep == ades:
@@ -2393,6 +2425,13 @@ def _generate_one(req: GenerateRequest) -> dict[str, object]:
             if ident in index:
                 lat, lon = index[ident]
                 route_pts.append((ident, lat, lon))
+            elif (ad_ll := _airport_ll(ident)) is not None:
+                # An aerodrome named IN the route ("VYMD DCT VYTL" — a short
+                # domestic hop filed with no en-route fix at all). It is not a
+                # significant point, so the fix index has never held it, but the
+                # AIP knows where it is; dropping it left such a route with
+                # nothing to fly.
+                route_pts.append((ident, ad_ll[0], ad_ll[1]))
             else:
                 missing.append(ident)
         if missing:
@@ -2502,7 +2541,13 @@ def _generate_one(req: GenerateRequest) -> dict[str, object]:
                 # Phase 2 acceptance: cruise FL must be an exact match to
                 # the FPL-requested level — read it from the dataclass,
                 # not from the raw int the browser sent.
-                rfl=fpl.rfl,
+                rfl=(
+                    fpl.rfl
+                    if transit_start_ft is None
+                    else int(round(transit_start_ft / 100.0))
+                ),
+                dep_elev_ft=transit_start_ft,
+                des_elev_ft=transit_end_ft,
                 flight_key_suffix=flight_key_suffix,
                 # Surveillance Profile cadence chosen in the UI (default 5 s).
                 output_every_s=req.output_every_s,
@@ -2630,8 +2675,18 @@ def _generate_one(req: GenerateRequest) -> dict[str, object]:
         distance_nm=distance_nm,
         aircraft_type=actype,
         cruise_alt_ft=_peak_alt_ft,
-        dep_elev_ft=field_elevation_ft(adep),
-        arr_elev_ft=field_elevation_ft(ades),
+        # A transit flight has no climb / descent to time — validate it as the
+        # level cruise it is, not against a ground-to-ground estimate.
+        dep_elev_ft=(
+            transit_start_ft
+            if transit_start_ft is not None
+            else field_elevation_ft(adep)
+        ),
+        arr_elev_ft=(
+            transit_end_ft
+            if transit_end_ft is not None
+            else field_elevation_ft(ades)
+        ),
     )
     validation = _val.to_dict() if _val is not None else None
 

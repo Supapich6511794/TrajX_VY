@@ -197,15 +197,92 @@ export interface Blocker {
   tightestNm: number;
 }
 
+/** Why one candidate did not make it into `resolutions`. Distinct from
+ *  `Blocker`, which is an aggregate ("SHADOW blocked 4 candidates"): this is
+ *  the per-candidate audit trail — which maneuver was tried, and the specific
+ *  reason it failed — so a rejection can be explained rather than just
+ *  counted. See `evaluateConstraints`'s own doc comment for why "the pair
+ *  stays in conflict" and "a third aircraft would newly conflict" are kept as
+ *  two distinct reasons rather than both called "secondary conflict". */
+export type RejectionReason =
+  /** A lateral fix (heading/route) this close to the arrival would leave no
+   *  route left to rejoin — not tried against traffic at all. */
+  | "arrival-protected"
+  /** Still conflicts with the ORIGINAL partner — this maneuver did not do
+   *  the job it was proposed for. Not a secondary/cascading conflict. */
+  | "unresolved-primary"
+  /** Clears the original pair but would newly lose separation with a THIRD
+   *  aircraft — a true secondary conflict per §5 of the resolution spec. */
+  | "secondary-conflict"
+  /** Cleared every aircraft (pair + third parties) but failed a hard
+   *  constraint — airspace, level band, speed/altitude envelope, etc. */
+  | "constraint-reject";
+
+export interface RejectedCandidate {
+  type: ManeuverType;
+  target: string; // flightKey
+  targetCallsign: string;
+  /** Same shape as `PlanResolution.instruction` — "Turn right 20°" etc. */
+  instruction: string;
+  reason: RejectionReason;
+  detail: string;
+  /** Set for "unresolved-primary" / "secondary-conflict": who it's still or
+   *  newly in conflict with. */
+  conflictWith?: { id: string; callsign: string; dCpaNm: number };
+}
+
 export interface PlanAdvisoryResult {
   resolutions: PlanResolution[];
   /** Who blocked the rejected candidates, worst offender first. Populated even
    *  when `resolutions` is non-empty (some candidates always get blocked), but
    *  it's only worth SHOWING when the list came back empty. */
   blockers: Blocker[];
+  /** Every candidate that was tried and did NOT survive, with why — the full
+   *  audit trail `blockers` only aggregates. From whichever envelope pass
+   *  produced the final `resolutions` (the normal one, or the wide fallback
+   *  when that came back empty), matching how `blockers` is scoped. */
+  rejected: RejectedCandidate[];
   /** True when nothing cleared inside the normal envelope and the results came
    *  from the wider fallback search — the maneuvers are bigger than usual. */
   widened: boolean;
+}
+
+/** Gated behind `console.debug` (hidden under the default/"Info" console
+ *  filter in Chromium and most browsers) so the trace is available for
+ *  troubleshooting a specific resolution without spamming normal use. Two
+ *  entry points rather than one union-typed one — accept/reject carry
+ *  different data, and a shared type guard on that data is easier to get
+ *  wrong than just calling the right function at the call site.
+ *
+ *  Off by default: `searchEnvelope` tries dozens of candidates per conflict
+ *  (every heading/speed/level/route/hold option in the envelope), so with
+ *  this always on, opening one conflict in a busy plan floods the console —
+ *  `console.debug` being hidden under Chromium's default "Info" filter isn't
+ *  enough on its own (Node/CI/test runners show every level). Turn it on
+ *  with `setDebugLogging(true)` when actually troubleshooting one
+ *  resolution. */
+export let debugLogging = false;
+export function setDebugLogging(on: boolean): void {
+  debugLogging = on;
+}
+
+function logAccepted(conflict: PlanConflict, r: PlanResolution): void {
+  if (!debugLogging) return;
+  console.debug(
+    `[ConflictResolution] Primary: ${conflict.aCallsign}-${conflict.bCallsign}\n` +
+      `[Candidate] ${r.targetCallsign} ${r.instruction}\n` +
+      `[ForwardSimulation] Primary conflict: RESOLVED (${r.origDCpaNm.toFixed(1)} -> ${r.newDCpaNm.toFixed(1)} NM)\n` +
+      `[Candidate] VALID · cost ${r.cost.toFixed(1)}`,
+  );
+}
+function logRejected(conflict: PlanConflict, r: RejectedCandidate): void {
+  if (!debugLogging) return;
+  console.debug(
+    `[ConflictResolution] Primary: ${conflict.aCallsign}-${conflict.bCallsign}\n` +
+      `[Candidate] ${r.targetCallsign} ${r.instruction}\n` +
+      `[${r.reason === "secondary-conflict" ? "SecondaryCheck" : "ForwardSimulation"}] ${r.detail}\n` +
+      `[Candidate] REJECTED · ${r.reason}`,
+  );
 }
 
 /** Generate ranked, validated resolutions for a conflict, plus the diagnostics
@@ -214,16 +291,16 @@ export interface PlanAdvisoryResult {
  *  hard conflicts. */
 export function planResolutions(args: PlanAdvisoryArgs): PlanAdvisoryResult {
   const blocked = new Map<string, Blocker>();
-  let resolutions = searchEnvelope(args, NORMAL_ENVELOPE, blocked);
+  let { resolutions, rejected } = searchEnvelope(args, NORMAL_ENVELOPE, blocked);
   let widened = false;
   if (resolutions.length === 0) {
     blocked.clear(); // the wide pass re-reports whoever is really in the way
-    resolutions = searchEnvelope(args, WIDE_ENVELOPE, blocked);
+    ({ resolutions, rejected } = searchEnvelope(args, WIDE_ENVELOPE, blocked));
     widened = resolutions.length > 0;
     for (const r of resolutions) r.widened = true;
   }
   const blockers = [...blocked.values()].sort((a, b) => b.count - a.count);
-  return { resolutions, blockers, widened };
+  return { resolutions, blockers, rejected, widened };
 }
 
 /** Ranked, validated resolutions for a conflict (the diagnostics are dropped —
@@ -236,10 +313,11 @@ function searchEnvelope(
   args: PlanAdvisoryArgs,
   env: Envelope,
   blocked: Map<string, Blocker>,
-): PlanResolution[] {
+): { resolutions: PlanResolution[]; rejected: RejectedCandidate[] } {
   const { conflict, flights, trajById, simT, cfg, restricted, holdings, topN = 5 } = args;
   const need = horizontalMinimumNm(cfg) + cfg.buffer.horizontalNm;
   const out: PlanResolution[] = [];
+  const rejected: RejectedCandidate[] = [];
 
   // Overtake (in-trail catch-up): the two tracks are nearly parallel, so a turn
   // or direct-to only DELAYS the merge — the faster jet rejoins and re-closes.
@@ -301,7 +379,32 @@ function searchEnvelope(
         bufferSec: cfg.turnSafetyBufferSec,
       });
 
-    /** Build + validate one candidate; returns a PlanResolution or null. */
+    /** A plain label for a candidate that never reaches its call site's own
+     *  (more polished) `r.instruction` — reject paths return before that line
+     *  runs, so the audit trail needs its own, good-enough rendering. */
+    const briefInstruction = (
+      type: ManeuverType,
+      value: number,
+      resolution: ManeuverResolution,
+    ): string => {
+      switch (type) {
+        case "heading":
+          return `Turn ${value >= 0 ? "right" : "left"} ${Math.abs(value)}°`;
+        case "flightlevel":
+          return `${value > 0 ? "Climb" : "Descend"} FL${Math.round((curAlt + value) / 100)}`;
+        case "speed":
+          return `${value < 0 ? "Reduce" : "Increase"} ${Math.abs(value)} kt`;
+        case "route":
+          return `Direct ${resolution.directTo?.ident ?? "fix"}`;
+        case "hold":
+          return `Hold at ${resolution.hold?.ident ?? "fix"}`;
+      }
+    };
+
+    /** Build + validate one candidate; returns a PlanResolution or null.
+     *  Every rejection is also recorded in `rejected` (with why) and logged —
+     *  §5/§9/§14 of the resolution spec: a candidate that fails must say why,
+     *  not just vanish. */
     const evaluate = (
       type: ManeuverType,
       resolution: ManeuverResolution,
@@ -311,13 +414,35 @@ function searchEnvelope(
       timing: ManeuverTiming,
       trackDeg: number,
     ): PlanResolution | null => {
+      const reject = (
+        reason: RejectionReason,
+        detail: string,
+        conflictWith?: RejectedCandidate["conflictWith"],
+      ): null => {
+        const r: RejectedCandidate = {
+          type,
+          target: targetId,
+          targetCallsign,
+          instruction: briefInstruction(type, value, resolution),
+          reason,
+          detail,
+          conflictWith,
+        };
+        rejected.push(r);
+        logRejected(conflict, r);
+        return null;
+      };
+
       // Lateral fixes are off the table once the flight is into its arrival.
       if (
         (type === "heading" || type === "route") &&
         timing.tMan + timing.deviationSec + timing.rejoinSec >
           origDur - APPROACH_PROTECT_SEC
       ) {
-        return null;
+        return reject(
+          "arrival-protected",
+          "This close to the arrival, a lateral maneuver would leave no route left to rejoin.",
+        );
       }
       const modified = applyManeuver(traj, { type, resolution }, timing.tMan, {
         deviationSec: timing.deviationSec,
@@ -335,13 +460,16 @@ function searchEnvelope(
       let offender: PlanFlight | undefined; // third party, tightest first
       let tightestNm = Infinity; // against anything, for the blocker readout
       let thirdTightestNm = Infinity;
+      let intruderCpaNm: number | undefined; // the ORIGINAL pair's new CPA, if still tight
       let clear = true;
       for (const o of others) {
         const c = pairConflict(afterFlight, o, cfg);
         if (!c) continue;
         clear = false;
         if (c.dCpaNm < tightestNm) tightestNm = c.dCpaNm;
-        if (o.id !== intruderId && c.dCpaNm < thirdTightestNm) {
+        if (o.id === intruderId) {
+          intruderCpaNm = c.dCpaNm;
+        } else if (c.dCpaNm < thirdTightestNm) {
           thirdTightestNm = c.dCpaNm;
           offender = o;
         }
@@ -365,8 +493,27 @@ function searchEnvelope(
           b.count += 1;
           b.tightestNm = Math.min(b.tightestNm, thirdTightestNm);
           blocked.set(offender.id, b);
+          // Clears the original pair (or the loop would report intruderCpaNm
+          // below instead) but newly conflicts with a THIRD aircraft — a real
+          // secondary conflict per §5 of the resolution spec, distinct from
+          // the pair simply not being resolved.
+          return reject(
+            "secondary-conflict",
+            `Would newly lose separation with ${offender.callsign} (CPA ${thirdTightestNm.toFixed(1)} NM < ${need} NM).`,
+            { id: offender.id, callsign: offender.callsign, dCpaNm: thirdTightestNm },
+          );
         }
-        return null;
+        // No third party involved — this maneuver simply did not resolve the
+        // conflict it was proposed for.
+        return reject(
+          "unresolved-primary",
+          `Still conflicts with ${intrFlight.callsign} — CPA ${(intruderCpaNm ?? conflict.dCpaNm).toFixed(1)} NM < ${need} NM.`,
+          {
+            id: intruderId,
+            callsign: intrFlight.callsign,
+            dCpaNm: intruderCpaNm ?? conflict.dCpaNm,
+          },
+        );
       }
 
       // Separation to the conflict partner (for the before→after readout).
@@ -392,7 +539,13 @@ function searchEnvelope(
         // Only reached when the candidate is clear of everything, pair included.
         recheck: { clear: true, minSepNm: newDCpaNm },
       });
-      if (report.verdict === "reject") return null;
+      if (report.verdict === "reject") {
+        const failed = report.checks.filter((c) => c.status === "fail");
+        return reject(
+          "constraint-reject",
+          failed.map((c) => c.label).join("; ") || "Failed a hard constraint.",
+        );
+      }
 
       const newDur = totalSeconds(modified.points);
       const extraTimeSec = Math.max(0, newDur - origDur);
@@ -451,6 +604,7 @@ function searchEnvelope(
           r.instruction = `Turn ${side} ${deg}°`;
           r.reason = `Smallest ${side} turn that clears; a ${cfg.bankAngleDeg}° fly-by turn started ~${Math.max(0, lead)} min before CPA, then rejoins the route.`;
           out.push(r);
+          logAccepted(conflict, r);
           break; // smallest per side is enough
         }
       }
@@ -469,6 +623,7 @@ function searchEnvelope(
         r.instruction = `${climb ? "Climb" : "Descend"} FL${targetAlt / 100}`;
         r.reason = `Keeps your route; ${climb ? "climb" : "descend"} for vertical separation.`;
         out.push(r);
+        logAccepted(conflict, r);
       }
     }
 
@@ -481,6 +636,7 @@ function searchEnvelope(
         r.instruction = `${delta < 0 ? "Reduce" : "Increase"} ${Math.abs(delta)} kt`;
         r.reason = `Re-times the crossing; no track or level change.`;
         out.push(r);
+        logAccepted(conflict, r);
       }
     }
 
@@ -513,6 +669,7 @@ function searchEnvelope(
         r.instruction = `Direct ${fix.ident}`;
         r.reason = `Proceed direct ${fix.ident}${r.extraDistanceNm < 1 ? " — shortens the route" : ""} and clears the conflict.`;
         out.push(r);
+        logAccepted(conflict, r);
       }
     }
 
@@ -572,6 +729,7 @@ function searchEnvelope(
           r.instruction = `Hold at ${h.ident}`;
           r.reason = `Fly one ${loopMin}-min ${h.turn === "R" ? "right" : "left"}-hand hold at ${h.ident} to delay ~${loopMin} min and open spacing (for an arrival merge a vector/level can't clear).`;
           out.push(r);
+          logAccepted(conflict, r);
         }
       }
     }
@@ -609,7 +767,7 @@ function searchEnvelope(
   for (const r of ranked) {
     r.score = Math.max(1, Math.min(100, Math.round((100 * (minCost + 1)) / (r.cost + 1))));
   }
-  return ranked;
+  return { resolutions: ranked, rejected };
 }
 
 /** Sample a flight's path with altitude over an absolute-time window. */

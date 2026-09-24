@@ -215,6 +215,8 @@ def build_flight_timeline(
     dep_runway: Optional[str] = None,
     ades_runway: Optional[str] = None,
     fix_indices: "Optional[Sequence[int]]" = None,
+    dep_elev_ft: Optional[float] = None,
+    des_elev_ft: Optional[float] = None,
 ) -> FlightTimeline:
     """Construct a variable-speed flight timeline from EOBT.
 
@@ -236,6 +238,13 @@ def build_flight_timeline(
             ``"RW21L"``) for the departure/arrival ends. When given, the
             profile starts/ends at that runway's AIP threshold elevation
             instead of the aerodrome field elevation. None ⇒ field elevation.
+        dep_elev_ft, des_elev_ft: Override the altitude the vertical profile
+            starts / ends at. Default ``None`` derives them from the aerodrome
+            (or runway threshold). A flight that is only PASSING THROUGH the
+            area — already at cruise when it reaches the first fix and still at
+            cruise at the last — sets both to its cruise level, which makes the
+            climb / descent zero-length instead of inventing a climb from the
+            ground at a fix that is nowhere near an aerodrome.
         fix_indices: Indices into ``waypoint_sequence`` that are real fixes.
             An extra sample is emitted as each of these is crossed (so the
             track lands exactly on every fix); the rest of the sequence — the
@@ -257,8 +266,16 @@ def build_flight_timeline(
     # Start the climb at the departure runway threshold and end the descent
     # at the arrival runway threshold (Thai AIP AD 2 elevations) when a
     # runway is known; otherwise fall back to the aerodrome field elevation.
-    dep_elev = runway_threshold_elevation_ft(adep, dep_runway)
-    des_elev = runway_threshold_elevation_ft(ades, ades_runway)
+    dep_elev = (
+        dep_elev_ft
+        if dep_elev_ft is not None
+        else runway_threshold_elevation_ft(adep, dep_runway)
+    )
+    des_elev = (
+        des_elev_ft
+        if des_elev_ft is not None
+        else runway_threshold_elevation_ft(ades, ades_runway)
+    )
 
     # Use cruise TAS as the first guess for total_time_s — only used to
     # bootstrap VerticalProfile.build, which itself caps cruise_alt to

@@ -218,13 +218,25 @@ export function climbCruiseDescentFt(opts: {
   depElevFt?: number;
   arrElevFt?: number;
   nmPerThousandFt?: number;
+  /** The route's FIRST point is not an aerodrome — a fix where the flight
+   *  crosses into the area — so the aircraft is already at `rflFt` there.
+   *  Without this the profile climbs from the ground at that fix, which for a
+   *  flight only passing through puts it under every low-level area for the
+   *  ~100 NM the phantom climb takes. */
+  startAtLevel?: boolean;
+  /** Likewise the last point: a fix the flight leaves the area at. */
+  endAtLevel?: boolean;
 }): (distNm: number, totalNm: number) => number {
   const grad = opts.nmPerThousandFt ?? 3;
   const dep = opts.depElevFt ?? 0;
   const arr = opts.arrElevFt ?? 0;
   return (distNm, totalNm) => {
-    const climbing = dep + (distNm / grad) * 1000;
-    const descending = arr + ((totalNm - distNm) / grad) * 1000;
+    const climbing = opts.startAtLevel
+      ? Infinity
+      : dep + (distNm / grad) * 1000;
+    const descending = opts.endAtLevel
+      ? Infinity
+      : arr + ((totalNm - distNm) / grad) * 1000;
     return Math.max(0, Math.min(opts.rflFt, climbing, descending));
   };
 }

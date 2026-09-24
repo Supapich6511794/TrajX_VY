@@ -75,6 +75,8 @@ def build_trajectory_gdf(
     clearance: str | None = None,
     fix_indices: "list[int] | None" = None,
     route_fixes: "list[tuple[str, float, float]] | None" = None,
+    dep_elev_ft: float | None = None,
+    des_elev_ft: float | None = None,
 ) -> gpd.GeoDataFrame:
     """Build a trajectory GeoDataFrame from a sequence of waypoints.
 
@@ -167,6 +169,9 @@ def build_trajectory_gdf(
             ades_runway=arr_rwy,
             # Which of the waypoints are fixes vs. turn-arc vertices.
             fix_indices=fix_indices,
+            # Start/end altitude override (a flight only passing through).
+            dep_elev_ft=dep_elev_ft,
+            des_elev_ft=des_elev_ft,
         )
         records = [
             {
@@ -231,8 +236,16 @@ def build_trajectory_gdf(
             total_time_s=total_time_s,
             rfl_ft=rfl * 100.0,
             aircraft_type=aircraft_type,
-            dep_elev_ft=runway_threshold_elevation_ft(adep, dep_rwy),
-            des_elev_ft=runway_threshold_elevation_ft(ades, arr_rwy),
+            dep_elev_ft=(
+                dep_elev_ft
+                if dep_elev_ft is not None
+                else runway_threshold_elevation_ft(adep, dep_rwy)
+            ),
+            des_elev_ft=(
+                des_elev_ft
+                if des_elev_ft is not None
+                else runway_threshold_elevation_ft(ades, arr_rwy)
+            ),
         )
 
     records: list[dict[str, object]] = []
