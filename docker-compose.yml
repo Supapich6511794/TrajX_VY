@@ -1,0 +1,36 @@
+# Run the whole stack locally:  docker compose up --build
+#   Web → http://localhost:3000   API → http://localhost:8000/api/health
+services:
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    image: trajx-api
+    ports:
+      - "8000:8000"
+    environment:
+      # Extra CORS origin (localhost:* is already allowed by api/server.py).
+      WEB_ORIGIN: ${WEB_ORIGIN:-}
+    volumes:
+      # Keep generated .gpkg/.csv/.geojson across container restarts.
+      - api_outputs:/app/api/_outputs
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./web
+      args:
+        # The BROWSER calls this URL, so it must be reachable from the host,
+        # not the docker-internal name (http://api:8000 would not resolve).
+        NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:8000}
+        NEXT_PUBLIC_CARTO_API_KEY: ${NEXT_PUBLIC_CARTO_API_KEY:-}
+    image: trajx-web
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  api_outputs:

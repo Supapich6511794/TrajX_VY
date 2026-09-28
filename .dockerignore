@@ -1,0 +1,28 @@
+# Build context for api/Dockerfile (repo root). Keep it small: only
+# requirements.txt, api/, trajectory_sim/ and web/public/data/ are needed.
+.git
+.github
+.claude
+.venv
+.vite
+.pytest_cache
+.coverage
+**/__pycache__
+**/*.py[cod]
+api/_outputs
+
+# Large local sources / reference docs
+*.pdf
+*.jpg
+*.csv
+!web/public/data/**/*.csv
+!trajectory_sim/**/*.csv
+aixm_export_*.xml
+aixm_export_*.xml.gz
+flight-playback-ui-reference
+
+# The web app has its own Dockerfile; the API only needs its static data
+web/*
+!web/public
+web/public/*
+!web/public/data
