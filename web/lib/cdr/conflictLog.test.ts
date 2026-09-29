@@ -46,8 +46,8 @@ function conflict(over: Partial<PlanConflict> = {}): PlanConflict {
     id: "A|B",
     a: "A",
     b: "B",
-    aCallsign: "THA100",
-    bCallsign: "TGW122",
+    aCallsign: "UBA100",
+    bCallsign: "MMA122",
     losStartAbsSec: 600,
     tCpaAbsSec: 660,
     dCpaNm: 2.1,
@@ -84,13 +84,13 @@ const FIX: AppliedFix = {
   a: "A",
   b: "B",
   target: "B",
-  targetCallsign: "TGW122",
+  targetCallsign: "MMA122",
   instruction: "Reduce 20 kt",
   appliedAtSec: 300,
   maneuverType: "speed",
   beforeSepNm: 2.1,
   afterSepNm: 6.4,
-  sector: "3N/Bangkok CTR",
+  sector: "MINGALADON CTR",
 };
 
 describe("geometryOf", () => {
@@ -107,8 +107,8 @@ describe("updateConflictLog", () => {
     const log = fold([], [conflict()]);
     expect(log).toHaveLength(1);
     const e = log[0];
-    expect(e.aCallsign).toBe("THA100");
-    expect(e.bCallsign).toBe("TGW122");
+    expect(e.aCallsign).toBe("UBA100");
+    expect(e.bCallsign).toBe("MMA122");
     expect(e.outcome).toBe("unresolved");
     expect(e.geometry).toBe("crossing");
     expect(Math.round(e.crossingDeg ?? 0)).toBe(68);
@@ -163,13 +163,13 @@ describe("updateConflictLog", () => {
     expect(log).toHaveLength(1);
     expect(log[0].outcome).toBe("resolved");
     expect(log[0].resolution).toMatchObject({
-      targetCallsign: "TGW122",
+      targetCallsign: "MMA122",
       instruction: "Reduce 20 kt",
       maneuver: "speed",
       atSec: 300,
       beforeNm: 2.1,
       afterNm: 6.4,
-      sector: "3N/Bangkok CTR",
+      sector: "MINGALADON CTR",
     });
     expect(log[0].closedAtSec).toBe(300);
   });
@@ -215,7 +215,7 @@ describe("updateConflictLog", () => {
       a: "C",
       b: "D",
       aCallsign: "SIA1",
-      bCallsign: "AIQ2",
+      bCallsign: "KMV2",
       tCpaAbsSec: 300,
       losStartAbsSec: 280,
     });
@@ -239,7 +239,7 @@ describe("formatLogLine", () => {
   it("writes the line a report is made of", () => {
     const [open] = fold([], [conflict()]);
     const line = formatLogLine(open, utc);
-    expect(line).toContain("THA100 x TGW122");
+    expect(line).toContain("UBA100 x MMA122");
     expect(line).toContain("crossing");
     expect(line).toContain("minima 5 NM / 1000 ft");
     expect(line).toContain("UNRESOLVED");
@@ -267,7 +267,7 @@ describe("conflictLogCsv", () => {
     const lines = conflictLogCsv(log, utc).trim().split("\r\n");
     expect(lines).toHaveLength(2);
     expect(lines[0]).toContain("callsign_a,callsign_b");
-    expect(lines[1]).toContain("THA100,TGW122");
+    expect(lines[1]).toContain("UBA100,MMA122");
     expect(lines[1]).toContain("resolved");
     expect(lines[1]).toContain("Reduce 20 kt");
   });

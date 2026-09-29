@@ -47,8 +47,8 @@ function eastbound(nPts = 60, altFt = 35000): TrajectoryResult {
       flightKey: "T1",
       callsign: "TST1",
       aircraftType: "B738",
-      adep: "VTBS",
-      ades: "VTSP",
+      adep: "VYYY",
+      ades: "VYKT",
       eobtIso: new Date(t0).toISOString(),
     },
   };
@@ -429,7 +429,7 @@ describe("applyManeuver", () => {
     const traj: TrajectoryResult = {
       ...base,
       validation: {
-        route: "VTBS-VTSP",
+        route: "VYYY-VYKT",
         cat62Min: 6,
         simulatedMin: base.stats.timeMinutes,
         deltaMin: Math.round((base.stats.timeMinutes - 6) * 10) / 10,

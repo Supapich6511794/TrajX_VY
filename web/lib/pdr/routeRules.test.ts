@@ -1,20 +1,21 @@
 /**
- * ENR 1.10 route rules, checked against the real published table
- * (`public/data/aip_routes_VT.json`) so the parser is pinned to the strings the
- * AIP actually prints rather than to invented ones.
+ * ENR 1.10 route rules.
  *
- * The condition shapes in AIRAC 2608 are: an area-activity dependency ("when
- * VT D60 is not active"), a time window with a holiday exclusion, and an
- * aircraft class. Anything else must come back `unparsed` and `unknown` — a
- * condition this app cannot read must never be reported as satisfied.
+ * No published city-pair route table is shipped for Myanmar yet
+ * (`/data/aip_routes_VY.json` does not exist and `fetchAipRoutes` fails closed
+ * to an empty list), so the table here is a small inline VY-flavoured one. The
+ * condition shapes it carries are the ones the parser understands: an
+ * area-activity dependency ("when VY D91 is not active"), a time window with a
+ * holiday exclusion, and an aircraft class. Anything else must come back
+ * `unparsed` and `unknown` — a condition this app cannot read must never be
+ * reported as satisfied.
  */
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import type { AipRoute } from "@/lib/aipRoutes";
 
 import {
+  AREA_ICAO_PREFIX,
   aircraftClass,
   evaluateCondition,
   matchFiledRoute,
@@ -24,10 +25,26 @@ import {
 } from "./routeRules";
 import type { PdrActivity, PdrArea } from "./types";
 
-const ROUTES = resolve(__dirname, "../../public/data/aip_routes_VT.json");
-const table = (
-  JSON.parse(readFileSync(ROUTES, "utf-8")) as { routes: AipRoute[] }
-).routes;
+/** Synthetic, directional: VYYY->VYMD and VYMD->VYYY are separate entries. */
+const table: AipRoute[] = [
+  { adep: "VYYY", ades: "VYMD", rnav: true, route: "BGO W13 MIA" },
+  {
+    adep: "VYYY",
+    ades: "VYMD",
+    rnav: true,
+    route: "BGO W1 MIA",
+    condition: "when VY D91 is not active",
+  },
+  {
+    adep: "VYYY",
+    ades: "VYMD",
+    rnav: false,
+    route: "BGO W5 MIA",
+    condition: "Excluding Public Holiday; MON-FRI 0100-0900 UTC",
+  },
+  { adep: "VYMD", ades: "VYYY", rnav: true, route: "MIA W13 BGO", condition: "for jet aircraft" },
+  { adep: "VYMD", ades: "VYYY", rnav: false, route: "MIA W1 BGO", condition: "when VY R92 is active" },
+];
 
 const MON = Date.UTC(2026, 8, 7); // Monday
 const HOUR = 3600000;
@@ -51,8 +68,8 @@ function areaWith(designator: string, sheets: PdrActivity["sheets"]): PdrArea {
     upperFt: 20000,
     mp: [],
     activity,
-    centroid: { lat: 15, lon: 100 },
-    bbox: [99, 14, 101, 16],
+    centroid: { lat: 19.6, lon: 96.2 },
+    bbox: [95.5, 19, 97, 20.5],
   };
 }
 
@@ -72,32 +89,45 @@ const workday = [
 const ctx = (whenMs: number, actype?: string) => ({
   whenMs,
   areasByIdent: new Map([
-    ["VTD60", areaWith("VTD60", workday)],
-    ["VTD59", areaWith("VTD59", workday)],
+    ["D91", areaWith("D91", workday)],
+    ["R92", areaWith("R92", workday)],
   ]),
   actype,
 });
 
 describe("parseCondition", () => {
+  it("uses the Myanmar ICAO prefix", () => {
+    expect(AREA_ICAO_PREFIX).toBe("VY");
+  });
+
   it("reads an area dependency, with or without the space in the ident", () => {
-    expect(parseCondition("when VT D60 is not active")).toMatchObject({
+    // Areas are keyed class + designator ("D91"), without the ICAO prefix.
+    expect(parseCondition("when VY D91 is not active")).toMatchObject({
       kind: "area",
-      area: "VTD60",
+      area: "D91",
       want: "inactive",
     });
-    expect(parseCondition("when VTD60 is not active")).toMatchObject({
+    expect(parseCondition("when VYD91 is not active")).toMatchObject({
       kind: "area",
-      area: "VTD60",
+      area: "D91",
       want: "inactive",
+    });
+    expect(parseCondition("when VY R 19A is not active")).toMatchObject({
+      kind: "area",
+      area: "R19A",
     });
   });
 
-  it("reads the positive form the AIP publishes for the complement route", () => {
-    expect(parseCondition("when VT D59 is active")).toMatchObject({
+  it("reads the positive form published for a complement route", () => {
+    expect(parseCondition("when VY R92 is active")).toMatchObject({
       kind: "area",
-      area: "VTD59",
+      area: "R92",
       want: "active",
     });
+  });
+
+  it("does not read another state's area as a VY one", () => {
+    expect(parseCondition("when XX D91 is not active").kind).toBe("unparsed");
   });
 
   it("reads a time window and notes the holiday exclusion", () => {
@@ -120,7 +150,7 @@ describe("parseCondition", () => {
     expect(parseCondition("subject to ATC approval").kind).toBe("unparsed");
   });
 
-  it("parses every condition in the published table", () => {
+  it("parses every condition in the table", () => {
     const conditions = [...new Set(table.map((r) => r.condition).filter(Boolean))];
     expect(conditions.length).toBeGreaterThan(0);
     for (const c of conditions) {
@@ -131,28 +161,28 @@ describe("parseCondition", () => {
 
 describe("evaluateCondition", () => {
   it("is met when the area the route depends on is cold", () => {
-    const c = parseCondition("when VT D60 is not active");
+    const c = parseCondition("when VY D91 is not active");
     const v = evaluateCondition(c, ctx(MON + 12 * HOUR)); // outside 0100-0900
     expect(v.state).toBe("met");
-    expect(v.detail).toContain("VTD60");
+    expect(v.detail).toContain("D91");
   });
 
   it("is unmet when that area is hot", () => {
-    const c = parseCondition("when VT D60 is not active");
+    const c = parseCondition("when VY D91 is not active");
     expect(evaluateCondition(c, ctx(MON + 3 * HOUR)).state).toBe("unmet");
   });
 
   it("inverts correctly for the 'is active' form", () => {
-    const c = parseCondition("when VT D59 is active");
+    const c = parseCondition("when VY R92 is active");
     expect(evaluateCondition(c, ctx(MON + 3 * HOUR)).state).toBe("met");
     expect(evaluateCondition(c, ctx(MON + 12 * HOUR)).state).toBe("unmet");
   });
 
   it("is unknown when the area is not in the loaded data", () => {
-    const c = parseCondition("when VT D99 is not active");
+    const c = parseCondition("when VY D99 is not active");
     const v = evaluateCondition(c, ctx(MON + 3 * HOUR));
     expect(v.state).toBe("unknown");
-    expect(v.detail).toContain("VTD99");
+    expect(v.detail).toContain("D99");
   });
 
   it("is unmet outside a published window", () => {
@@ -185,7 +215,7 @@ describe("evaluateCondition", () => {
 });
 
 describe("aircraftClass", () => {
-  it("classifies the Thai fleet's turboprops and jets", () => {
+  it("classifies common turboprops and jets", () => {
     expect(aircraftClass("AT76")).toBe("propeller");
     expect(aircraftClass("DH8D")).toBe("propeller");
     expect(aircraftClass("B738")).toBe("jet");
@@ -206,11 +236,11 @@ describe("aircraftClass", () => {
 
 describe("route token comparison", () => {
   it("ignores spacing and case", () => {
-    expect(sameRoute("olvuk  y26   marni", "OLVUK Y26 MARNI")).toBe(true);
+    expect(sameRoute("bgo  w13   mia", "BGO W13 MIA")).toBe(true);
   });
 
   it("does not treat a different routing as the same", () => {
-    expect(sameRoute("OLVUK Y26 MARNI", "OLVUK Y26 BEBUV")).toBe(false);
+    expect(sameRoute("BGO W13 MIA", "BGO W1 MIA")).toBe(false);
   });
 
   it("splits on any whitespace run", () => {
@@ -220,21 +250,21 @@ describe("route token comparison", () => {
 
 describe("matchFiledRoute against the published table", () => {
   it("recognises a published route for the filed direction", () => {
-    const m = matchFiledRoute("OLVUK Y26 MARNI", table, "VTBD", "VTCC");
+    const m = matchFiledRoute("BGO W13 MIA", table, "VYYY", "VYMD");
     expect(m.kind).toBe("exact");
-    expect(m.matched?.route).toBe("OLVUK Y26 MARNI");
+    expect(m.matched?.route).toBe("BGO W13 MIA");
   });
 
   it("flags a routing that is only published in the opposite direction", () => {
-    // Take a real VTBD->VTCC route and file it as if going VTCC->VTBD.
-    const outbound = table.find((r) => r.adep === "VTBD" && r.ades === "VTCC");
+    // Take a VYYY->VYMD route and file it as if going VYMD->VYYY.
+    const outbound = table.find((r) => r.adep === "VYYY" && r.ades === "VYMD");
     expect(outbound).toBeDefined();
-    const m = matchFiledRoute(outbound!.route, table, "VTCC", "VTBD");
+    const m = matchFiledRoute(outbound!.route, table, "VYMD", "VYYY");
     expect(m.kind).toBe("reverse");
   });
 
   it("reports a non-published routing for a pair that has published routes", () => {
-    const m = matchFiledRoute("SOMETHING ELSE", table, "VTBD", "VTCC");
+    const m = matchFiledRoute("SOMETHING ELSE", table, "VYYY", "VYMD");
     expect(m.kind).toBe("none");
     expect(m.forPair.length).toBeGreaterThan(0);
   });
@@ -243,5 +273,13 @@ describe("matchFiledRoute against the published table", () => {
     const m = matchFiledRoute("ANY ROUTE", table, "ZZZZ", "YYYY");
     expect(m.kind).toBe("none-published");
     expect(m.forPair).toEqual([]);
+  });
+});
+
+describe("an empty published table (the VY default today)", () => {
+  it("reports every pair as having no published route", () => {
+    const m = matchFiledRoute("BGO W13 MIA", [], "VYYY", "VYMD");
+    expect(m.kind).toBe("none-published");
+    expect(m.matched).toBeNull();
   });
 });

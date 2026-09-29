@@ -17,9 +17,9 @@ function ac(id: string, etaSec: number, over: Partial<SequencedArrival> = {}) {
     id,
     callsign: id,
     type: "A320",
-    adep: "VTCC",
-    ades: "VTBS",
-    star: "EAST1C",
+    adep: "VYMK",
+    ades: "VYMD",
+    star: "DOGI1E",
     wake: "MEDIUM" as const,
     wakeKnown: true,
     etaSec,
@@ -51,8 +51,8 @@ function stream(etas: number[], requiredNm = 5): RunwayStream {
     });
   }
   return {
-    ades: "VTBS",
-    runway: "RW19",
+    ades: "VYMD",
+    runway: "RW17",
     arrivals,
     pairs,
     deficits: pairs.filter((p) => p.deficitNm > 0),

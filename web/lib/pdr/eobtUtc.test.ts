@@ -5,7 +5,7 @@
  * locale — so 13:05 shows as "01:05 PM". Everything downstream reads the
  * 24-hour `datetime-local` value, and a single local-time interpretation
  * anywhere in the chain shifts every crossing time by the machine's offset
- * (+07:00 in Thailand) and makes an AM entry behave like the previous evening.
+ * (+06:30 in Myanmar) and makes an AM entry behave like the previous evening.
  *
  * These pin the chain the PDR check uses:
  *
@@ -15,24 +15,17 @@
  * 01:05 and 13:05 on the same date must come out exactly 12 hours apart, at the
  * stated UTC hour, with no offset applied at any step.
  */
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { eobtToMs, msToEobt } from "@/lib/departureSeparation";
 import { parseFlightFile } from "@/lib/flightFile";
 
+import { synthActivity, synthGeo } from "./__fixtures__/vyPdr";
 import { buildPdrAreas } from "./areas";
 import { findIncursions, pathFromFixes } from "./penetration";
 import { activityAt } from "./schedule";
-import type { PdrActivityFile } from "./types";
 
-const load = (p: string) =>
-  JSON.parse(readFileSync(resolve(__dirname, "../../public/data/" + p), "utf-8"));
-const areas = buildPdrAreas(
-  load("sectors_corrected/pdr.geojson"),
-  load("aixm/pdr_activity.json") as PdrActivityFile,
-);
+const areas = buildPdrAreas(synthGeo, synthActivity);
 const find = (ident: string) => {
   const a = areas.find((x) => x.ident === ident);
   if (!a) throw new Error("no area " + ident);
@@ -76,7 +69,7 @@ describe("eobtToMs treats the datetime-local value as UTC", () => {
 });
 
 describe("the crossing time follows the EOBT, AM and PM alike", () => {
-  const area = () => find("VTR1"); // Bangkok City, active H24
+  const area = () => find("R94"); // synthetic, GND-3000 ft, active H24
   const crossing = (eobt: string) => {
     const startMs = eobtToMs(eobt)!;
     const { lat, lon } = area().centroid;
@@ -106,13 +99,13 @@ describe("the crossing time follows the EOBT, AM and PM alike", () => {
 });
 
 describe("the activity verdict is read at the right UTC hour", () => {
-  // VTD43 LOP BURI is MON-FRI 0100-0900 UTC. 0105Z is inside that window and
+  // D91 (synthetic) is MON-FRI 0100-0900 UTC. 0105Z is inside that window and
   // 1305Z is outside it, so the two EOBTs must give OPPOSITE verdicts. If any
   // step applied a local offset both would land in the same state and the bug
   // would be invisible in a single-time test.
-  const a = () => find("VTD43").activity;
+  const a = () => find("D91").activity;
   const at = (eobt: string) =>
-    activityAt(a(), eobtToMs(eobt)!, find("VTD43").centroid).state;
+    activityAt(a(), eobtToMs(eobt)!, find("D91").centroid).state;
 
   it("is active for the 0105Z departure", () => {
     expect(at(AM)).toBe("active");
@@ -122,10 +115,10 @@ describe("the activity verdict is read at the right UTC hour", () => {
     expect(at(PM)).toBe("inactive");
   });
 
-  it("would not be distinguishable if a +07:00 offset were applied", () => {
-    // Guard against a "fix" that shifts everything uniformly: adding the Thai
-    // offset moves 0105Z to 0805Z, still inside the window, and 1305Z to
-    // 2005Z, still outside — the states would coincidentally survive. What
+  it("would not be distinguishable if a +06:30 offset were applied", () => {
+    // Guard against a "fix" that shifts everything uniformly: adding the
+    // Myanmar offset moves 0105Z to 0735Z, still inside the window, and 1305Z
+    // to 1935Z, still outside — the states would coincidentally survive. What
     // does NOT survive is the hour itself, so assert that too.
     expect(new Date(eobtToMs(AM)!).getUTCHours()).toBe(1);
     expect(new Date(eobtToMs(PM)!).getUTCHours()).toBe(13);
@@ -134,15 +127,15 @@ describe("the activity verdict is read at the right UTC hour", () => {
 
 describe("an imported EOBT keeps the instant it states", () => {
   // The bug this covers: the importer took the first HH:mm after the date and
-  // dropped everything after it, INCLUDING the offset. A Thai-local file was
-  // then read seven hours late, so an 0105Z departure behaved like 0805Z and a
-  // morning EOBT looked like an evening one.
+  // dropped everything after it, INCLUDING the offset. A Myanmar-local file
+  // was then read six and a half hours late, so an 0105Z departure behaved
+  // like 0735Z and a morning EOBT looked like an evening one.
   const csv = (eobt: string) =>
     new File(
       [
         [
           "callsign,actype,adep,ades,eobt,rfl,route",
-          `THA100,B738,VTBS,VTCC,${eobt},330,OLVUK Y26 MARNI`,
+          `UBA101,AT72,VYYY,VYMD,${eobt},210,BGO W13 MIA`,
           "",
         ].join("\n"),
       ],
@@ -154,9 +147,9 @@ describe("an imported EOBT keeps the instant it states", () => {
     return rows[0].eobt!;
   };
 
-  it("converts a +07:00 value to the same instant in UTC", async () => {
-    // 20:05 in Bangkok IS 13:05Z.
-    expect(await imported("2026-07-08T20:05:00+07:00")).toBe(PM);
+  it("converts a +06:30 value to the same instant in UTC", async () => {
+    // 19:35 in Yangon (MMT) IS 13:05Z.
+    expect(await imported("2026-07-08T19:35:00+06:30")).toBe(PM);
   });
 
   it("converts a negative offset the same way", async () => {
@@ -173,14 +166,14 @@ describe("an imported EOBT keeps the instant it states", () => {
   });
 
   it("reaches the right UTC instant end to end", async () => {
-    const local = await imported("2026-07-08T20:05:00+07:00");
+    const local = await imported("2026-07-08T19:35:00+06:30");
     expect(new Date(eobtToMs(local)!).toISOString()).toBe(
       "2026-07-08T13:05:00.000Z",
     );
   });
 
-  it("puts an offset AM value in the 01Z hour, not seven hours later", async () => {
-    const local = await imported("2026-07-08T08:05:00+07:00"); // = 0105Z
+  it("puts an offset AM value in the 01Z hour, not 6.5 hours later", async () => {
+    const local = await imported("2026-07-08T07:35:00+06:30"); // = 0105Z
     expect(new Date(eobtToMs(local)!).getUTCHours()).toBe(1);
   });
 });

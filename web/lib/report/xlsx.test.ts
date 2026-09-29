@@ -127,13 +127,13 @@ describe("a report and its chart in one workbook", () => {
   // chart needs live on their own sheet.
   const REPORT: Cell[][] = [
     ["callsign", "event", "time_utc", "lat", "lon"],
-    ["THA100", "TAKEOFF", "2026-09-07T03:00:00Z", 13.68, 100.75],
-    ["THA100", "LANDING", "2026-09-07T04:00:00Z", 18.77, 98.96],
+    ["UBA100", "TAKEOFF", "2026-09-07T03:00:00Z", 16.91, 96.13],
+    ["UBA100", "LANDING", "2026-09-07T04:00:00Z", 21.70, 95.98],
   ];
   const SERIES: Cell[][] = [
-    ["lon_THA100", "lat_THA100"],
-    [100.75, 13.68],
-    [98.96, 18.77],
+    ["lon_UBA100", "lat_UBA100"],
+    [96.13, 16.91],
+    [95.98, 21.70],
   ];
   const parts = entries(
     buildWorkbook({
@@ -160,11 +160,11 @@ describe("a report and its chart in one workbook", () => {
     expect(sheet1).toContain("TAKEOFF");
     expect(sheet1).toContain("2026-09-07T03:00:00Z");
     // Nothing chart-shaped has leaked into it.
-    expect(sheet1).not.toContain("lon_THA100");
+    expect(sheet1).not.toContain("lon_UBA100");
   });
 
   it("puts the chart's series on their own sheet", () => {
-    expect(parts.get("xl/worksheets/sheet2.xml")).toContain("lon_THA100");
+    expect(parts.get("xl/worksheets/sheet2.xml")).toContain("lon_UBA100");
   });
 
   it("opens on the report, not on the series", () => {

@@ -5,7 +5,7 @@
  *
  * Unlike a native <datalist> (which can only show a flat list of single
  * values), each suggestion is ONE row combining a tag + label + optional
- * meta — e.g. "R1 · BKK Y8 PUT · 381 NM" — mirroring the Download dialog's
+ * meta — e.g. "R1 · BGO W13 MIA · 330 NM" — mirroring the Download dialog's
  * route picker. Typing filters the rows; picking one commits its `value`
  * to the input (which the parent's matcher then filters on).
  */
@@ -17,7 +17,7 @@ export interface ComboSuggestion {
   value: string;
   /** Left chip — e.g. "R1" or a callsign. */
   tag: string;
-  /** Main label — e.g. the route string or "VTBS → VTSP". */
+  /** Main label — e.g. the route string or "VYYY → VYMD". */
   text: string;
   /** Optional right-aligned detail — e.g. distance. */
   meta?: string;

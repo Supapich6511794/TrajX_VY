@@ -86,7 +86,7 @@ function asPhase(raw: unknown): TrajectoryPoint["phase"] {
 }
 
 /** Normalise an EOBT to the datetime-local input format. */
-/** Trailing UTC designator or numeric offset: "Z", "+07:00", "-0530". */
+/** Trailing UTC designator or numeric offset: "Z", "+06:30", "-0530". */
 const EOBT_OFFSET_RE = /(?:Z|[+-]\d{2}:?\d{2})$/i;
 
 /**
@@ -98,11 +98,11 @@ const EOBT_OFFSET_RE = /(?:Z|[+-]\d{2}:?\d{2})$/i;
  * dropped, not simply truncated away.
  *
  * This used to take the first HH:mm after the date and discard the rest, which
- * silently turned "2026-07-08T20:05:00+07:00" — 13:05Z — into "20:05", read
- * downstream as 20:05Z. Every derived time was then seven hours late for a
- * Thai-local file: sector crossings, P/D/R activity lookups, departure
- * separation. A morning EOBT came out looking like the evening, which is how it
- * surfaced as an AM/PM complaint.
+ * silently turned "2026-07-08T20:05:00+06:30" — 13:35Z — into "20:05", read
+ * downstream as 20:05Z. Every derived time was then six and a half hours late
+ * for a file in Myanmar local time (MMT, UTC+6:30): sector crossings, P/D/R
+ * activity lookups, departure separation. A morning EOBT came out looking like
+ * the evening, which is how it surfaced as an AM/PM complaint.
  */
 function normEobt(raw: unknown): string | undefined {
   if (raw == null) return undefined;
@@ -289,7 +289,7 @@ function mergeSameFlightRoutes(records: FlightRecord[]): FlightRecord[] {
 /** Parse one header block of the trajectory CSV into a FlightRecord. */
 function parseTrajectoryBlock(block: string): FlightRecord | null {
   const field = (label: string) => {
-    const m = block.match(new RegExp(`^${label}:\\s*(.*)$`, "m"));
+    const m = block.match(new RegExp(`^${label}:[ \\t]*(.*)$`, "m"));
     return m ? m[1].trim() : undefined;
   };
   const route = field("ROUTE");

@@ -69,8 +69,8 @@ function leg(
 function headOn() {
   const lat = 13;
   const nmPerDegLon = Math.cos((lat * Math.PI) / 180) * 60;
-  const a = leg("THA1", lat, 100, 90);
-  const b = leg("AIQ2", lat, 100 + 60 / nmPerDegLon, 270);
+  const a = leg("UBA1", lat, 100, 90);
+  const b = leg("KMV2", lat, 100 + 60 / nmPerDegLon, 270);
   const flights: PlanFlight[] = [a, b].map((t) => ({
     id: t.meta.flightKey,
     callsign: t.meta.callsign,
@@ -79,8 +79,8 @@ function headOn() {
     durationSec: totalSeconds(t.points),
   }));
   const trajById = new Map([
-    ["THA1", { traj: a, offset: 0 }],
-    ["AIQ2", { traj: b, offset: 0 }],
+    ["UBA1", { traj: a, offset: 0 }],
+    ["KMV2", { traj: b, offset: 0 }],
   ]);
   return { a, b, flights, trajById };
 }
@@ -293,7 +293,7 @@ function headOnWithShadows(
 
 describe("planResolutions — blocked-by diagnostics", () => {
   it("names the third aircraft that rejected a candidate", () => {
-    // SHADOW sits 2000 ft above THA1 on its own track: legal now, but THA1's
+    // SHADOW sits 2000 ft above UBA1 on its own track: legal now, but UBA1's
     // "Climb FL370" would fly straight into it, so that candidate is dropped.
     const { flights, trajById } = headOnWithShadows([
       { id: "SHADOW", altFt: 37000 },
@@ -434,8 +434,8 @@ describe("planResolutions — rejected-candidate audit trail", () => {
 
 describe("planResolutions — wide fallback envelope", () => {
   // Boxed in vertically: co-routed traffic sits at every semicircular-legal
-  // level within ±2000 of the pair (eastbound THA1 may use odd → FL370/FL330,
-  // westbound AIQ2 even → FL360/FL340), and a climb/descent past them is
+  // level within ±2000 of the pair (eastbound UBA1 may use odd → FL370/FL330,
+  // westbound KMV2 even → FL360/FL340), and a climb/descent past them is
   // blocked in transit too. That leaves the lateral fix, whose required turn
   // grows with the horizontal minimum — so the minimum sets which envelope can
   // solve it.
@@ -450,7 +450,7 @@ describe("planResolutions — wide fallback envelope", () => {
     const c = resolveConfig({ horizontal: { enrouteNm, terminalNm: 3 } });
     const { flights, trajById } = boxed();
     const conflict = scanFlightPlanConflicts(flights, c).find(
-      (x) => [x.a, x.b].includes("THA1") && [x.a, x.b].includes("AIQ2"),
+      (x) => [x.a, x.b].includes("UBA1") && [x.a, x.b].includes("KMV2"),
     )!;
     return planResolutions({
       conflict,

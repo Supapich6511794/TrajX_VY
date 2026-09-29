@@ -418,7 +418,7 @@ export default function AltitudeProfile({
           <path d={linePath} className="alt-line" />
 
           {/* Boundary ticks + label for each airspace block wide enough to name
-              (the "8S/Bangkok CTR/VTR1" zone the aircraft crosses). */}
+              (the "Yangon CTR" zone the aircraft crosses). */}
           {segBlocks.map((b, k) =>
             k > 0 ? (
               <line

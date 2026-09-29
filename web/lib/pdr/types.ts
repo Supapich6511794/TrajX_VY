@@ -4,14 +4,14 @@
  * Kept UI-free — like lib/cdr/types.ts — so the whole analysis stays pure and
  * unit-testable, and the React panel is the only piece that knows about React.
  *
- * The vocabulary here follows the AIP: an *area* is a published volume (VTD43
- * LOP BURI), its *activity* is the timetable that says when it is hot, and an
+ * The vocabulary here follows the AIP: an *area* is a published volume (R13
+ * SHANTE), its *activity* is the timetable that says when it is hot, and an
  * *incursion* is a stretch of a planned route that is inside one while it is.
  */
 
 import type { RestrictedArea } from "@/lib/cdr/constraints";
 
-/** Area classes carried by AIP Thailand ENR 5.1 / the AIXM export.
+/** Area classes carried by AIP Myanmar ENR 5.1 / the AIXM export.
  *  TRA (temporary reserved) has no polygon in the PDR overlay, but its
  *  schedule is published, so the type allows it for completeness. */
 export type PdrKind = "P" | "R" | "D" | "TRA";
@@ -22,7 +22,7 @@ export type PdrKind = "P" | "R" | "D" | "TRA";
  *  events, never both: `startEvent`/`endEvent` carry "SR" (sunrise) / "SS"
  *  (sunset), which only resolve to a clock time once the date and the area's
  *  position are known. `excluded` inverts the sheet — it carves time OUT of
- *  the others rather than adding to them (VTD70 is MON–FRI 0130–0930 *except*
+ *  the others rather than adding to them (e.g. MON–FRI 0130–0930 *except*
  *  public holidays). */
 export interface Timesheet {
   /** ICAO day code: MON…SUN, plus ANY (every day) and HOL (public holidays). */
@@ -52,7 +52,7 @@ export interface PdrActivity {
   remarks: string;
 }
 
-/** `/data/aixm/pdr_activity.json`. */
+/** `/data/VY_AIP/pdr_activity.json` (AIP Myanmar ENR 5.1). */
 export interface PdrActivityFile {
   source: string;
   validFrom: string;
@@ -72,7 +72,7 @@ export interface PdrArea extends RestrictedArea {
   centroid: { lat: number; lon: number };
   /** Bounding box [minLon, minLat, maxLon, maxLat], precomputed so the
    *  point-in-polygon test can be skipped for the overwhelming majority of
-   *  samples. Checking a whole traffic day against 73 areas is otherwise a
+   *  samples. Checking a whole traffic day against ~110 area polygons is otherwise a
    *  ray-cast per sample per area over some very detailed rings. */
   bbox: [number, number, number, number];
 }

@@ -91,7 +91,7 @@ export const MAIN_NAV_ITEMS: readonly MainNavDef[] = [
     id: "airspace",
     icon: "airspace",
     label: "Airspace",
-    hint: "Airspace sectors — BACC, CTR, TMA and the restricted areas",
+    hint: "Airspace — CTR, TMA, CTA, the Yangon FIR and the restricted areas",
     kind: "menu",
   },
   {

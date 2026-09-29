@@ -19,7 +19,7 @@
  *
  * The table below covers every type in the Thai APM performance dataset
  * (`trajectory_sim/data/thaiapm_performance.csv`, 66 types) plus the common
- * types the dummy-traffic generators emit, since neither the APM data nor the
+ * types seen in regional traffic, since neither the APM data nor the
  * AIP carries a mass or a wake category.
  */
 
@@ -74,8 +74,8 @@ const CATEGORY_BY_TYPE: Record<string, WakeCategory> = {
 
 /**
  * Wake category for an ICAO type designator. Unknown types fall back to
- * `fallback` (MEDIUM by default): most unknown designators in a Thai-FIR
- * sample are regional jets or turboprops, and MEDIUM is the middle of the
+ * `fallback` (MEDIUM by default): most unknown designators in a regional
+ * FIR sample are regional jets or turboprops, and MEDIUM is the middle of the
  * three, so it neither systematically over- nor under-separates. Callers that
  * want to be conservative can pass "HEAVY".
  */

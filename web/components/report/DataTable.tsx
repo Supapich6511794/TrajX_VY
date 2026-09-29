@@ -63,7 +63,7 @@ export default function DataTable({ rows, filter }: Props) {
   const totalW = useMemo(() => widths.reduce((a, b) => a + b, 0), [widths]);
 
   // Filtering is a plain substring over the row, joined. Deliberately dumb: the
-  // question this answers is "where is THA201 in here", and a query language
+  // question this answers is "where is UBA201 in here", and a query language
   // would be a second thing to learn for a table someone is only checking.
   const body = useMemo(() => {
     const q = (filter ?? "").trim().toUpperCase();

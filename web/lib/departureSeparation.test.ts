@@ -22,12 +22,12 @@ const T0 = Date.UTC(2026, 0, 3, 1, 55, 0);
 function dep(over: Partial<DepartureFlight> = {}): DepartureFlight {
   return {
     id: "p1",
-    callsign: "THA100",
+    callsign: "UBA100",
     actype: "B738",
-    adep: "VTCC",
-    ades: "VTBS",
+    adep: "VYMD",
+    ades: "VYYY",
     eobtMs: T0,
-    depRwy: "RW36",
+    depRwy: "RW17",
     trackDeg: 170,
     gsKt: 450,
     rfl: 350,
@@ -39,7 +39,7 @@ describe("departureRequirement", () => {
   it("holds the runway for a minute when no other rule bites (§7.9.2)", () => {
     // Same category, same track, same level, same speed: Doc 4444 imposes no
     // time minimum of its own — what is left is the runway being clear.
-    const r = departureRequirement(dep(), dep({ id: "p2", callsign: "THA200" }));
+    const r = departureRequirement(dep(), dep({ id: "p2", callsign: "UBA200" }));
     expect(r.requiredSec).toBe(60);
     expect(r.requiredBy).toBe("runway-occupancy");
     expect(r.reason).toContain("§7.9.2");
@@ -48,7 +48,7 @@ describe("departureRequirement", () => {
   it("takes 2 min for a MEDIUM behind a HEAVY (§5.8.3.1)", () => {
     const r = departureRequirement(
       dep({ actype: "B77W" }),
-      dep({ id: "p2", callsign: "THA200", actype: "A320" }),
+      dep({ id: "p2", callsign: "UBA200", actype: "A320" }),
     );
     expect(r.requiredSec).toBe(120);
     expect(r.requiredBy).toBe("wake");
@@ -143,7 +143,7 @@ describe("departureRequirement", () => {
   it("takes 2 min when the leader is 40 kt faster on the same track (§5.6.2)", () => {
     const r = departureRequirement(
       dep({ gsKt: 480 }),
-      dep({ id: "p2", callsign: "THA200", gsKt: 440 }),
+      dep({ id: "p2", callsign: "UBA200", gsKt: 440 }),
     );
     expect(r.requiredSec).toBe(120);
     expect(r.requiredBy).toBe("speed");
@@ -153,7 +153,7 @@ describe("departureRequirement", () => {
   it("takes 5 min when the follower climbs through the leader's level (§5.6.3)", () => {
     const r = departureRequirement(
       dep({ rfl: 260 }),
-      dep({ id: "p2", callsign: "THA200", rfl: 360 }),
+      dep({ id: "p2", callsign: "UBA200", rfl: 360 }),
     );
     expect(r.requiredSec).toBe(300);
     expect(r.requiredBy).toBe("level-crossing");
@@ -174,28 +174,28 @@ describe("departureRequirement", () => {
 });
 
 describe("findDepartureConflicts", () => {
-  const vtbs = { adep: "VTCC", depRwy: "RW36" };
+  const field = { adep: "VYMD", depRwy: "RW17" };
 
   it("flags two plans off the same runway at the same time", () => {
-    const a = dep({ id: "p1", callsign: "THA100", ades: "VTBS", ...vtbs });
-    const b = dep({ id: "p2", callsign: "THA200", ades: "VTSP", ...vtbs });
+    const a = dep({ id: "p1", callsign: "UBA100", ades: "VYYY", ...field });
+    const b = dep({ id: "p2", callsign: "UBA200", ades: "VYKT", ...field });
     const [c] = findDepartureConflicts([a, b]);
     expect(c).toBeDefined();
     expect(c.gapSec).toBe(0);
     expect(c.requiredSec).toBe(60);
     expect(c.deficitSec).toBe(60);
-    expect([c.leader.callsign, c.follower.callsign]).toEqual(["THA100", "THA200"]);
+    expect([c.leader.callsign, c.follower.callsign]).toEqual(["UBA100", "UBA200"]);
   });
 
   it("clears the pair once the interval is met", () => {
     const a = dep({ id: "p1" });
-    const b = dep({ id: "p2", callsign: "THA200", eobtMs: T0 + 60_000 });
+    const b = dep({ id: "p2", callsign: "UBA200", eobtMs: T0 + 60_000 });
     expect(findDepartureConflicts([a, b])).toEqual([]);
   });
 
   it("does not pair different aerodromes", () => {
     expect(
-      findDepartureConflicts([dep({ id: "p1" }), dep({ id: "p2", adep: "VTBS" })]),
+      findDepartureConflicts([dep({ id: "p1" }), dep({ id: "p2", adep: "VYYY" })]),
     ).toEqual([]);
   });
 
@@ -203,13 +203,13 @@ describe("findDepartureConflicts", () => {
     // The runway is not the question §5.8.3.1 c)/d) asks — the paths are. Two
     // aircraft off opposite runways onto the same fix at the same level fly in
     // formation, which a runway-keyed check misses entirely.
-    const a = dep({ id: "p1", callsign: "QTR700", depRwy: "RW19", trackDeg: 221 });
-    const b = dep({ id: "p2", callsign: "MAS701", depRwy: "RW01", trackDeg: 221 });
+    const a = dep({ id: "p1", callsign: "QTR700", depRwy: "RW17", trackDeg: 221 });
+    const b = dep({ id: "p2", callsign: "MAS701", depRwy: "RW35", trackDeg: 221 });
     const [c] = findDepartureConflicts([a, b]);
     expect(c).toBeDefined();
     expect(c.requiredBy).toBe("in-trail");
     // Same EOBT, so the take-off order is broken by callsign: MAS701 leads.
-    expect(c.runway).toBe("RW01 / RW19");
+    expect(c.runway).toBe("RW35 / RW17");
     expect(c.runwayAssumed).toBe(false);
     expect(c.requiredSec).toBe(24); // 3 NM at 450 kt
   });
@@ -217,8 +217,8 @@ describe("findDepartureConflicts", () => {
   it("lets different runways go when the tracks diverge", () => {
     // §5.6.1's one-minute floor is explicitly relaxed for parallel-runway
     // operations, so a diverging pair off two runways must stay silent.
-    const a = dep({ id: "p1", depRwy: "RW19", trackDeg: 59 });
-    const b = dep({ id: "p2", callsign: "THA200", depRwy: "RW01", trackDeg: 221 });
+    const a = dep({ id: "p1", depRwy: "RW17", trackDeg: 59 });
+    const b = dep({ id: "p2", callsign: "UBA200", depRwy: "RW35", trackDeg: 221 });
     expect(findDepartureConflicts([a, b])).toEqual([]);
   });
 
@@ -226,20 +226,20 @@ describe("findDepartureConflicts", () => {
     // Same track, so the pair is still checked — but runway occupancy belongs
     // to aircraft sharing a runway; what survives across two is the in-trail
     // distance.
-    const a = dep({ id: "p1", depRwy: "RW19" });
-    const b = dep({ id: "p2", callsign: "THA200", depRwy: "RW01" });
+    const a = dep({ id: "p1", depRwy: "RW17" });
+    const b = dep({ id: "p2", callsign: "UBA200", depRwy: "RW35" });
     const [c] = findDepartureConflicts([a, b]);
     expect(c.requiredBy).toBe("in-trail");
     expect(c.requiredSec).toBeLessThan(60);
   });
 
   it("pairs each departure with the one immediately ahead of it at the field", () => {
-    const first = dep({ id: "p1", callsign: "AAA", depRwy: "RW36" });
+    const first = dep({ id: "p1", callsign: "AAA", depRwy: "RW17" });
     const other = dep({
-      id: "p2", callsign: "BBB", depRwy: "RW18", eobtMs: T0 + 20_000,
+      id: "p2", callsign: "BBB", depRwy: "RW35", eobtMs: T0 + 20_000,
     });
     const third = dep({
-      id: "p3", callsign: "CCC", depRwy: "RW36", eobtMs: T0 + 40_000,
+      id: "p3", callsign: "CCC", depRwy: "RW17", eobtMs: T0 + 40_000,
     });
     const cs = findDepartureConflicts([first, other, third]);
     expect(cs.map((c) => [c.leader.callsign, c.follower.callsign])).toEqual([
@@ -253,17 +253,17 @@ describe("findDepartureConflicts", () => {
     // imported bank is one stated runway and a pile of blanks. Both are the
     // aerodrome's default runway, and they must still be checked against
     // each other.
-    const a = dep({ id: "p1", depRwy: "RW36" });
-    const b = dep({ id: "p2", callsign: "THA200", depRwy: "" });
+    const a = dep({ id: "p1", depRwy: "RW17" });
+    const b = dep({ id: "p2", callsign: "UBA200", depRwy: "" });
     const [c] = findDepartureConflicts([a, b]);
     expect(c).toBeDefined();
-    expect(c.runway).toBe("RW36");
+    expect(c.runway).toBe("RW17");
     expect(c.runwayAssumed).toBe(true);
   });
 
   it("pairs two Auto runways — the engine gives both the same one", () => {
     const a = dep({ id: "p1", depRwy: "" });
-    const b = dep({ id: "p2", callsign: "THA200", depRwy: "" });
+    const b = dep({ id: "p2", callsign: "UBA200", depRwy: "" });
     const [c] = findDepartureConflicts([a, b]);
     expect(c.runway).toBe("Auto");
     expect(c.runwayAssumed).toBe(true);
@@ -278,13 +278,13 @@ describe("findDepartureConflicts", () => {
   it("checks each departure against the one immediately ahead of it", () => {
     // Three in a row 30 s apart: two consecutive pairs, not three combinations.
     const flights = [0, 30_000, 60_000].map((dt, i) =>
-      dep({ id: `p${i + 1}`, callsign: `TH${i}`, eobtMs: T0 + dt }),
+      dep({ id: `p${i + 1}`, callsign: `UBA${i}`, eobtMs: T0 + dt }),
     );
     const cs = findDepartureConflicts(flights);
     expect(cs).toHaveLength(2);
     expect(cs.map((c) => [c.leader.callsign, c.follower.callsign])).toEqual([
-      ["TH0", "TH1"],
-      ["TH1", "TH2"],
+      ["UBA0", "UBA1"],
+      ["UBA1", "UBA2"],
     ]);
   });
 });
@@ -292,7 +292,7 @@ describe("findDepartureConflicts", () => {
 describe("resolvedEobtMs", () => {
   it("moves the follower later or the leader earlier, to exactly the minimum", () => {
     const a = dep({ id: "p1", actype: "B77W" });
-    const b = dep({ id: "p2", callsign: "THA200", actype: "A320" });
+    const b = dep({ id: "p2", callsign: "UBA200", actype: "A320" });
     const [c] = findDepartureConflicts([a, b]);
     expect(c.requiredSec).toBe(120);
     expect(resolvedEobtMs(c, "p2")).toBe(T0 + 120_000); // follower pushed back
@@ -303,33 +303,33 @@ describe("resolvedEobtMs", () => {
 
 describe("the whole story: import -> notify -> pick an FPL -> fix", () => {
   it("clears once the chosen plan takes the suggested EOBT", () => {
-    // Two FPLs out of VTCC on the same runway at the same minute: THA100 to
-    // VTBS behind a HEAVY, THA200 to VTSP as a MEDIUM.
-    const tha100 = dep({
-      id: "p1", callsign: "THA100", actype: "B77W", ades: "VTBS", trackDeg: 168,
+    // Two FPLs out of VYMD on the same runway at the same minute: UBA100 to
+    // VYYY behind a HEAVY, UBA200 to VYKT as a MEDIUM.
+    const uba100 = dep({
+      id: "p1", callsign: "UBA100", actype: "B77W", ades: "VYYY", trackDeg: 178,
     });
-    const tha200 = dep({
-      id: "p2", callsign: "THA200", actype: "A320", ades: "VTSP", trackDeg: 187,
+    const uba200 = dep({
+      id: "p2", callsign: "UBA200", actype: "A320", ades: "VYKT", trackDeg: 168,
     });
 
-    const [c] = findDepartureConflicts([tha100, tha200]);
-    // Tracks are 19° apart — not the 45° that buys the 1-minute relief — and a
+    const [c] = findDepartureConflicts([uba100, uba200]);
+    // Tracks are 10° apart — not the 45° that buys the 1-minute relief — and a
     // MEDIUM behind a HEAVY is §5.8.3.1.
     expect(c.requiredSec).toBe(120);
     expect(c.requiredBy).toBe("wake");
     expect(c.deficitSec).toBe(120);
 
-    // The user picks THA200 (the follower) to move.
+    // The user picks UBA200 (the follower) to move.
     const suggested = resolvedEobtMs(c, "p2")!;
     expect(msToEobt(suggested)).toBe("2026-01-03T01:57");
 
-    const fixed = [tha100, { ...tha200, eobtMs: eobtToMs(msToEobt(suggested)) }];
+    const fixed = [uba100, { ...uba200, eobtMs: eobtToMs(msToEobt(suggested)) }];
     expect(findDepartureConflicts(fixed)).toEqual([]);
   });
 
   it("also clears if the user moves the leader instead", () => {
-    const a = dep({ id: "p1", callsign: "THA100" });
-    const b = dep({ id: "p2", callsign: "THA200" });
+    const a = dep({ id: "p1", callsign: "UBA100" });
+    const b = dep({ id: "p2", callsign: "UBA200" });
     const [c] = findDepartureConflicts([a, b]);
     const suggested = resolvedEobtMs(c, "p1")!;
     expect(findDepartureConflicts([{ ...a, eobtMs: suggested }, b])).toEqual([]);
@@ -342,7 +342,7 @@ describe("autoResolveDepartures", () => {
     // button exists for, and one pass cannot fix it — moving them all to the
     // same new time just recreates the pile.
     const bank = Array.from({ length: 6 }, (_, i) =>
-      dep({ id: `p${i + 1}`, callsign: `TH${i}` }),
+      dep({ id: `p${i + 1}`, callsign: `UBA${i}` }),
     );
     const { eobtMsById, remaining } = autoResolveDepartures(bank, {
       pick: (c) => c.follower.id, // deterministic: always delay the follower
@@ -384,7 +384,7 @@ describe("autoResolveDepartures", () => {
   });
 
   it("leaves dismissed pairs alone", () => {
-    const bank = [dep({ id: "p1" }), dep({ id: "p2", callsign: "THA200" })];
+    const bank = [dep({ id: "p1" }), dep({ id: "p2", callsign: "UBA200" })];
     const [c] = findDepartureConflicts(bank);
     const { eobtMsById, remaining } = autoResolveDepartures(bank, {
       ignored: new Set([c.id]),
@@ -419,8 +419,8 @@ describe("autoResolveDepartures", () => {
     const bank = Array.from({ length: 40 }, (_, i) =>
       dep({
         id: `p${i}`,
-        callsign: `TH${i}`,
-        adep: i % 2 ? "VTBS" : "VTCC",
+        callsign: `UBA${i}`,
+        adep: i % 2 ? "VYYY" : "VYMD",
         eobtMs: T0 + (i % 3) * 20_000,
       }),
     );
@@ -436,19 +436,20 @@ describe("autoResolveDepartures", () => {
 
 describe("initialBearingDeg", () => {
   it("gives the track a plan departs on", () => {
-    // VTCC (Chiang Mai) to VTBS (Bangkok) is very nearly due south; to VTSP
-    // (Phuket) it is south-southwest. Under 45° apart, so the two are NOT
-    // diverging departures — which is the whole point of the demo case.
-    const vtcc = { lat: 18.7669, lon: 98.9626 };
-    const vtbs = { lat: 13.6811, lon: 100.747 };
-    const vtsp = { lat: 8.1132, lon: 98.317 };
-    const toBkk = initialBearingDeg(vtcc.lat, vtcc.lon, vtbs.lat, vtbs.lon);
-    const toHkt = initialBearingDeg(vtcc.lat, vtcc.lon, vtsp.lat, vtsp.lon);
-    expect(toBkk).toBeGreaterThan(150);
-    expect(toBkk).toBeLessThan(180);
-    expect(toHkt).toBeGreaterThan(180);
-    expect(toHkt).toBeLessThan(190);
-    expect(Math.abs(toBkk - toHkt)).toBeLessThan(45);
+    // VYMD (Mandalay) to VYYY (Yangon) is very nearly due south (~178°); to
+    // VYKT (Kawthaung) it is south-southeast (~168°). Under 45° apart, so the
+    // two are NOT diverging departures — which is the whole point of the demo
+    // case.
+    const vymd = { lat: 21.7011, lon: 95.9775 };
+    const vyyy = { lat: 16.9073, lon: 96.1332 };
+    const vykt = { lat: 10.0496, lon: 98.5381 };
+    const toYangon = initialBearingDeg(vymd.lat, vymd.lon, vyyy.lat, vyyy.lon);
+    const toKawthaung = initialBearingDeg(vymd.lat, vymd.lon, vykt.lat, vykt.lon);
+    expect(toYangon).toBeGreaterThan(175);
+    expect(toYangon).toBeLessThan(180);
+    expect(toKawthaung).toBeGreaterThan(160);
+    expect(toKawthaung).toBeLessThan(175);
+    expect(Math.abs(toYangon - toKawthaung)).toBeLessThan(45);
   });
 });
 

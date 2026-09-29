@@ -30,9 +30,9 @@ describe("parseFlightFile — trajectory round-trip", () => {
     expect(recs).toHaveLength(1);
     const r = recs[0];
     expect(r.callsign).toBe("RT1");
-    expect(r.adep).toBe("VTBD");
-    expect(r.ades).toBe("VTUD");
-    expect(r.route).toBe("NOBER W21 SURGU");
+    expect(r.adep).toBe("VYYY");
+    expect(r.ades).toBe("VYMD");
+    expect(r.route).toBe("BGO W13 MIA");
 
     // The whole flown path is carried through for an as-is load.
     expect(r.trajectory).toBeDefined();
@@ -53,8 +53,8 @@ describe("parseFlightFile — trajectory round-trip", () => {
     // re-imported summary lists the same fixes as when generated).
     expect(r.trajectory!.route.length).toBeGreaterThan(1);
     const idents = r.trajectory!.route.map((w) => w.ident);
-    expect(idents).toContain("NOBER");
-    expect(idents).toContain("SURGU");
+    expect(idents).toContain("BGO");
+    expect(idents).toContain("MIA");
     // Each recovered waypoint sits on the flown path (has finite coords).
     for (const w of r.trajectory!.route) {
       expect(Number.isFinite(w.lat) && Number.isFinite(w.lon)).toBe(true);
@@ -77,8 +77,8 @@ describe("parseFlightFile — trajectory round-trip", () => {
     ).toBeGreaterThan(30000);
     // The Waypoint column is recovered into the route (CSV has no LineString).
     const idents = r.trajectory!.route.map((w) => w.ident);
-    expect(idents).toContain("NOBER");
-    expect(idents).toContain("SURGU");
+    expect(idents).toContain("BGO");
+    expect(idents).toContain("MIA");
   });
 });
 

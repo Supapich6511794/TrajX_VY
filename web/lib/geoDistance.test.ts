@@ -24,13 +24,13 @@ function cosineNm(
   );
 }
 
-const VTBS = { lat: 13.69, lon: 100.7501 }; // Suvarnabhumi
-const VTBD = { lat: 13.9126, lon: 100.6068 }; // Don Mueang
-const VTCC = { lat: 18.7668, lon: 98.9626 }; // Chiang Mai
+const VYYY = { lat: 16.90726667, lon: 96.13323889 }; // Yangon Intl
+const VYHB = { lat: 17.11666667, lon: 96.06666667 }; // Hmawby
+const VYMD = { lat: 21.70107222, lon: 95.97745556 }; // Mandalay Intl
 
 describe("greatCircleNm — the Measure tool's readout", () => {
   it("is zero between a point and itself", () => {
-    expect(greatCircleNm(VTBS, VTBS)).toBe(0);
+    expect(greatCircleNm(VYYY, VYYY)).toBe(0);
   });
 
   it("puts one degree of latitude at ~60 NM (the definition of the mile)", () => {
@@ -53,22 +53,22 @@ describe("greatCircleNm — the Measure tool's readout", () => {
     expect(at60N).toBeCloseTo(atEquator * Math.cos((60 * Math.PI) / 180), 1);
   });
 
-  it("gets the Bangkok–Chiang Mai leg right (~322 NM)", () => {
-    expect(greatCircleNm(VTBS, VTCC)).toBeCloseTo(321.75, 1);
+  it("gets the Yangon–Mandalay leg right (~288 NM)", () => {
+    expect(greatCircleNm(VYYY, VYMD)).toBeCloseTo(287.96, 1);
   });
 
-  it("gets the short Bangkok pair right (~15.8 NM)", () => {
-    expect(greatCircleNm(VTBD, VTBS)).toBeCloseTo(15.76, 2);
+  it("gets the short Yangon pair right (~13.1 NM)", () => {
+    expect(greatCircleNm(VYHB, VYYY)).toBeCloseTo(13.14, 2);
   });
 
   it("is symmetric", () => {
-    expect(greatCircleNm(VTBD, VTCC)).toBeCloseTo(greatCircleNm(VTCC, VTBD), 9);
+    expect(greatCircleNm(VYHB, VYMD)).toBeCloseTo(greatCircleNm(VYMD, VYHB), 9);
   });
 
   it("agrees with the spherical law of cosines at every scale", () => {
     for (const [a, b] of [
-      [VTBS, VTCC],
-      [VTBD, VTBS],
+      [VYYY, VYMD],
+      [VYHB, VYYY],
       [{ lat: 0, lon: 0 }, { lat: 0, lon: 1 }],
       [{ lat: -33.9, lon: 151.2 }, { lat: 51.5, lon: -0.1 }], // antipodal-ish
     ] as const) {

@@ -69,10 +69,21 @@ Browser (Next.js, :3000)
 
 ## Data
 
-`public/data/` holds the inputs the API reads:
+`public/data/` holds the Myanmar (Yangon FIR, ICAO `VY`) navdata the map
+and the API read, all derived from the AIP Myanmar AIXM 2609 export:
 
-- `VTPStoVTBS.csv` — pre-resolved airway-Y8 legs (CSV route source).
-- `airway_waypoint.geojson` — airway network; drawn faint on the map as
-  reference, and used to resolve idents in FPL mode.
+- `aip_VY.json` — every significant point / navaid, the airways and the
+  aerodromes; resolves idents in the route preview and RouteBuilder.
+- `aixm_vy/airway_segments_vy.geojson`, `aixm_vy/airway_vor_vy.geojson` —
+  the ATS route network and VOR/DME stations drawn on the map.
+- `aixm_vy/airspace_boundaries.geojson` (CTR / TMA / CTA / FIR) and
+  `aixm_vy/restricted_areas.geojson` (P / R / D) — the airspace layers
+  (`ctr`, `tma`, `cta`, `fir`, `pdr`; hierarchy pdr > ctr > tma > cta > fir).
+- `aixm_vy/{sid,star,pbn,ils}_*.geojson` — terminal procedures.
+- `airports/Airport_with_AP_Main_vy.csv`, `airports/runway_vy.csv` —
+  aerodromes and runway thresholds.
+
+Routes are always Item-15 strings (e.g. `BGO W13 MIA`); there is no
+airway-CSV corridor mode.
 
 See [`../api/README.md`](../api/README.md) for the API contract.

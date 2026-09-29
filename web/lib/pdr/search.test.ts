@@ -8,15 +8,15 @@ const flight = (callsign: string, adep: string, ades: string) => ({
   ades,
 });
 
-const THA201 = flight("THA201", "VTBS", "VTCC");
-const AIQ3221 = flight("AIQ3221", "VTBD", "VTSG");
+const UBA201 = flight("UBA201", "VYYY", "VYMD");
+const MMA3221 = flight("MMA3221", "VYNT", "VYHH");
 
 const hit = (f: ReturnType<typeof flight>, q: string) =>
   matchesPdrSearch(f, pdrSearchTerms(q));
 
 describe("pdrSearchTerms", () => {
   it("upper-cases and splits on spaces and commas, dropping blanks", () => {
-    expect(pdrSearchTerms("  tha  vtbs,vtcc ,")).toEqual(["THA", "VTBS", "VTCC"]);
+    expect(pdrSearchTerms("  uba  vyyy,vymd ,")).toEqual(["UBA", "VYYY", "VYMD"]);
   });
 
   it("is empty for a blank query", () => {
@@ -25,49 +25,49 @@ describe("pdrSearchTerms", () => {
   });
 
   it("reads -> as the arrow the rows draw", () => {
-    expect(pdrSearchTerms("vtbs->vtcc")).toEqual(["VTBS→VTCC"]);
+    expect(pdrSearchTerms("vyyy->vymd")).toEqual(["VYYY→VYMD"]);
   });
 });
 
 describe("matchesPdrSearch", () => {
   it("matches everything when there is nothing to search for", () => {
-    expect(hit(THA201, "")).toBe(true);
-    expect(hit(THA201, "   ")).toBe(true);
+    expect(hit(UBA201, "")).toBe(true);
+    expect(hit(UBA201, "   ")).toBe(true);
   });
 
   it("finds a callsign by any part of it, in any case", () => {
-    expect(hit(THA201, "tha201")).toBe(true);
-    expect(hit(THA201, "THA")).toBe(true);
-    expect(hit(THA201, "a20")).toBe(true);
-    expect(hit(AIQ3221, "THA")).toBe(false);
+    expect(hit(UBA201, "uba201")).toBe(true);
+    expect(hit(UBA201, "UBA")).toBe(true);
+    expect(hit(UBA201, "a20")).toBe(true);
+    expect(hit(MMA3221, "UBA")).toBe(false);
   });
 
   it("finds a flight by either aerodrome", () => {
-    expect(hit(THA201, "VTBS")).toBe(true); // departure
-    expect(hit(THA201, "vtcc")).toBe(true); // destination
-    expect(hit(THA201, "VTSG")).toBe(false);
+    expect(hit(UBA201, "VYYY")).toBe(true); // departure
+    expect(hit(UBA201, "vymd")).toBe(true); // destination
+    expect(hit(UBA201, "VYHH")).toBe(false);
   });
 
   it("finds a flight by the pair as the row writes it", () => {
-    expect(hit(THA201, "VTBS→VTCC")).toBe(true);
-    expect(hit(THA201, "VTBS->VTCC")).toBe(true);
-    expect(hit(THA201, "VTBS-VTCC")).toBe(true);
+    expect(hit(UBA201, "VYYY→VYMD")).toBe(true);
+    expect(hit(UBA201, "VYYY->VYMD")).toBe(true);
+    expect(hit(UBA201, "VYYY-VYMD")).toBe(true);
     // The pair has a direction: the reverse is another flight.
-    expect(hit(THA201, "VTCC→VTBS")).toBe(false);
+    expect(hit(UBA201, "VYMD→VYYY")).toBe(false);
   });
 
   it("narrows with several terms, in any order", () => {
-    expect(hit(THA201, "THA VTBS")).toBe(true);
-    expect(hit(THA201, "VTBS THA")).toBe(true);
-    expect(hit(THA201, "THA VTSG")).toBe(false);
-    expect(hit(AIQ3221, "THA VTBD")).toBe(false);
+    expect(hit(UBA201, "UBA VYYY")).toBe(true);
+    expect(hit(UBA201, "VYYY UBA")).toBe(true);
+    expect(hit(UBA201, "UBA VYHH")).toBe(false);
+    expect(hit(MMA3221, "UBA VYNT")).toBe(false);
   });
 
   it("treats two aerodromes as 'between these', whichever way round", () => {
-    expect(hit(THA201, "VTCC VTBS")).toBe(true);
+    expect(hit(UBA201, "VYMD VYYY")).toBe(true);
   });
 
   it("does not match a query that is nowhere on the row", () => {
-    expect(hit(THA201, "zzz")).toBe(false);
+    expect(hit(UBA201, "zzz")).toBe(false);
   });
 });

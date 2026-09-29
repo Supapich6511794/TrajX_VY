@@ -5,9 +5,9 @@
  *
  * One row per encounter, in the form a post-run report wants it:
  *
- *   02:14:20–02:16:05Z   THA100 x TGW122     crossing 68°
+ *   02:14:20–02:16:05Z   UBA100 x MMA122     crossing 68°
  *   2.1 NM / 0 ft  (minima 5 NM / 1000 ft)
- *   ✓ resolved 02:06:30Z — TGW122 reduce 20 kt   3N/Bangkok CTR
+ *   ✓ resolved 02:06:30Z — MMA122 reduce 20 kt   MINGALADON CTR
  *
  * The other CD&R views are about the present: the notification stack clears as
  * conflicts pass and the dashboard drops a pair the moment it is fixed. This

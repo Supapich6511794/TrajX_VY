@@ -67,7 +67,7 @@ export function findIncursions(
   if (path.length === 0) return out;
 
   // Whole-route bounding box and level range, computed once. A flight is near
-  // a handful of the 73 published areas at most, and without this every area
+  // a handful of the 110 published area polygons at most, and without this every area
   // was walked against every sample of every flight — the single biggest cost
   // in the check when a whole traffic day is loaded.
   let pMinLon = Infinity;
@@ -204,8 +204,9 @@ export function pathFromFixes(
  * been generated yet.
  *
  * This exists because a flat-at-cruise estimate is not merely imprecise, it is
- * blind to most of the hazard: only 16 of the 73 published PDR areas reach
- * FL330, while 51 of them top out below FL200. Check a plan at its RFL alone
+ * blind to most of the hazard: only 7 of the 110 published PDR polygons in
+ * the Yangon FIR (AIRAC 2609) reach FL330, while 88 of them top out below
+ * FL200. Check a plan at its RFL alone
  * and every low area under the climb-out and the descent is missed.
  *
  * Uses the controller's 3:1 rule — 3 NM per 1000 ft — from the departure and
@@ -246,7 +247,7 @@ export function climbCruiseDescentFt(opts: {
  *
  * The engine emits a point every 5 s, which at cruise is about 0.6 NM — far
  * finer than this check needs, and checking a whole traffic day at that density
- * against 73 areas is a lot of ray-casting for no extra answer. Thinning to
+ * against 110 area polygons is a lot of ray-casting for no extra answer. Thinning to
  * ~1.5 NM keeps every area comfortably (the smallest published PDR is several
  * miles across) while cutting the work several-fold.
  *

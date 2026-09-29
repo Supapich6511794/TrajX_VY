@@ -85,11 +85,6 @@ import {
   fetchPbnLines,
   fetchPbnWaypoints,
   fetchRunways,
-  fetchVyAirspaceBoundaries,
-  fetchVyProcedureLines,
-  fetchVyProcedureWaypoints,
-  fetchVyRestrictedAreas,
-  type AirspaceAreaCollection,
   type GateCollection,
   type PanelAirport,
   type RunwayPoint,
@@ -103,7 +98,7 @@ import LayerOptions, {
   type LayerTabKey,
   type ProcLayerState,
 } from "@/components/LayerOptions";
-import { fetchCsvRouteIdents } from "@/lib/routeCsv";
+import { fetchRouteBuilderIdents } from "@/lib/routeCsv";
 import type { Basemap, Theme } from "@/lib/mapPrefs";
 import type { PreviewPoint } from "@/lib/routePreview";
 import type { TrajectoryPoint, TrajectoryResult } from "@/lib/trajectory/types";
@@ -130,6 +125,7 @@ import {
   buildAirspaceIndex,
   buildAirspaceSegments,
   formatAirspace,
+  hasAirspace,
   type AirspaceIndex,
   type AirspaceMembership,
   type AirspaceSegment,
@@ -148,6 +144,7 @@ import { useArrivals } from "@/lib/cdr/useArrivals";
 import { useCdr } from "@/lib/cdr/useCdr";
 import {
   DEFAULT_CDR_CONFIG,
+  REDUCED_TERMINAL_SEP_TMAS,
   horizontalMinimumNm,
   type CdrConfig,
   type DeepPartial,
@@ -347,7 +344,7 @@ const REPORT_PROGRESS_MS = 150;
 
 /** The airspace layers a report walks flights against. PDR is not one: an
  *  aircraft is "in" an ATS unit, and a restricted area is not one. */
-const REPORT_LAYERS: SectorKey[] = ["bacc", "subsector", "ctr", "tma"];
+const REPORT_LAYERS: SectorKey[] = ["ctr", "tma", "cta", "fir"];
 
 /** Is a cached walk still the walk of THESE flights against THESE polygons? */
 function isSameWalk(a: unknown[], b: unknown[]): boolean {
@@ -759,7 +756,7 @@ export default function MapApp() {
   const [fir, setFir] = useState<FirCollection | null>(null);
   const [firLoading, setFirLoading] = useState(false);
 
-  // Airspace sector overlays (BACC / subsector / CTR / TMA / PDR) — each
+  // Airspace sector overlays (CTR / TMA / CTA / FIR / PDR) — each
   // lazily loaded the first time its layer is toggled on.
   const [sectorsOn, setSectorsOn] = useState<Record<SectorKey, boolean>>(
     () =>
@@ -776,7 +773,7 @@ export default function MapApp() {
     [],
   );
   // How the sector polygons are coloured: "zone" = the per-zone legend colour
-  // (BACC/CTR/TMA/… — matches the Airspace menu swatches), "sector" = a distinct
+  // (CTR/TMA/CTA/… — matches the Airspace menu swatches), "sector" = a distinct
   // colour per individual sector, "altitude" = by the sector's coded band.
   const [sectorColorMode, setSectorColorMode] = useState<
     "zone" | "sector" | "altitude"
@@ -819,7 +816,6 @@ export default function MapApp() {
   const [star, setStar] = useState<ProcLayerState>(DEFAULT_PROC_LAYER);
   const [pbn, setPbn] = useState<ProcLayerState>(DEFAULT_PROC_LAYER);
   const [ils, setIls] = useState<ProcLayerState>(DEFAULT_PROC_LAYER);
-  const [vy, setVy] = useState<ProcLayerState>(DEFAULT_PROC_LAYER);
   const [holdingLayer, setHoldingLayer] = useState<HoldingLayerState>(
     DEFAULT_HOLDING_LAYER,
   );
@@ -841,17 +837,6 @@ export default function MapApp() {
   const [ilsWpts, setIlsWpts] = useState<ProcedureWaypointCollection | null>(
     null,
   );
-  const [vyLines, setVyLines] = useState<ProcedureLineCollection | null>(
-    null,
-  );
-  const [vyWpts, setVyWpts] = useState<ProcedureWaypointCollection | null>(
-    null,
-  );
-  const [vyAreasOn, setVyAreasOn] = useState(false);
-  const [vyAreas, setVyAreas] = useState<AirspaceAreaCollection | null>(null);
-  const [vyBoundariesOn, setVyBoundariesOn] = useState(false);
-  const [vyBoundaries, setVyBoundaries] =
-    useState<AirspaceAreaCollection | null>(null);
   // Holding patterns for the map layer (distinct from the CD&R holdings index
   // below: this one is categorised + drawable). Fetched on first enable.
   const [holdingPatterns, setHoldingPatterns] = useState<
@@ -900,8 +885,8 @@ export default function MapApp() {
     null,
   );
 
-  // RouteBuilder picker is restricted to the FPL route's own fixes
-  // (VTPStoVTBS.csv / airway Y8), not every fix in the airway file.
+  // RouteBuilder picker idents: every Myanmar fix/navaid in the VY navdata
+  // cache (aip_VY.json), so a route can be built across any airway.
   const [routeIdents, setRouteIdents] = useState<string[]>([]);
 
   // Aircraft animation. One playback engine drives the clock; the
@@ -1087,21 +1072,25 @@ export default function MapApp() {
     [sectorData],
   );
 
-  // Position-dependent horizontal separation minimum for CD&R: 3 NM inside the
-  // Bangkok TMA (terminal radar minimum), 5 NM everywhere else (en-route). The
-  // TMA polygon is loaded once any flight exists (see the all-sectors effect
-  // below), so it's available whenever the detector runs. Fed to BOTH the
+  // Position-dependent horizontal separation minimum for CD&R: 3 NM inside a
+  // TMA listed in REDUCED_TERMINAL_SEP_TMAS (terminal radar minimum), 5 NM
+  // everywhere else (en-route). That set is EMPTY by default — Myanmar's
+  // terminal minima must be confirmed from AIP Myanmar first — so this stays
+  // undefined and the flat 5 NM applies. The TMA polygons are loaded once any
+  // flight exists (see the all-sectors effect below). Fed to BOTH the
   // realtime detector and the plan-scan via `configOverrides`, so `cdr.config`
   // carries it and every downstream path (detect, planConflicts, advisories)
   // uses the same per-position minimum. Falls back to the flat en-route minimum
   // until the polygon loads.
   const sepMinNmAt = useMemo(() => {
-    if (!airspaceIndex.tma) return undefined;
+    if (REDUCED_TERMINAL_SEP_TMAS.size === 0 || !airspaceIndex.tma) return undefined;
     const { enrouteNm, terminalNm } = DEFAULT_CDR_CONFIG.horizontal;
-    return (lat: number, lon: number, altFt: number | null): number =>
-      airspaceAt(airspaceIndex, lon, lat, altFt).tma === "BANGKOK TMA"
+    return (lat: number, lon: number, altFt: number | null): number => {
+      const tma = airspaceAt(airspaceIndex, lon, lat, altFt).tma;
+      return tma && REDUCED_TERMINAL_SEP_TMAS.has(tma.toUpperCase())
         ? terminalNm
         : enrouteNm;
+    };
   }, [airspaceIndex]);
   const cdrConfigOverrides = useMemo<DeepPartial<CdrConfig> | undefined>(
     () => (sepMinNmAt ? { sepMinNmAt } : undefined),
@@ -1139,7 +1128,7 @@ export default function MapApp() {
   // profile label/colours alike.
   const airspaceByKey = useMemo(() => {
     const out: Record<string, AirspaceMembership> = {};
-    if (!airspaceIndex.bacc) return out; // polygons not loaded yet
+    if (!hasAirspace(airspaceIndex)) return out; // polygons not loaded yet
     trajectories.forEach((t, i) => {
       const localT = localClock(i, airspaceSec, routeOffsets, safePlaybackIdx);
       if (statusFromLocalT(localT, totalSeconds(t.points)) !== "enroute") return;
@@ -1180,7 +1169,7 @@ export default function MapApp() {
   const airspaceSegmentsFor = useCallback(
     (flightKey: string): AirspaceSegment[] => {
       const t = trajByKey.get(flightKey);
-      if (!t || !airspaceIndex.bacc) return [];
+      if (!t || !hasAirspace(airspaceIndex)) return [];
       return buildAirspaceSegments(airspaceIndex, t.points);
     },
     [trajByKey, airspaceIndex],
@@ -1247,7 +1236,7 @@ export default function MapApp() {
   // The before/after Preview & Fix modal (opened from a dashboard row).
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
   const toasts = useToasts();
-  // flightKey → callsign, so alerts read "THA201 ↔ AIQ34", not raw keys.
+  // flightKey → callsign, so alerts read "UBA201 ↔ MMA34", not raw keys.
   const callsignByKey = useMemo(() => {
     const m: Record<string, string> = {};
     for (const t of trajectories) m[t.meta.flightKey] = t.meta.callsign;
@@ -1291,7 +1280,7 @@ export default function MapApp() {
       tCpaAbsSec: number,
       { effective = true }: { effective?: boolean } = {},
     ): ConflictSector | null => {
-      if (!airspaceIndex.bacc) return null; // polygons not loaded yet
+      if (!hasAirspace(airspaceIndex)) return null; // polygons not loaded yet
       const at = (id: string, absSec: number): SectorPoint | null => {
         // Indexed, not searched: the dashboard asks this for every row it
         // draws, four times each (both aircraft, at the CPA and now). A linear
@@ -1316,8 +1305,11 @@ export default function MapApp() {
       ) => {
         const m = airspaceAt(airspaceIndex, lon, lat, altFt);
         const cfg = effective ? effectiveRef.current : null;
-        if (!cfg || !m.bacc || atMs == null) return m;
-        return { ...m, bacc: positionAt(cfg, m.bacc, lon, lat, atMs) };
+        const layer = cfg?.layer as SectorKey | undefined;
+        if (!cfg || !layer || layer === "pdr" || atMs == null) return m;
+        const own = m[layer];
+        if (!own) return m;
+        return { ...m, [layer]: positionAt(cfg, own, lon, lat, atMs) };
       };
       const abs = (sec: number) => timelineOriginMsRef.current + sec * 1000;
       return conflictSector(
@@ -1545,7 +1537,8 @@ export default function MapApp() {
     [arrivalPreview, trajectories, routeOffsets, totalExtendNm],
   );
 
-  // Published Bangkok-FIR holdings (AIRAC 2607) — loaded once, enables the CD&R
+  // Published holdings (dormant until a VY holding table is supplied — the
+  // loader fails closed to none) — loaded once, enables the CD&R
   // HOLD resolution (fly a racetrack loop at a holding fix on the route to
   // delay + open spacing) and the same instruction for an arrival stream.
   const [holdings, setHoldings] = useState<Map<string, Holding>>(new Map());
@@ -2889,7 +2882,7 @@ export default function MapApp() {
 
   /** The conflict to open when a resolution is blocked by a third aircraft.
    *
-   *  "Resolve THA574 first" is only advice until THA574 can be REACHED, and in
+   *  "Resolve UBA574 first" is only advice until UBA574 can be REACHED, and in
    *  a busy picture its own conflict is somewhere down a stack of dozens. The
    *  live stack is preferred over the plan scan because that is the list the
    *  notification panel can actually expand; both are ordered worst-first, so
@@ -3469,13 +3462,13 @@ export default function MapApp() {
     };
   }, []);
 
-  // Load the FPL route's waypoint idents for the RouteBuilder picker.
+  // Load the VY fix idents for the RouteBuilder picker.
   useEffect(() => {
     let cancelled = false;
-    fetchCsvRouteIdents()
+    fetchRouteBuilderIdents()
       .then((ids) => !cancelled && setRouteIdents(ids))
       .catch(() => {
-        /* picker simply shows nothing if the CSV can't be read */
+        /* picker simply shows nothing if the navdata can't be read */
       });
     return () => {
       cancelled = true;
@@ -3608,45 +3601,6 @@ export default function MapApp() {
       );
   }, [ils.waypoints, ilsWpts]);
 
-  // Myanmar (VY) reference layer — same lazy-load pattern as PBN/ILS.
-  const vyNeedLines = layersOpen || vy.routes;
-  useEffect(() => {
-    if (!vyNeedLines || vyLines) return;
-    fetchVyProcedureLines()
-      .then(setVyLines)
-      .catch((e: unknown) =>
-        setError(e instanceof Error ? e.message : "Failed to load VY lines"),
-      );
-  }, [vyNeedLines, vyLines]);
-  useEffect(() => {
-    if (!vy.waypoints || vyWpts) return;
-    fetchVyProcedureWaypoints()
-      .then(setVyWpts)
-      .catch((e: unknown) =>
-        setError(e instanceof Error ? e.message : "Failed to load VY fixes"),
-      );
-  }, [vy.waypoints, vyWpts]);
-  useEffect(() => {
-    if (!vyAreasOn || vyAreas) return;
-    fetchVyRestrictedAreas()
-      .then(setVyAreas)
-      .catch((e: unknown) =>
-        setError(
-          e instanceof Error ? e.message : "Failed to load VY restricted areas",
-        ),
-      );
-  }, [vyAreasOn, vyAreas]);
-  useEffect(() => {
-    if (!vyBoundariesOn || vyBoundaries) return;
-    fetchVyAirspaceBoundaries()
-      .then(setVyBoundaries)
-      .catch((e: unknown) =>
-        setError(
-          e instanceof Error ? e.message : "Failed to load VY airspace boundaries",
-        ),
-      );
-  }, [vyBoundariesOn, vyBoundaries]);
-
   // SID/STAR line data — fetched once the Layer Options panel is opened
   // (so the filter dropdowns can populate) or a routes layer is enabled.
   const sidNeedLines = layersOpen || sid.routes;
@@ -3754,10 +3708,6 @@ export default function MapApp() {
   const ilsOpts = useMemo(
     () => procOpts(ilsLines, ils.airports),
     [ilsLines, ils.airports],
-  );
-  const vyOpts = useMemo(
-    () => procOpts(vyLines, vy.airports),
-    [vyLines, vy.airports],
   );
 
   // Cascading index for the direct lookup form: airport -> procedure ->
@@ -4398,7 +4348,7 @@ export default function MapApp() {
                     value={profileFlightQuery}
                     onChange={setProfileFlightQuery}
                     suggestions={profileFlightSugg}
-                    placeholder="VTBS VTSP · THA201 — empty = all flights"
+                    placeholder="VYYY VYMD · UBA201 — empty = all flights"
                   />
                 </label>
                 <label className="field">
@@ -4407,7 +4357,7 @@ export default function MapApp() {
                     value={profileRouteQuery}
                     onChange={setProfileRouteQuery}
                     suggestions={profileRouteSugg}
-                    placeholder="BKK Y8 PUT · R2 — empty = all routes"
+                    placeholder="BGO W13 MIA · R2 — empty = all routes"
                   />
                 </label>
               </div>
@@ -4728,22 +4678,6 @@ export default function MapApp() {
                 index: ilsIndex,
                 lookup: (a, n, t) => lookupProcedure("ILS", a, n, t),
               }}
-              vy={{
-                state: vy,
-                onChange: setVy,
-                airportOpts: vyOpts.airports,
-                procOpts: vyOpts.procedures,
-                // No lookup form for this tab (see LayerOptions' ProcTab) —
-                // Myanmar procedures aren't served by the (Thai-only)
-                // procedures API, so this index/lookup pair is never read.
-                index: {},
-                lookup: () =>
-                  Promise.reject(new Error("VY procedures have no lookup")),
-              }}
-              vyAreasOn={vyAreasOn}
-              onVyAreasOn={setVyAreasOn}
-              vyBoundariesOn={vyBoundariesOn}
-              onVyBoundariesOn={setVyBoundariesOn}
               holding={holdingLayer}
               onHoldingChange={setHoldingLayer}
               holdingAirportOpts={holdingOpts.airports}
@@ -4776,17 +4710,12 @@ export default function MapApp() {
               pbnWpts={pbnWpts}
               ilsLines={ilsLines}
               ilsWpts={ilsWpts}
-              vyLines={vyLines}
-              vyWpts={vyWpts}
-              vyAreas={vyAreasOn ? vyAreas : null}
-              vyBoundaries={vyBoundariesOn ? vyBoundaries : null}
               holdings={holdingPatterns}
               holding={holdingLayer}
               sid={sid}
               star={star}
               pbn={pbn}
               ils={ils}
-              vy={vy}
               airports={airportList}
               hiddenAirports={hiddenAirports}
               gates={gatesOn ? gates : null}

@@ -80,8 +80,8 @@ function headOn(): PlanFlight[] {
   const lat = 13;
   const nmPerDegLon = Math.cos((lat * Math.PI) / 180) * 60;
   return [
-    planFlight(leg("THA1", lat, 100, 90)),
-    planFlight(leg("AIQ2", lat, 100 + 60 / nmPerDegLon, 270)),
+    planFlight(leg("UBA1", lat, 100, 90)),
+    planFlight(leg("KMV2", lat, 100 + 60 / nmPerDegLon, 270)),
   ];
 }
 
@@ -90,8 +90,8 @@ function verticallySeparated(): PlanFlight[] {
   const lat = 13;
   const nmPerDegLon = Math.cos((lat * Math.PI) / 180) * 60;
   return [
-    planFlight(leg("THA1", lat, 100, 90, 35000)),
-    planFlight(leg("AIQ2", lat, 100 + 60 / nmPerDegLon, 270, 37000)),
+    planFlight(leg("UBA1", lat, 100, 90, 35000)),
+    planFlight(leg("KMV2", lat, 100 + 60 / nmPerDegLon, 270, 37000)),
   ];
 }
 
@@ -129,10 +129,10 @@ describe("buildLosMarks", () => {
       cfg,
       T0,
     );
-    expect(marks.map((m) => m.flight_key)).toEqual(["THA1", "AIQ2"]);
+    expect(marks.map((m) => m.flight_key)).toEqual(["UBA1", "KMV2"]);
     const [a, b] = marks;
-    expect(a.spans[0].with_callsign).toBe("AIQ2");
-    expect(b.spans[0].with_callsign).toBe("THA1");
+    expect(a.spans[0].with_callsign).toBe("KMV2");
+    expect(b.spans[0].with_callsign).toBe("UBA1");
     // Same window, expressed as UTC timestamps on the export's format.
     expect(a.spans[0].start_ts).toBe(b.spans[0].start_ts);
     expect(a.spans[0].start_ts).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
@@ -148,16 +148,16 @@ describe("buildLosMarks", () => {
     // just be omitted, or a stale export keeps accusing the flight.
     const marks = buildLosMarks(flights.map((f) => f.id), flights, [], cfg, T0);
     expect(marks).toEqual([
-      { flight_key: "THA1", spans: [] },
-      { flight_key: "AIQ2", spans: [] },
+      { flight_key: "UBA1", spans: [] },
+      { flight_key: "KMV2", spans: [] },
     ]);
   });
 
   it("only marks the flights being exported", () => {
     const flights = headOn();
     const conflicts = scanFlightPlanConflicts(flights, cfg);
-    const marks = buildLosMarks(["THA1"], flights, conflicts, cfg, T0);
+    const marks = buildLosMarks(["UBA1"], flights, conflicts, cfg, T0);
     expect(marks).toHaveLength(1);
-    expect(marks[0].spans[0].with_callsign).toBe("AIQ2");
+    expect(marks[0].spans[0].with_callsign).toBe("KMV2");
   });
 });

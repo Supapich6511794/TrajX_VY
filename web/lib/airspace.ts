@@ -2,12 +2,12 @@
  * Airspace membership — which controlled volume an aircraft occupies.
  *
  * Pure, dependency-free point-in-polygon (the project ships no turf) over the
- * Bangkok airspace GeoJSON already loaded by `fetchSector` (web/lib/geojson.ts):
- * BACC sectors + subsectors, Control Zones (CTR), Terminal Areas (TMA) and
- * Prohibited/Danger/Restricted areas (PDR). The test is ALTITUDE-AWARE — a plane
- * at FL196 is not "in" a CTR that tops at 2000 ft — so each layer's vertical band
- * is parsed (their formats differ: numeric FL on bacc, numeric ft on tma, and
- * strings like "GND"/"ALT 2000"/"FL 120"/"UNL" on ctr/pdr).
+ * Myanmar (Yangon FIR) airspace GeoJSON already loaded by `fetchSector`
+ * (web/lib/geojson.ts): Control Zones (CTR), Terminal Areas (TMA), Control
+ * Areas (CTA), the FIR itself and Prohibited/Danger/Restricted areas (PDR).
+ * The test is ALTITUDE-AWARE — a plane at FL196 is not "in" a CTR that tops at
+ * FL130 — so each feature's vertical band is parsed from its AIP-style
+ * `lower`/`upper` strings (see `parseVyAltFt`).
  */
 
 import type { Geometry, Position } from "geojson";
@@ -15,11 +15,11 @@ import type { Geometry, Position } from "geojson";
 import { SECTORS, type SectorCollection, type SectorKey } from "./geojson";
 
 export interface AirspaceMembership {
-  bacc?: string; // BACC sector, e.g. "4S"
-  subsector?: string; // BACC subsector, e.g. "7N"
-  ctr?: string; // e.g. "BANGKOK CTR"
-  tma?: string; // e.g. "BANGKOK TMA"
-  pdr?: string[]; // e.g. ["VTD16 RATCHABURI"] — can overlap, so a list
+  ctr?: string; // e.g. "YANGON CTR"
+  tma?: string; // e.g. "MINGALADON TMA"
+  cta?: string; // e.g. "YANGON CTA"
+  fir?: string; // e.g. "YANGON FIR"
+  pdr?: string[]; // e.g. ["R13 SHANTE"] — can overlap, so a list
 }
 
 // --- point-in-polygon (ray casting, lon/lat) -------------------------------
@@ -60,8 +60,8 @@ export function pointInMultiPolygon(
 // --- edge-bucketed ring index ------------------------------------------------
 //
 // The ray cast above walks EVERY edge of a ring for every point tested. The
-// airspace polygons are not small — a BACC sector runs to 28 000 vertices and a
-// CTR to ~1 000 — so a single aircraft sample cost ~10 000 edge tests, and a
+// airspace polygons are not small — an FIR outline runs to thousands of
+// vertices and a CTR to ~1 000 — so a single aircraft sample cost ~10 000 edge tests, and a
 // whole traffic day (hundreds of flights, thousands of samples each) spent
 // seconds in this loop. A horizontal ray only ever crosses edges whose latitude
 // span contains the point, so the edges are bucketed by latitude band once and
@@ -211,15 +211,33 @@ export function parseAltFt(v: unknown, isFL = false): number {
   if (typeof v === "number") return isFL ? v * 100 : v;
   const s = String(v).trim().toUpperCase();
   if (!s) return NaN;
-  // "SURFACE" is spelled out on some PDR features (VTD74) where the rest use
-  // GND. It used to fall through to the digit search, return NaN, and be
-  // rescued only by the caller's fallback — right by luck, not by reading.
+  // "SURFACE" is spelled out by some sources where the rest use GND.
   if (s === "GND" || s === "SFC" || s === "MSL" || s === "SURFACE") return 0;
   if (s.startsWith("UNL")) return Infinity;
   const fl = s.match(/FL\s*(\d+)/);
   if (fl) return Number(fl[1]) * 100;
   const n = s.match(/(\d+)/);
   return n ? Number(n[1]) : NaN;
+}
+
+/** Feet from a Myanmar AIP-style limit string: "GND SFC" -> 0, "UNL STD" ->
+ *  Infinity, "<n> STD" / "FL <n>" -> that flight level in feet (n * 100, QNE
+ *  reference), "<n> MSL"/"<n> SFC" -> n feet directly. Used for every layer,
+ *  whose `aixm_vy` source files all share this `lower`/`upper` format. Must
+ *  stay in step with the backend's parser in trajectory_sim/airspace.py. */
+export function parseVyAltFt(v: unknown): number {
+  if (v == null) return NaN;
+  if (typeof v === "number") return v;
+  const s = String(v).trim().toUpperCase();
+  if (!s) return NaN;
+  if (s.startsWith("GND") || s.startsWith("SFC")) return 0;
+  if (s.startsWith("UNL")) return Infinity;
+  const fl = s.match(/^FL\s*(\d+)/);
+  if (fl) return Number(fl[1]) * 100;
+  const m = s.match(/^(\d+)\s*(STD|MSL|SFC)?/);
+  if (!m) return NaN;
+  const n = Number(m[1]);
+  return m[2] === "STD" ? n * 100 : n;
 }
 
 export interface Band {
@@ -230,36 +248,29 @@ export interface Band {
 /** Vertical band (feet) coded on a sector feature, per its layer's schema.
  *  Exposed so the map can colour sectors by altitude. */
 export function layerBand(props: Record<string, unknown>, key: SectorKey): Band {
-  switch (key) {
-    case "bacc":
-      return {
-        lo: parseAltFt(props.lower, true),
-        hi: parseAltFt(props.upper, true),
-      };
-    case "subsector":
-      return { lo: 0, hi: Infinity }; // no coded band — horizontal only
-    case "tma":
-      return { lo: parseAltFt(props.lower), hi: parseAltFt(props.upper) };
-    case "ctr":
-      return {
-        lo: parseAltFt(props.lower_1 ?? props.lowerlimit),
-        hi: parseAltFt(props.upper_1 ?? props.upperlimit),
-      };
-    case "pdr":
-      return {
-        lo: parseAltFt(props.lowerlimit),
-        hi: parseAltFt(props.upperlimit),
-      };
-  }
+  void key; // every aixm_vy layer shares one `lower`/`upper` format
+  const lo = parseVyAltFt(props.lower);
+  const hi = parseVyAltFt(props.upper);
+  // A missing limit must not make the volume unreachable (NaN fails every
+  // comparison): treat an absent floor as the surface, an absent top as open.
+  return {
+    lo: Number.isNaN(lo) ? 0 : lo,
+    hi: Number.isNaN(hi) ? Infinity : hi,
+  };
 }
 
 function layerLabel(props: Record<string, unknown>, key: SectorKey): string {
   if (key === "pdr") {
-    const ident = String(props.ident ?? "").trim();
+    // restricted_areas.geojson has no combined ident — "R" + "13" + "SHANTE".
+    const type = String(props.type ?? "").trim();
+    const designator = String(props.designator ?? "").trim();
     const name = String(props.name ?? "").trim();
-    return [ident, name].filter(Boolean).join(" ") || "PDR";
+    return [`${type}${designator}`.trim(), name].filter(Boolean).join(" ") || "PDR";
   }
-  return String(props.name ?? props.ident ?? "").trim() || key.toUpperCase();
+  const name = String(props.name ?? props.ident ?? "").trim();
+  // The FIR feature is named just "YANGON" — say what it is.
+  if (key === "fir" && name && !/\bFIR\b/i.test(name)) return `${name} FIR`;
+  return name || key.toUpperCase();
 }
 
 // --- prebuilt index (bbox + normalized MultiPolygon per feature) -----------
@@ -334,7 +345,7 @@ export function buildAirspaceIndex(
 
 // --- membership ------------------------------------------------------------
 
-const LAYER_ORDER: SectorKey[] = ["bacc", "subsector", "ctr", "tma", "pdr"];
+const LAYER_ORDER: SectorKey[] = ["ctr", "tma", "cta", "fir", "pdr"];
 
 /** Which airspace volumes contain (lon, lat, altFt). `altFt == null` (no
  *  vertical profile) skips the altitude gate → horizontal-only. */
@@ -358,7 +369,7 @@ export function airspaceAt(
           : pointInMultiPolygon(lon, lat, e.mp))
       )
         continue;
-      if (altFt != null && key !== "subsector") {
+      if (altFt != null) {
         if (!(altFt >= e.band.lo && altFt <= e.band.hi)) continue;
       }
       hits.push(e.label);
@@ -366,10 +377,7 @@ export function airspaceAt(
     }
     if (hits.length === 0) continue;
     if (key === "pdr") m.pdr = hits;
-    else if (key === "bacc") m.bacc = hits[0];
-    else if (key === "subsector") m.subsector = hits[0];
-    else if (key === "ctr") m.ctr = hits[0];
-    else if (key === "tma") m.tma = hits[0];
+    else m[key] = hits[0];
   }
   return m;
 }
@@ -400,7 +408,7 @@ export interface AirspaceSegment {
   /** Altitude-aware membership — the volumes that actually contain the
    *  aircraft on this stretch. Drives both the label and the colours. */
   membership: AirspaceMembership;
-  /** Compact display label, e.g. "8S/Bangkok CTR/VTR1" ("" outside all zones).
+  /** Compact display label, e.g. "Yangon CTR" ("" outside all zones).
    *  Altitude-aware: a TMA the aircraft is above (past its ceiling) is not
    *  listed here. */
   label: string;
@@ -436,7 +444,7 @@ export function buildAirspaceSegments(
   index: AirspaceIndex,
   points: ReadonlyArray<SegPoint>,
 ): AirspaceSegment[] {
-  if (points.length === 0 || !index.bacc) return [];
+  if (points.length === 0 || !hasAirspace(index)) return [];
   // Cached against the index too: reloading the sector polygons builds a new
   // index, and the old segments were resolved against the old volumes.
   const hit = segmentCache.get(points);
@@ -450,7 +458,7 @@ export function buildAirspaceSegments(
     // PDR (prohibited/danger/restricted) is EXCLUDED from the profile blocks:
     // those areas are assumed CLOSED (a flight wouldn't be routed through an
     // active one), so they must not tint or label the altitude chart as a
-    // "sector". Only the controlling ATS volume (CTR/TMA/BACC/subsector) counts.
+    // "sector". Only the controlling ATS volume (CTR/TMA/CTA/FIR) counts.
     const m = full.pdr ? { ...full, pdr: undefined } : full;
     const label = formatAirspace(m, "compact");
     if (cur && cur.label === label) {
@@ -469,8 +477,14 @@ export function buildAirspaceSegments(
 export function isEmptyAirspace(m: AirspaceMembership | undefined): boolean {
   return (
     !m ||
-    (!m.bacc && !m.subsector && !m.ctr && !m.tma && (!m.pdr || m.pdr.length === 0))
+    (!m.ctr && !m.tma && !m.cta && !m.fir && (!m.pdr || m.pdr.length === 0))
   );
+}
+
+/** Has any ATS layer (CTR/TMA/CTA/FIR) been loaded into the index? The gate
+ *  every live-membership consumer checks before resolving positions. */
+export function hasAirspace(index: AirspaceIndex): boolean {
+  return !!(index.ctr || index.tma || index.cta || index.fir);
 }
 
 // Abbreviations that stay upper-case in a title-cased zone name.
@@ -487,9 +501,9 @@ const ZONE_ABBR = new Set([
 ]);
 
 /** Title-case a zone name for display, keeping airspace abbreviations
- *  ("CTR"/"TMA") and area idents (anything with a digit, e.g. "VTD16")
- *  as-is: "BANGKOK TMA" → "Bangkok TMA", "VTD16 RATCHABURI" → "VTD16
- *  Ratchaburi", "NAN TMA" → "Nan TMA". */
+ *  ("CTR"/"TMA") and area idents (anything with a digit, e.g. "R13")
+ *  as-is: "MINGALADON TMA" → "Mingaladon TMA", "R13 SHANTE" → "R13
+ *  Shante", "YANGON FIR" → "Yangon FIR". */
 function titleZone(name: string): string {
   return name
     .split(/\s+/)
@@ -501,52 +515,37 @@ function titleZone(name: string): string {
     .join(" ");
 }
 
-/** Sector code for display. 3S and 6S are modelled as two altitude slabs
- *  (``3S_lower`` FL0–270, ``3S_upper`` FL270–460 — the part below 2S vs beside
- *  it), but a target is called just "3S" / "6S" regardless of slab (per BACC
- *  ops): strip the ``_lower``/``_upper`` suffix. The altitude test already put
- *  the aircraft in the right slab; the suffix is a data-modelling detail, not
- *  something a controller says. */
-function sectorLabel(code: string): string {
-  return code.replace(/_(lower|upper)$/i, "");
-}
-
 /**
  * The name a sector event carries for one indexed volume.
  *
  * `IndexEntry.label` is the raw published name; the events and the report rows
  * carry the DISPLAY name that `formatAirspace` produces. Anything joining the
  * two — the adjacency graph behind dynamic sectorization — has to cross that
- * gap with the same rules, or "3S_upper" and "3S" become two sectors that never
- * meet.
+ * gap with the same rules, or "MANDALAY TMA" and "Mandalay TMA" become two
+ * sectors that never meet.
  */
 export function sectorDisplayName(layer: SectorKey, label: string): string {
   if (layer === "pdr") return label;
-  if (layer === "ctr" || layer === "tma") return titleZone(label);
-  return sectorLabel(label);
+  return titleZone(label);
 }
 
 /** Airspace hierarchy — an aircraft is in exactly ONE airspace at a time, so a
  *  point that falls inside several overlapping volumes resolves to one. Order
- *  (highest first), per the BACC ops structure:
+ *  (highest first):
  *
  *    1. **PDR** — prohibited/danger/restricted. Not an ATS unit, but being
  *       inside one is the fact that matters, so it overrides.
  *    2. **CTR** — Control Zone, worked by Aerodrome Control (Tower).
  *    3. **TMA** — Terminal Control Area, worked by Approach Control.
- *       (A CTA would sit here too — none in the Thai dataset.)
- *    4. **BACC sector** — Area Control (ACC). This is the reporting unit; it
- *       carries the vertical limits (2S FL270–460, 3S/6S below).
- *    5. **subsector** — the horizontal controller-split, used only when a
- *       sector is divided. It sits INSIDE its sector, so with the sector
- *       above it a target normally reports the sector; the subsector shows
- *       only where no sector is defined.
+ *    4. **CTA** — Control Area, worked by Area Control.
+ *    5. **FIR** — the Yangon FIR itself, the catch-all outside every
+ *       controlled volume above.
  *
  *  Annex 11 airspace/ATS-unit structure, resolved AFTER the lateral and
  *  vertical tests — an aircraft above a CTR's ceiling has already dropped out
- *  of it and falls through to the TMA/ACC below.
+ *  of it and falls through to the TMA/CTA below.
  *  Must stay in step with _HIERARCHY in trajectory_sim/airspace.py. */
-const HIERARCHY = ["pdr", "ctr", "tma", "bacc", "subsector"] as const;
+const HIERARCHY = ["pdr", "ctr", "tma", "cta", "fir"] as const;
 
 /** Which layer owns the aircraft here, or null when it is in none. */
 export function controllingLayer(
@@ -575,11 +574,7 @@ export function formatAirspace(
       return mode === "compact"
         ? (mm.pdr as string[]).map((p) => p.split(" ")[0]).join(",")
         : (mm.pdr as string[]).map(titleZone).join(" · ");
-    case "ctr":
-      return titleZone(mm.ctr as string);
-    case "tma":
-      return titleZone(mm.tma as string);
     default:
-      return sectorLabel(mm[key] as string);
+      return titleZone(mm[key] as string);
   }
 }

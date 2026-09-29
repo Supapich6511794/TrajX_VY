@@ -59,11 +59,7 @@ import type {
   Waypoint,
 } from "@/lib/types";
 import type { AirportOption } from "@/lib/aip";
-import type {
-  AirspaceAreaCollection,
-  GateCollection,
-  RunwayPoint,
-} from "@/lib/atcLayers";
+import type { GateCollection, RunwayPoint } from "@/lib/atcLayers";
 import {
   SECTORS,
   type AirwayPointCollection,
@@ -103,7 +99,7 @@ interface Props {
   /** Reference waypoint layer (all fixes), or null to hide. */
   waypoints: Waypoint[] | null;
   fir: FirCollection | null;
-  /** Airspace sector overlays (BACC / subsector / CTR / TMA / PDR), each
+  /** Airspace sector overlays (CTR / TMA / CTA / FIR / PDR), each
    *  present only when its layer is toggled on. */
   sectors?: Partial<Record<SectorKey, SectorCollection | null>>;
   /** How sector polygons are filled: "zone" = the per-zone legend colour,
@@ -119,14 +115,6 @@ interface Props {
   pbnWpts?: ProcedureWaypointCollection | null;
   ilsLines?: ProcedureLineCollection | null;
   ilsWpts?: ProcedureWaypointCollection | null;
-  /** Myanmar (VY) SID+STAR+approach tracks, pre-merged into one reference
-   *  collection — see `sid`/`star` above for the Thai layers this mirrors. */
-  vyLines?: ProcedureLineCollection | null;
-  vyWpts?: ProcedureWaypointCollection | null;
-  /** Myanmar (VY) restricted areas (P/R/D) and airspace boundaries
-   *  (FIR/CTA/TMA/CTR) — simple on/off polygon overlays, null when hidden. */
-  vyAreas?: AirspaceAreaCollection | null;
-  vyBoundaries?: AirspaceAreaCollection | null;
   /** Layer Options state per procedure layer (routes/waypoints on,
    *  airport+procedure filters, opacity, line thickness). */
   /** Every holding pattern in the FIR + the Holding tab's layer state. Null
@@ -137,7 +125,6 @@ interface Props {
   star?: ProcLayerState;
   pbn?: ProcLayerState;
   ils?: ProcLayerState;
-  vy?: ProcLayerState;
   /** Aerodromes for the Airports layer — every one not in `hiddenAirports`
    *  is drawn as a pin. */
   airports?: AirportOption[];
@@ -326,7 +313,8 @@ const PREVIEW_COLORS = [
   "#fb7185",
 ];
 
-const DEFAULT_CENTER: L.LatLngExpression = [11.0, 99.5];
+/** Myanmar (Yangon FIR) — the whole country fits at zoom 6. */
+const DEFAULT_CENTER: L.LatLngExpression = [19.0, 96.5];
 const DEFAULT_ZOOM = 6;
 
 /** Holding-pattern colours, one per kind, so the four read apart on the map. */
@@ -345,14 +333,11 @@ const SID_COLOR = "#34d399";
 const STAR_COLOR = "#f472b6";
 const PBN_COLOR = "#fbbf24";
 const ILS_COLOR = "#ef4444";
-/** Myanmar (VY) reference layer — a distinct blue-grey so it never reads as
- *  one of the Thai procedure colours above. */
-const VY_COLOR = "#60a5fa";
 const GATE_COLOR = "#fb923c";
 const RUNWAY_COLOR = "#e5e7eb";
 
 /** Procedure-style layer kinds (share line/waypoint schema + rendering). */
-type ProcKind = "SID" | "STAR" | "PBN" | "ILS" | "VY";
+type ProcKind = "SID" | "STAR" | "PBN" | "ILS";
 
 /** A track the user clicked, for the parent to resolve via the API. */
 export interface ProcedureSelection {
@@ -674,6 +659,16 @@ function rwyLabel(ident: string): string {
   return ident.replace(/^RW/i, "").trim() || ident;
 }
 
+/** Threshold badge text: runway ident plus that end's landing threshold
+ *  elevation (ft AMSL), e.g. "18 · 260 ft" — the height of this threshold
+ *  point, not of the whole runway. */
+function rwyThrLabel(r: RunwayPoint): string {
+  const id = rwyLabel(r.ident);
+  return Number.isFinite(r.thrElevFt)
+    ? `${id} · ${Math.round(r.thrElevFt)} ft`
+    : id;
+}
+
 /** Reciprocal runway ident (RW03L → RW21R): +18 on the number (wrapping 1-36)
  *  and swapping L↔R, so a runway's two thresholds collapse into one strip. */
 function reciprocalRwy(ident: string): string {
@@ -760,7 +755,7 @@ function EndpointMarker({
   position: L.LatLngExpression;
   fill: string;
   stroke: string;
-  /** The aerodrome ICAO at this endpoint (e.g. "VTBD"). */
+  /** The aerodrome ICAO at this endpoint (e.g. "VYYY"). */
   ident: string;
   role: "Start" | "End";
   detail: string;
@@ -807,17 +802,12 @@ export default function LeafletMap({
   pbnWpts,
   ilsLines,
   ilsWpts,
-  vyLines,
-  vyWpts,
-  vyAreas,
-  vyBoundaries,
   holdings,
   holding,
   sid,
   star,
   pbn,
   ils,
-  vy,
   airports,
   hiddenAirports,
   gates,
@@ -922,10 +912,13 @@ export default function LeafletMap({
     [airways, airwayPts?.opacity],
   );
 
-  // Airway reporting points (the Airway menu) — pink up-triangle + ident, like
-  // the reference viewer. The source file is worldwide (~35 k pts), so they're
-  // restricted to the Thailand bounds (lat 5.5–20.5, lon 97.5–106) → ~380
-  // points, light enough to draw at every zoom.
+  // Airway reporting points (the Airway menu) — pink up-triangle + ident.
+  // `fetchAirwayReporting` always returns an empty collection for this
+  // deployment (see its doc comment: a "compulsory reporting point" has no
+  // structured AIXM field, so there is genuinely nothing to draw here yet),
+  // so this never runs today; left in place for if that ever changes. The
+  // region crop below is now meaningless for the same reason it was removed
+  // from the VOR layer above — kept here only because it is currently inert.
   const airwayPointLayers = useMemo(() => {
     const data = airwayPts?.reporting;
     if (!data) return null;
@@ -967,17 +960,14 @@ export default function LeafletMap({
   }, [airwayPts?.reporting, airwayPts?.opacity]);
 
   // VOR navaids — drawn as the conventional ring+centre-dot symbol with the
-  // station identifier beside it (matching the reference viewer). The source
-  // file is worldwide (~2.5 k), but this is a Thai-FIR tool, so the symbols are
-  // restricted to the Thailand bounds used by the reference viewer
-  // (lat 5.5–20.5, lon 97.5–106) — ~50 VOR/DME stations, exactly the set shown
-  // on the charts.
+  // station identifier beside it. The source file is already Myanmar-only
+  // (18 VOR/DME stations, straight from the AIXM export — see
+  // scripts/ingest_aixm_airways.py), so there is no worldwide set to crop
+  // down: no region filter is needed.
   const airwayVorLayer = useMemo(() => {
     const data = airwayPts?.vor;
     if (!data) return null;
     const op = airwayPts?.opacity ?? 0.85;
-    const inRegion = (lon: number, lat: number) =>
-      lon >= 97.5 && lon <= 106 && lat >= 5.5 && lat <= 20.5;
 
     const markers: ReactNode[] = [];
     for (const f of data.features) {
@@ -990,7 +980,6 @@ export default function LeafletMap({
             : undefined;
       if (!coords) continue;
       const [lon, lat] = coords;
-      if (!inRegion(lon, lat)) continue;
       const id = String(f.properties?.waypoint_identifier ?? "");
       markers.push(
         <Marker
@@ -1038,7 +1027,7 @@ export default function LeafletMap({
   }, [airwayPts?.labels, airwayPts?.opacity]);
 
   // Airspace sector overlays — one dashed, lightly-filled <GeoJSON> per
-  // toggled-on sector (BACC / subsector / CTR / TMA / PDR), each in its own
+  // toggled-on sector (CTR / TMA / CTA / FIR / PDR), each in its own
   // colour with a name popup.
   const sectorLayers = useMemo(
     () =>
@@ -1046,7 +1035,7 @@ export default function LeafletMap({
         const data = sectors?.[s.key];
         if (!data) return null;
         // Altitude mode: normalise each sector's mid-band across THIS layer's
-        // own min→max, so bands spread over the whole warm→cool palette (BACC
+        // own min→max, so bands spread over the whole warm→cool palette (CTR
         // mids cluster tightly, so absolute colouring looks uniform — relative
         // colouring makes low/high sectors clearly different).
         let loMid = Infinity;
@@ -1097,8 +1086,13 @@ export default function LeafletMap({
             }}
             onEachFeature={(f, layer) => {
               const p = (f.properties ?? {}) as Record<string, unknown>;
-              const name = p.name ?? p.ident ?? s.label;
-              layer.bindPopup(`<strong>${name}</strong> · ${s.label}`);
+              // P/R/D areas carry type + designator separately ("R" + "13").
+              const ident =
+                s.key === "pdr" ? `${p.type ?? ""}${p.designator ?? ""}`.trim() : "";
+              const name = [ident, p.name ?? p.ident].filter(Boolean).join(" ") || s.label;
+              const band =
+                p.lower != null && p.upper != null ? `<br/>${p.lower} – ${p.upper}` : "";
+              layer.bindPopup(`<strong>${name}</strong> · ${s.label}${band}`);
             }}
           />
         );
@@ -1148,79 +1142,6 @@ export default function LeafletMap({
   const ilsWptLayer = useMemo(
     () => buildWaypointLayer(ilsWpts, ils, ILS_COLOR),
     [ilsWpts, ils],
-  );
-
-  // Myanmar (VY) reference layer — same machinery as PBN/ILS: no click-to-fetch
-  // (the procedures API resolves Thai SID/STAR only) and no CD&R/sim wiring,
-  // just a filterable, styleable overlay for cross-border situational context.
-  const vyLayer = useMemo(
-    () => buildProcedureLayer(vyLines, vy, "VY", VY_COLOR),
-    [vyLines, vy],
-  );
-  const vyWptLayer = useMemo(
-    () => buildWaypointLayer(vyWpts, vy, VY_COLOR),
-    [vyWpts, vy],
-  );
-
-  // Myanmar (VY) restricted areas (P/R/D) — no activation schedule in this
-  // export (see LayerOptions' VY tab note), so these draw as always-active
-  // shapes: name + vertical limits only, no time-window logic.
-  const vyAreasLayer = useMemo(
-    () =>
-      vyAreas && (
-        <GeoJSON
-          key={`vy-areas-${vyAreas.features.length}`}
-          data={vyAreas}
-          style={(f) => {
-            const t = f?.properties?.type;
-            const color =
-              t === "P" ? "#ef4444" : t === "D" ? "#f97316" : "#facc15";
-            return {
-              color,
-              weight: 1.5,
-              opacity: 0.85,
-              fillColor: color,
-              fillOpacity: 0.15,
-              dashArray: "6 4",
-            };
-          }}
-          onEachFeature={(f, layer) => {
-            const p = f.properties ?? {};
-            layer.bindPopup(
-              `<strong>${p.type}${p.designator} — ${p.name}</strong><br/>${p.lower} – ${p.upper}`,
-            );
-          }}
-        />
-      ),
-    [vyAreas],
-  );
-
-  // Myanmar (VY) airspace boundaries (FIR/CTA/TMA/CTR) — plain classification
-  // outlines, not an operational sector split (there is no Myanmar equivalent
-  // of the BACC sector layer).
-  const vyBoundariesLayer = useMemo(
-    () =>
-      vyBoundaries && (
-        <GeoJSON
-          key={`vy-bnd-${vyBoundaries.features.length}`}
-          data={vyBoundaries}
-          style={() => ({
-            color: VY_COLOR,
-            weight: 1,
-            opacity: 0.6,
-            fillColor: VY_COLOR,
-            fillOpacity: 0.03,
-            dashArray: "4 4",
-          })}
-          onEachFeature={(f, layer) => {
-            const p = f.properties ?? {};
-            layer.bindPopup(
-              `<strong>${p.name || p.type}</strong><br/>${p.type} · ${p.lower} – ${p.upper}`,
-            );
-          }}
-        />
-      ),
-    [vyBoundaries],
   );
 
   // Live map zoom (updated by ZoomWatcher) — gates only label when zoomed in.
@@ -1467,14 +1388,14 @@ export default function LeafletMap({
         />,
       );
       if (labelled) {
-        // One badge per threshold: this end's ident, and the far end's when
-        // the reciprocal threshold is actually coded (a strip built from
-        // length alone has no second published ident to name).
+        // One badge per threshold: this end's ident + threshold elevation,
+        // and the far end's when the reciprocal threshold is actually coded
+        // (a strip built from length alone has no second published ident).
         out.push(
           <Marker
             key={`rwy-lbl-${r.airport}-${r.ident}`}
             position={a}
-            icon={runwayBadge(rwyLabel(r.ident))}
+            icon={runwayBadge(rwyThrLabel(r))}
             interactive={false}
           />,
         );
@@ -1483,7 +1404,7 @@ export default function LeafletMap({
             <Marker
               key={`rwy-lbl-${other.airport}-${other.ident}`}
               position={b}
-              icon={runwayBadge(rwyLabel(other.ident))}
+              icon={runwayBadge(rwyThrLabel(other))}
               interactive={false}
             />,
           );
@@ -1974,7 +1895,7 @@ export default function LeafletMap({
 
         Solved so the tile's two fills land exactly on the reference palette:
         water grey 34 -> #0a0e17, land grey 65 -> #161c27. Verified against a
-        real z7 tile over Thailand — the two most common colours come out
+        real z7 tile over mainland Southeast Asia — the two most common colours come out
         (10,14,23) and (22,28,39), the reference's own values. Esri's canvas
         brightens as it zooms in, so at z13 the same map yields (27,34,46):
         the same hue, a little lighter, which is the tile's behaviour and not
@@ -2068,14 +1989,10 @@ export default function LeafletMap({
       {starLayer}
       {pbnLayer}
       {ilsLayer}
-      {vyBoundariesLayer}
-      {vyAreasLayer}
-      {vyLayer}
       {sidWptLayer}
       {starWptLayer}
       {pbnWptLayer}
       {ilsWptLayer}
-      {vyWptLayer}
       {holdingLayer}
       {gateLayer}
       {runwayLayer}

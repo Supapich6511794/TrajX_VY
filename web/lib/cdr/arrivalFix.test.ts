@@ -20,11 +20,11 @@ const cfg = resolveConfig();
 function arrival(over: Partial<SequencedArrival> = {}): SequencedArrival {
   return {
     id: "F1",
-    callsign: "THA100",
+    callsign: "UBA100",
     type: "A320",
-    adep: "VTCC",
-    ades: "VTBS",
-    star: "EAST1C",
+    adep: "VYMK",
+    ades: "VYMD",
+    star: "DOGI1E",
     wake: "MEDIUM",
     wakeKnown: true,
     etaSec: 600,
@@ -63,9 +63,9 @@ const CLOSED: ArrivalContext = { openStar: false };
 
 /** A published 1-minute right-hand pattern → a 4-minute loop. */
 const HOLD: ArrivalHold = {
-  ident: "LETMA",
-  lat: 13.9,
-  lon: 100.8,
+  ident: "MDY",
+  lat: 21.934,
+  lon: 96.13,
   inboundCourseDeg: 195,
   turn: "R",
   legSec: 60,
@@ -85,7 +85,7 @@ describe("planArrivalFix", () => {
     expect(plan.fixes.length).toBeGreaterThan(0);
     for (const f of plan.fixes) {
       expect(f.target).toBe("F1");
-      expect(f.callsign).toBe("THA100");
+      expect(f.callsign).toBe("UBA100");
     }
   });
 
@@ -291,7 +291,7 @@ describe("holding — offered up front, not only as a last resort", () => {
     const plan = planArrivalFix(cfg, pair(1), OPEN_HELD);
     const hold = plan.fixes.find((f) => f.kind === "hold");
     expect(hold).toBeDefined();
-    expect(hold!.hold?.ident).toBe("LETMA");
+    expect(hold!.hold?.ident).toBe("MDY");
     // ...without disturbing the ranking: the vector is still what is proposed.
     expect(plan.fixes[0].kind).toBe("vector");
     expect(plan.fixes.map((f) => f.kind)).toEqual(["vector", "speed", "hold"]);
@@ -313,7 +313,7 @@ describe("holding — offered up front, not only as a last resort", () => {
     const hold = plan.fixes.find((f) => f.kind === "hold")!;
     expect(hold.hold).toEqual(HOLD);
     expect(hold.holdLoops).toBeGreaterThanOrEqual(1);
-    expect(hold.instruction).toContain("hold at LETMA as published");
+    expect(hold.instruction).toContain("hold at MDY as published");
     expect(hold.instruction).toContain("right-hand");
   });
 
@@ -368,8 +368,8 @@ describe("holding — offered up front, not only as a last resort", () => {
 });
 
 describe("the heading in an instruction is the one on the chart", () => {
-  // The VTBS note reads "After ESGEN, ATKIN maintain heading 015°". That is a
-  // MAGNETIC course; the geometry behind it is 014.3 true, after the 0°42'W
+  // An open-STAR chart note reads "After <fix>, maintain heading 015°". That
+  // is a MAGNETIC course; the geometry behind it is 014.3 true, after a 0°42'W
   // variation. Reading the true course back to a controller is the wrong
   // number to transmit — the panel used to say "heading 014".
   it("quotes the published MAGNETIC heading, not the true course", () => {

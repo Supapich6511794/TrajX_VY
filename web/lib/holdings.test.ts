@@ -9,10 +9,10 @@ import {
 
 const hold = (over: Partial<HoldingPattern> = {}): HoldingPattern => ({
   ident: "TEST",
-  lat: 13,
-  lon: 100,
+  lat: 17,
+  lon: 96,
   category: "published",
-  region: "VTBS",
+  region: "VYYY",
   inboundCourseDeg: 0,
   turn: "R",
   legTimeMin: 1,
@@ -51,9 +51,9 @@ describe("holdingRacetrack", () => {
     const ring = holdingRacetrack(hold());
     const [startLat, startLon] = ring[0];
     // Inbound course 000 → the leg runs up to the fix from the south.
-    expect((13 - startLat) * NM_PER_DEG_LAT).toBeCloseTo(LEG_NM, 2);
-    expect(startLon).toBeCloseTo(100, 4);
-    expect(ring[1]).toEqual([13, 100]);
+    expect((17 - startLat) * NM_PER_DEG_LAT).toBeCloseTo(LEG_NM, 2);
+    expect(startLon).toBeCloseTo(96, 4);
+    expect(ring[1]).toEqual([17, 96]);
     // Within a metre — the roll-out is built from great-circle steps, so the
     // ring closes to spherical precision rather than exactly.
     const [endLat, endLon] = ring[ring.length - 1];
@@ -66,24 +66,24 @@ describe("holdingRacetrack", () => {
     const lons = ring.map(([, lon]) => lon);
     // Inbound course 000 → "right" is east: nothing west of the inbound leg,
     // and the outbound leg sits two turn radii away.
-    expect(Math.min(...lons)).toBeCloseTo(100, 3);
-    expect((Math.max(...lons) - 100) * nmPerDegLon(13)).toBeCloseTo(2 * R_NM, 1);
+    expect(Math.min(...lons)).toBeCloseTo(96, 3);
+    expect((Math.max(...lons) - 96) * nmPerDegLon(17)).toBeCloseTo(2 * R_NM, 1);
   });
 
   it("mirrors the pattern for a left-hand hold", () => {
     const ring = holdingRacetrack(hold({ turn: "L" }));
     const lons = ring.map(([, lon]) => lon);
-    expect(Math.max(...lons)).toBeCloseTo(100, 3);
-    expect((100 - Math.min(...lons)) * nmPerDegLon(13)).toBeCloseTo(2 * R_NM, 1);
+    expect(Math.max(...lons)).toBeCloseTo(96, 3);
+    expect((96 - Math.min(...lons)) * nmPerDegLon(17)).toBeCloseTo(2 * R_NM, 1);
   });
 
   it("extends behind the fix by the leg length plus the roll-out turn", () => {
     const ring = holdingRacetrack(hold());
     const lats = ring.map(([lat]) => lat);
     // Furthest point back = the outbound roll-out, one leg + one radius south.
-    expect((13 - Math.min(...lats)) * NM_PER_DEG_LAT).toBeCloseTo(LEG_NM + R_NM, 1);
+    expect((17 - Math.min(...lats)) * NM_PER_DEG_LAT).toBeCloseTo(LEG_NM + R_NM, 1);
     // The turn over the fix bulges one radius ahead of it.
-    expect((Math.max(...lats) - 13) * NM_PER_DEG_LAT).toBeCloseTo(R_NM, 1);
+    expect((Math.max(...lats) - 17) * NM_PER_DEG_LAT).toBeCloseTo(R_NM, 1);
   });
 });
 

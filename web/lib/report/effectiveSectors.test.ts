@@ -26,7 +26,7 @@ const AT = (h: number, m = 30) => Date.parse(`2026-03-04T${String(h).padStart(2,
 
 function hour(over: Partial<DynamicHour> & { hourUtc: string }): DynamicHour {
   return {
-    layer: "bacc",
+    layer: "tma",
     positions: [],
     overloaded: [],
     transfers: [],
@@ -43,34 +43,34 @@ function hour(over: Partial<DynamicHour> & { hourUtc: string }): DynamicHour {
 
 function plan(hours: DynamicHour[], applied: string | null = "2026-03-04T00:00:00Z"): DynamicPlan {
   return {
-    config: { layer: "bacc" } as DynamicPlan["config"],
+    config: { layer: "tma" } as DynamicPlan["config"],
     appliedAt: applied,
     hours,
     spans: [],
     transitions: [],
-    baseline: ["1N", "3N", "4N", "1S"],
+    baseline: ["North", "East", "South", "West"],
   };
 }
 
-/** A band-box of 1N and 3N, in force for the 03Z hour. */
+/** A band-box of North and East, in force for the 03Z hour. */
 const BANDBOX = plan([
   hour({
     hourUtc: H(3),
     positions: [
-      { sectors: ["1N", "3N"], label: "1N+3N", flights: 9, members: [], merged: true },
-      { sectors: ["4N"], label: "4N", flights: 5, members: [], merged: false },
+      { sectors: ["North", "East"], label: "North+East", flights: 9, members: [], merged: true },
+      { sectors: ["South"], label: "South", flights: 5, members: [], merged: false },
     ],
   }),
 ]);
 
-/** A square slice of 1S handed to 4N, in force for the 05Z hour. */
+/** A square slice of West handed to South, in force for the 05Z hour. */
 const RECUT = plan([
   hour({
     hourUtc: H(5),
     transfers: [
       {
-        from: "1S",
-        to: "4N",
+        from: "West",
+        to: "South",
         flights: [],
         fromAfter: 3,
         toAfter: 7,
@@ -107,7 +107,7 @@ describe("transparency when nothing is in force", () => {
       hour({
         hourUtc: H(3),
         positions: [
-          { sectors: ["1N"], label: "1N", flights: 4, members: [], merged: false },
+          { sectors: ["North"], label: "North", flights: 4, members: [], merged: false },
         ],
       }),
     ]);
@@ -115,7 +115,7 @@ describe("transparency when nothing is in force", () => {
   });
 
   it("answers with the published sector when there is no config", () => {
-    expect(positionAt(null, "1N", 100.5, 13.5, AT(3))).toBe("1N");
+    expect(positionAt(null, "North", 100.5, 13.5, AT(3))).toBe("North");
   });
 });
 
@@ -123,31 +123,31 @@ describe("a band-box", () => {
   const cfg = effectiveConfig(BANDBOX)!;
 
   it("renames every member to the position working them", () => {
-    expect(positionAt(cfg, "1N", 100.5, 13.5, AT(3))).toBe("1N+3N");
-    expect(positionAt(cfg, "3N", 100.5, 13.5, AT(3))).toBe("1N+3N");
+    expect(positionAt(cfg, "North", 100.5, 13.5, AT(3))).toBe("North+East");
+    expect(positionAt(cfg, "East", 100.5, 13.5, AT(3))).toBe("North+East");
   });
 
   it("leaves a sector worked on its own alone", () => {
-    expect(positionAt(cfg, "4N", 100.5, 13.5, AT(3))).toBe("4N");
+    expect(positionAt(cfg, "South", 100.5, 13.5, AT(3))).toBe("South");
   });
 
   it("leaves a sector the plan never mentions alone", () => {
-    expect(positionAt(cfg, "SMU", 100.5, 13.5, AT(3))).toBe("SMU");
+    expect(positionAt(cfg, "Coastal", 100.5, 13.5, AT(3))).toBe("Coastal");
   });
 
   it("only applies in its own hour", () => {
-    expect(positionAt(cfg, "1N", 100.5, 13.5, AT(2))).toBe("1N");
-    expect(positionAt(cfg, "1N", 100.5, 13.5, AT(4))).toBe("1N");
+    expect(positionAt(cfg, "North", 100.5, 13.5, AT(2))).toBe("North");
+    expect(positionAt(cfg, "North", 100.5, 13.5, AT(4))).toBe("North");
   });
 
   it("applies across the whole of that hour, not just on the hour", () => {
     for (const m of [0, 1, 30, 59]) {
-      expect(positionAt(cfg, "1N", 100.5, 13.5, AT(3, m))).toBe("1N+3N");
+      expect(positionAt(cfg, "North", 100.5, 13.5, AT(3, m))).toBe("North+East");
     }
   });
 
   it("lists the positions it opened", () => {
-    expect(positionsInForce(cfg, AT(3))).toEqual(["1N+3N"]);
+    expect(positionsInForce(cfg, AT(3))).toEqual(["North+East"]);
     expect(positionsInForce(cfg, AT(4))).toEqual([]);
   });
 });
@@ -156,35 +156,35 @@ describe("a re-cut", () => {
   const cfg = effectiveConfig(RECUT)!;
 
   it("hands a point inside the ceded slice to the new owner", () => {
-    expect(positionAt(cfg, "1S", 100.5, 13.5, AT(5))).toBe("4N");
+    expect(positionAt(cfg, "West", 100.5, 13.5, AT(5))).toBe("South");
   });
 
   it("leaves the rest of the same sector where it was", () => {
-    // Outside the ring, still 1S — a re-cut moves a boundary, not a sector.
-    expect(positionAt(cfg, "1S", 105.0, 13.5, AT(5))).toBe("1S");
-    expect(positionAt(cfg, "1S", 100.5, 18.0, AT(5))).toBe("1S");
+    // Outside the ring, still West — a re-cut moves a boundary, not a sector.
+    expect(positionAt(cfg, "West", 105.0, 13.5, AT(5))).toBe("West");
+    expect(positionAt(cfg, "West", 100.5, 18.0, AT(5))).toBe("West");
   });
 
   it("does not move a point that is inside the ring but belongs elsewhere", () => {
-    // The geometry alone is not the test: the slice is cut OUT OF 1S, so an
-    // aircraft the AIP puts in 4N there was already 4N's.
-    expect(positionAt(cfg, "4N", 100.5, 13.5, AT(5))).toBe("4N");
+    // The geometry alone is not the test: the slice is cut OUT OF West, so an
+    // aircraft the AIP puts in South there was already South's.
+    expect(positionAt(cfg, "South", 100.5, 13.5, AT(5))).toBe("South");
   });
 
   it("only applies in its own hour", () => {
-    expect(positionAt(cfg, "1S", 100.5, 13.5, AT(4))).toBe("1S");
+    expect(positionAt(cfg, "West", 100.5, 13.5, AT(4))).toBe("West");
   });
 });
 
 describe("a re-cut and a band-box in the same hour", () => {
-  // The slice moves to 4N, and 4N is itself band-boxed with 1N. The aircraft
-  // in the slice should end up with the position, not with 4N.
+  // The slice moves to South, and South is itself band-boxed with North. The aircraft
+  // in the slice should end up with the position, not with South.
   const both = effectiveConfig(
     plan([
       hour({
         hourUtc: H(7),
         positions: [
-          { sectors: ["1N", "4N"], label: "1N+4N", flights: 11, members: [], merged: true },
+          { sectors: ["North", "South"], label: "North+South", flights: 11, members: [], merged: true },
         ],
         transfers: RECUT.hours[0].transfers,
       }),
@@ -192,11 +192,11 @@ describe("a re-cut and a band-box in the same hour", () => {
   )!;
 
   it("resolves the boundary first and the grouping second", () => {
-    expect(positionAt(both, "1S", 100.5, 13.5, AT(7))).toBe("1N+4N");
+    expect(positionAt(both, "West", 100.5, 13.5, AT(7))).toBe("North+South");
   });
 
   it("still groups a sector that was not re-cut", () => {
-    expect(positionAt(both, "1N", 105.0, 18.0, AT(7))).toBe("1N+4N");
+    expect(positionAt(both, "North", 105.0, 18.0, AT(7))).toBe("North+South");
   });
 });
 
@@ -227,15 +227,15 @@ describe("re-labelling the traffic", () => {
     min: number,
     over: Partial<FlightEventRow> = {},
   ): FlightEventRow => ({
-    flightKey: "THA100_X",
-    callsign: "THA100",
+    flightKey: "UBA100_X",
+    callsign: "UBA100",
     actype: "B738",
-    adep: "VTBS",
-    ades: "VTCC",
+    adep: "VYYY",
+    ades: "VYMD",
     event,
     ident,
-    layer: "bacc",
-    description: `THA100 ${event === "SECTOR_ENTRY" ? "entered" : "left"} ${ident}`,
+    layer: "tma",
+    description: `UBA100 ${event === "SECTOR_ENTRY" ? "entered" : "left"} ${ident}`,
     timeUtc: T(min),
     elapsedSec: min * 60,
     latDeg: 13.5,
@@ -244,12 +244,12 @@ describe("re-labelling the traffic", () => {
     ...over,
   });
 
-  /** 1N for ten minutes, then straight into 3N for ten more. */
+  /** North for ten minutes, then straight into East for ten more. */
   const CROSSING = [
-    ev("SECTOR_ENTRY", "1N", 0),
-    ev("SECTOR_EXIT", "1N", 10),
-    ev("SECTOR_ENTRY", "3N", 10),
-    ev("SECTOR_EXIT", "3N", 20),
+    ev("SECTOR_ENTRY", "North", 0),
+    ev("SECTOR_EXIT", "North", 10),
+    ev("SECTOR_ENTRY", "East", 10),
+    ev("SECTOR_EXIT", "East", 20),
   ];
 
   it("hands back the events untouched when nothing is in force", () => {
@@ -257,53 +257,53 @@ describe("re-labelling the traffic", () => {
   });
 
   it("counts a crossing INSIDE a band-box as one spell, not two", () => {
-    // The aircraft moved from 1N to 3N, but one controller held it throughout.
-    // Re-labelling without merging would record two entries to 1N+3N and make
+    // The aircraft moved from North to East, but one controller held it throughout.
+    // Re-labelling without merging would record two entries to North+East and make
     // the band-box look busier than the two sectors it replaced.
     const out = effectiveEvents(CROSSING, cfg);
     const entries = out.filter((e) => e.event === "SECTOR_ENTRY");
     const exits = out.filter((e) => e.event === "SECTOR_EXIT");
     expect(entries).toHaveLength(1);
     expect(exits).toHaveLength(1);
-    expect(entries[0].ident).toBe("1N+3N");
+    expect(entries[0].ident).toBe("North+East");
     expect(entries[0].timeUtc).toBe(T(0));
     expect(exits[0].timeUtc).toBe(T(20));
   });
 
   it("keeps a crossing OUT of the band-box as a real change of position", () => {
     const out = effectiveEvents(
-      [...CROSSING, ev("SECTOR_ENTRY", "4N", 20), ev("SECTOR_EXIT", "4N", 30)],
+      [...CROSSING, ev("SECTOR_ENTRY", "South", 20), ev("SECTOR_EXIT", "South", 30)],
       cfg,
     );
     expect(out.filter((e) => e.event === "SECTOR_ENTRY").map((e) => e.ident)).toEqual([
-      "1N+3N",
-      "4N",
+      "North+East",
+      "South",
     ]);
   });
 
   it("does not merge two separate visits to the same position", () => {
-    // Out to 4N and back again: the controller really did hand it over and
+    // Out to South and back again: the controller really did hand it over and
     // take it back, so that is two entries.
     const out = effectiveEvents(
       [
-        ev("SECTOR_ENTRY", "1N", 0),
-        ev("SECTOR_EXIT", "1N", 10),
-        ev("SECTOR_ENTRY", "4N", 10),
-        ev("SECTOR_EXIT", "4N", 20),
-        ev("SECTOR_ENTRY", "3N", 20),
-        ev("SECTOR_EXIT", "3N", 30),
+        ev("SECTOR_ENTRY", "North", 0),
+        ev("SECTOR_EXIT", "North", 10),
+        ev("SECTOR_ENTRY", "South", 10),
+        ev("SECTOR_EXIT", "South", 20),
+        ev("SECTOR_ENTRY", "East", 20),
+        ev("SECTOR_EXIT", "East", 30),
       ],
       cfg,
     );
     expect(out.filter((e) => e.event === "SECTOR_ENTRY").map((e) => e.ident)).toEqual([
-      "1N+3N",
-      "4N",
-      "1N+3N",
+      "North+East",
+      "South",
+      "North+East",
     ]);
   });
 
   it("keeps flights apart", () => {
-    const other = CROSSING.map((e) => ({ ...e, flightKey: "AIQ1_X", callsign: "AIQ1" }));
+    const other = CROSSING.map((e) => ({ ...e, flightKey: "KBZ1_X", callsign: "KBZ1" }));
     const out = effectiveEvents([...CROSSING, ...other], cfg);
     expect(out.filter((e) => e.event === "SECTOR_ENTRY")).toHaveLength(2);
   });
@@ -311,22 +311,22 @@ describe("re-labelling the traffic", () => {
   it("leaves other layers and non-sector events alone", () => {
     const mixed = [
       ...CROSSING,
-      ev("SECTOR_ENTRY", "Bangkok TMA", 5, { layer: "tma" }),
-      ev("SECTOR_EXIT", "Bangkok TMA", 8, { layer: "tma" }),
-      { ...ev("SECTOR_ENTRY", "OLVUK", 3), event: "WAYPOINT" as const, layer: "" },
+      ev("SECTOR_ENTRY", "Yangon CTR", 5, { layer: "ctr" }),
+      ev("SECTOR_EXIT", "Yangon CTR", 8, { layer: "ctr" }),
+      { ...ev("SECTOR_ENTRY", "HLEGU", 3), event: "WAYPOINT" as const, layer: "" },
     ];
     const out = effectiveEvents(mixed, cfg);
-    expect(out.filter((e) => e.layer === "tma").map((e) => e.ident)).toEqual([
-      "Bangkok TMA",
-      "Bangkok TMA",
+    expect(out.filter((e) => e.layer === "ctr").map((e) => e.ident)).toEqual([
+      "Yangon CTR",
+      "Yangon CTR",
     ]);
     expect(out.filter((e) => e.event === "WAYPOINT")).toHaveLength(1);
   });
 
   it("rewrites the description so it reads of the position", () => {
     const out = effectiveEvents(CROSSING, cfg);
-    expect(out[0].description).toContain("1N+3N");
-    expect(out[0].description).not.toMatch(/\b1N\b(?!\+)/);
+    expect(out[0].description).toContain("North+East");
+    expect(out[0].description).not.toMatch(/\bNorth\b(?!\+)/);
   });
 
   it("stays in time order", () => {

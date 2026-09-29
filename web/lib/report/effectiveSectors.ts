@@ -4,7 +4,7 @@
  * Dynamic sectorisation used to stop at a proposal: the panel drew a plan, the
  * export wrote it down, and the simulation carried on dividing the sky exactly
  * as the AIP does. A band-box that saved a position on paper saved nothing in
- * the picture — two aircraft in 1N and 3N still counted as two units and still
+ * the picture — two aircraft in North and East still counted as two units and still
  * raised a coordination flag, when the whole point of band-boxing them is that
  * one controller now holds both.
  *
@@ -18,7 +18,7 @@
  * against its own output. What this module does instead is answer one question,
  * purely:
  *
- *     "the AIP calls this point 1N at this time; who is actually working it?"
+ *     "the AIP calls this point North at this time; who is actually working it?"
  *
  * Everything downstream asks that question instead of reading the published
  * label directly, and with no plan loaded the answer is the published label, so
@@ -30,7 +30,7 @@
  *      is geometry, so it is a point-in-polygon test and has to come first: the
  *      slice's new owner is what then gets grouped.
  *   2. **A band-box** works several whole sectors as one position. That is a
- *      name change — 1N and 3N both become "1N+3N".
+ *      name change — North and East both become "North+East".
  */
 
 import { pointInMultiPolygon } from "@/lib/airspace";
@@ -58,7 +58,7 @@ export interface EffectiveHour {
 }
 
 export interface EffectiveConfig {
-  /** The published layer this plan governs — "bacc" and so on. A plan says
+  /** The published layer this plan governs — "tma" and so on. A plan says
    *  nothing about the layers it did not plan, and those stay published. */
   layer: string;
   hours: Map<string, EffectiveHour>;
@@ -180,9 +180,9 @@ export function positionsInForce(cfg: EffectiveConfig | null, atMs: number): str
  * the names they are keyed by, which is the entire point.
  *
  * The part that is not a rename is the coalescing. An aircraft that crosses
- * from 1N into 3N generates an exit and an entry, and when those two sectors
+ * from North into East generates an exit and an entry, and when those two sectors
  * are band-boxed it has not gone anywhere: the same controller had it before
- * and after. Re-labelling alone would record two entries to "1N+3N" and count
+ * and after. Re-labelling alone would record two entries to "North+East" and count
  * the aircraft twice in its own position's workload, which would make a
  * band-box look busier than the sectors it replaced. Consecutive spells in one
  * position are therefore merged into one.

@@ -36,7 +36,7 @@ export function altitudeColor(altFt: number | null | undefined): string {
 }
 
 /** Aircraft-type → fill colour, so each type flies a distinct colour. Common
- *  Thai-fleet types get hand-picked hues; any other type falls back to a
+ *  regional-fleet types get hand-picked hues; any other type falls back to a
  *  deterministic hash so it still gets a stable, distinct colour. */
 const AIRCRAFT_COLORS: Record<string, string> = {
   // Boeing

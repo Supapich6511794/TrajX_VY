@@ -5,8 +5,8 @@
  *
  * Three picks narrow the run down to a single cell of the sector-hour table:
  *
- *     kind (BACC sector / TMA / CTR / subsector)  →  which one (BANGKOK TMA)
- *                                                 →  which hour (0000-0100Z)
+ *     kind (CTR / TMA / CTA / FIR)  →  which one (Mingaladon TMA)
+ *                                   →  which hour (0000-0100Z)
  *
  * and the answer is the workload figure a capacity study is after: how many
  * aircraft entered, how many conflicts arose, and how many of those the
@@ -32,15 +32,16 @@ import type { DynamicSectorConfig } from "@/lib/report/dynamicSectors";
 import { saveBinaryFile, saveTextFile } from "@/lib/saveFile";
 import NavIcon from "@/components/nav/NavIcon";
 
-/** Layer keys as the airspace index names them, in the order a controller
- *  would think of them: the en-route sector first, then the terminal units. */
+/** Layer keys as the airspace index names them, in the order the airspace
+ *  hierarchy resolves them: the aerodrome control zones first, then the
+ *  terminal areas, the control area above them and the FIR as the catch-all. */
 const LAYER_LABEL: Record<string, string> = {
-  bacc: "BACC Sector",
-  subsector: "Subsector",
-  tma: "TMA",
   ctr: "CTR",
+  tma: "TMA",
+  cta: "CTA",
+  fir: "FIR",
 };
-const LAYER_ORDER = ["bacc", "subsector", "tma", "ctr"];
+const LAYER_ORDER = ["ctr", "tma", "cta", "fir"];
 
 interface Props {
   rows: SectorHourRow[] | null;
@@ -48,7 +49,7 @@ interface Props {
    *  configuration put in force rather than by the published sectors. The
    *  numbers are read the same way either way; what changes is what the reader
    *  is looking at, which is worth saying rather than leaving them to infer it
-   *  from a label like "1N+3N". */
+   *  from a label like "North+East". */
   byPosition?: boolean;
   loading: boolean;
   /** How many trajectories exist. Only used to tell the two empty states

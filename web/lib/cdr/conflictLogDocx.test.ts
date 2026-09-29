@@ -49,8 +49,8 @@ function entry(over: Partial<ConflictLogEntry> = {}): ConflictLogEntry {
     source: "enroute",
     a: "A",
     b: "B",
-    aCallsign: "THA100",
-    bCallsign: "TGW122",
+    aCallsign: "UBA100",
+    bCallsign: "MMA122",
     fromSec: 600,
     toSec: 720,
     tCpaSec: 660,
@@ -69,18 +69,18 @@ function entry(over: Partial<ConflictLogEntry> = {}): ConflictLogEntry {
 
 const RESOLVED = entry({
   id: "C|D",
-  aCallsign: "AIQ311",
-  bCallsign: "VTE201",
+  aCallsign: "KMV311",
+  bCallsign: "MMA201",
   outcome: "resolved",
   resolution: {
     target: "D",
-    targetCallsign: "VTE201",
+    targetCallsign: "MMA201",
     instruction: "Reduce 20 kt",
     maneuver: "speed",
     atSec: 300,
     beforeNm: 2.1,
     afterNm: 6.4,
-    sector: "3N/Bangkok CTR",
+    sector: "MINGALADON CTR",
   },
   closedAtSec: 300,
 });
@@ -119,11 +119,11 @@ describe("conflictLogDocx", () => {
 
   it("puts every encounter in a table row, with what was done about it", () => {
     const xml = documentXml([entry(), RESOLVED]);
-    expect(xml).toContain("THA100 × TGW122");
-    expect(xml).toContain("AIQ311 × VTE201");
+    expect(xml).toContain("UBA100 × MMA122");
+    expect(xml).toContain("KMV311 × MMA201");
     expect(xml).toContain("2.1 NM / 0 ft");
     expect(xml).toContain("NO INSTRUCTION ISSUED");
-    expect(xml).toContain("VTE201: Reduce 20 kt (2.1 → 6.4 NM) [3N/Bangkok CTR]");
+    expect(xml).toContain("MMA201: Reduce 20 kt (2.1 → 6.4 NM) [MINGALADON CTR]");
     // Two sections, each with a header row that repeats across pages.
     expect(xml.split("<w:tbl>").length - 1).toBe(3); // summary + 2 sections
   });

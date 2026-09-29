@@ -28,7 +28,7 @@ const H = (hh: number) => "2026-09-07T" + String(hh).padStart(2, "0") + ":00Z";
 
 function row(over: Partial<SectorHourRow> & { sector: string }): SectorHourRow {
   return {
-    layer: "bacc",
+    layer: "tma",
     hourUtc: H(3),
     entries: 0,
     entryFlights: [],
@@ -51,35 +51,35 @@ const cells = (s: string) => lines(s).map((l) => l.split(","));
 
 describe("conflict by sector", () => {
   const rows = [
-    row({ sector: "1N", conflictsTotal: 2, conflictsResolved: 1 }),
-    row({ sector: "1N", hourUtc: H(4), conflictsTotal: 3, conflictsResolved: 3 }),
-    row({ sector: "4S", conflictsTotal: 9, conflictsResolved: 2 }),
-    row({ sector: "2N", conflictsTotal: 0 }),
-    row({ sector: "BANGKOK TMA", layer: "tma", conflictsTotal: 40 }),
+    row({ sector: "North", conflictsTotal: 2, conflictsResolved: 1 }),
+    row({ sector: "North", hourUtc: H(4), conflictsTotal: 3, conflictsResolved: 3 }),
+    row({ sector: "South", conflictsTotal: 9, conflictsResolved: 2 }),
+    row({ sector: "East", conflictsTotal: 0 }),
+    row({ sector: "YANGON CTR", layer: "ctr", conflictsTotal: 40 }),
   ];
-  const out = cells(conflictBySectorCsv(rows, "bacc"));
+  const out = cells(conflictBySectorCsv(rows, "tma"));
 
   it("puts the sector in the first column and the count beside it", () => {
     expect(out[0]).toEqual(["sector", "conflicts", "resolved", "open"]);
   });
 
   it("totals a sector across every hour of the run", () => {
-    expect(out.find((r) => r[0] === "1N")?.slice(1)).toEqual(["5", "4", "1"]);
+    expect(out.find((r) => r[0] === "North")?.slice(1)).toEqual(["5", "4", "1"]);
   });
 
   it("sorts busiest first, so the answer is the top row", () => {
-    expect(out[1][0]).toBe("4S");
-    expect(out.map((r) => r[0]).slice(1)).toEqual(["4S", "1N", "2N"]);
+    expect(out[1][0]).toBe("South");
+    expect(out.map((r) => r[0]).slice(1)).toEqual(["South", "North", "East"]);
   });
 
   it("keeps a quiet sector on the chart rather than dropping it to a gap", () => {
     // A missing category would leave a hole in the line, which reads as a
     // sector that was not measured rather than one with nothing to do.
-    expect(out.find((r) => r[0] === "2N")?.slice(1)).toEqual(["0", "0", "0"]);
+    expect(out.find((r) => r[0] === "East")?.slice(1)).toEqual(["0", "0", "0"]);
   });
 
   it("stays on one airspace layer", () => {
-    expect(out.some((r) => r[0] === "BANGKOK TMA")).toBe(false);
+    expect(out.some((r) => r[0] === "YANGON CTR")).toBe(false);
   });
 });
 
@@ -92,7 +92,7 @@ describe("standard vs merged", () => {
   ]);
   const cfg: DynamicSectorConfig = {
     ...DEFAULT_DYNAMIC_CONFIG,
-    layer: "bacc",
+    layer: "tma",
     mergeBelow: 6,
     maxSectorsPerPosition: 2,
   };
@@ -147,21 +147,21 @@ describe("standard vs merged", () => {
 
 describe("traffic by sector", () => {
   const rows = [
-    row({ sector: "1N", entries: 2, occupancy: 3 }),
-    row({ sector: "4S", entries: 7, occupancy: 8 }),
-    row({ sector: "2N", entries: 7, occupancy: 7 }),
-    row({ sector: "1N", hourUtc: H(9), entries: 99 }),
+    row({ sector: "North", entries: 2, occupancy: 3 }),
+    row({ sector: "South", entries: 7, occupancy: 8 }),
+    row({ sector: "East", entries: 7, occupancy: 7 }),
+    row({ sector: "North", hourUtc: H(9), entries: 99 }),
   ];
-  const out = cells(trafficBySectorCsv(rows, "bacc", H(3)));
+  const out = cells(trafficBySectorCsv(rows, "tma", H(3)));
 
   it("charts entries against sector, busiest first", () => {
     expect(out[0].slice(0, 2)).toEqual(["sector", "entries"]);
-    expect(out.slice(1).map((r) => r[0])).toEqual(["2N", "4S", "1N"]);
+    expect(out.slice(1).map((r) => r[0])).toEqual(["East", "South", "North"]);
   });
 
   it("breaks a tie by name, so the same hour always draws the same way", () => {
-    expect(out[1][0]).toBe("2N");
-    expect(out[2][0]).toBe("4S");
+    expect(out[1][0]).toBe("East");
+    expect(out[2][0]).toBe("South");
   });
 
   it("covers the chosen hour only", () => {
@@ -171,7 +171,7 @@ describe("traffic by sector", () => {
 
   it("carries aircraft present alongside, since they answer different questions", () => {
     expect(out[0][2]).toBe("aircraft_present");
-    expect(out.find((r) => r[0] === "1N")?.[2]).toBe("3");
+    expect(out.find((r) => r[0] === "North")?.[2]).toBe("3");
   });
 });
 
@@ -186,8 +186,8 @@ describe("flight trajectory", () => {
       flightKey: callsign,
       callsign,
       actype: "B738",
-      adep: "VTBS",
-      ades: "VTCC",
+      adep: "VYYY",
+      ades: "VYMD",
       event: "WAYPOINT",
       ident: "P" + i,
       layer: "",
@@ -200,12 +200,12 @@ describe("flight trajectory", () => {
     }));
 
   const events = [
-    ...ev("THA100", [
+    ...ev("UBA100", [
       [100, 13],
       [101, 14],
       [102, 15],
     ]),
-    ...ev("BKP102", [
+    ...ev("KBZ102", [
       [99, 12],
       [100, 12.5],
     ]),
@@ -213,7 +213,7 @@ describe("flight trajectory", () => {
   const out = cells(flightTrajectoryCsv(events));
 
   it("gives each flight its own X/Y pair of columns", () => {
-    expect(out[0]).toEqual(["lon_BKP102", "lat_BKP102", "lon_THA100", "lat_THA100"]);
+    expect(out[0]).toEqual(["lon_KBZ102", "lat_KBZ102", "lon_UBA100", "lat_UBA100"]);
   });
 
   it("puts longitude before latitude, so X is X", () => {
@@ -310,7 +310,7 @@ describe("the this-hour workbook", () => {
     row({ sector: "SECTOR_LATER", hourUtc: H(7), entries: 40 }),
   ];
   const text = new TextDecoder().decode(
-    trafficBySectorXlsx(rows, "bacc", H(3)),
+    trafficBySectorXlsx(rows, "tma", H(3)),
   );
 
   it("carries the sectors of the hour that was asked for", () => {
@@ -324,7 +324,7 @@ describe("the this-hour workbook", () => {
 
   it("leaves a different hour with its own rows", () => {
     const later = new TextDecoder().decode(
-      trafficBySectorXlsx(rows, "bacc", H(7)),
+      trafficBySectorXlsx(rows, "tma", H(7)),
     );
     expect(later).toContain("SECTOR_LATER");
     expect(later).not.toContain("SECTOR_NOW_A");

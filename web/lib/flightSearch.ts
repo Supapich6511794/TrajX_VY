@@ -5,7 +5,7 @@
  * same *flight* (same callsign + ADEP/ADES). The UI exposes two fields:
  *   1. Flight — narrow to a flight by callsign or ADEP/ADES pair.
  *   2. Route  — within those, find a specific route by name
- *      (e.g. "BKK Y8 PUT") or number (R2). Empty shows every route of the
+ *      (e.g. "BGO W13 MIA") or number (R2). Empty shows every route of the
  *      matched flight(s).
  * Both empty → everything. Shared by the Generator panel and the Route
  * Profile views so they behave identically.

@@ -20,8 +20,9 @@ export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
 export interface GenerateInput {
-  source: "csv" | "fpl";
-  vtsp_to_vtbs: boolean;
+  /** Route source. Only "fpl" (an Item-15 route string) exists; the legacy
+   *  airway-CSV corridor mode is gone server-side. */
+  source: "fpl";
   /** Departure / destination ICAO — drive direction + meta server-side. */
   adep: string;
   ades: string;
@@ -375,8 +376,8 @@ export interface BatchResponse {
  *
  * The server assigns each flight a distinct flight_index so their
  * flight_keys/filenames never collide. A single bad flight is reported in
- * `errors` rather than aborting the whole batch — built for the 2000-flight
- * Thai network case.
+ * `errors` rather than aborting the whole batch — built for whole-network
+ * traffic days of thousands of flights.
  */
 export async function generateBatch(
   flights: GenerateInput[],
@@ -571,7 +572,7 @@ export interface ApproachEntries {
  * List a PBN approach's IAF entry fixes and which lie on the arriving route +
  * STAR (GET /api/approach-entries/{airport}/{name}). When `matching` has more
  * than one fix the generator offers the pilot a choice of where to join the
- * approach (e.g. VTSP R27-Y at STONE vs BARON). Returns empty lists when the
+ * approach (e.g. an RNP approach with two IAFs). Returns empty lists when the
  * backend is unreachable or nothing matches — a miss just hides the dropdown.
  */
 export async function fetchApproachEntries(

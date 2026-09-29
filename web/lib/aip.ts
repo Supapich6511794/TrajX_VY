@@ -4,10 +4,9 @@
  * The cache (`/data/aip_VY.json`) is built once per AIRAC cycle by
  * `scripts/ingest_aixm_waypoints.py` from the AIXM 5.1.1 export — every
  * DesignatedPoint/Navaid position, airways stitched from
- * `route_segments.json`, and airports from the AIXM-derived CSV. Same
- * shape as the retired Thai `aip_VT.json` this replaces, so every consumer
- * here is unchanged. `fetchAip()` still fails closed (empty
- * waypoints/airways/airports) on a fetch error rather than throwing.
+ * `route_segments.json`, and airports from the AIXM-derived CSV.
+ * `fetchAip()` fails closed (empty waypoints/airways/airports) on a fetch
+ * error rather than throwing.
  *
  * IMPORTANT: `allFixes`/`airwaysMap` from here feed BOTH the map preview
  * (`resolveRoutePreview`, RouteBuilder's waypoint search) AND, in
@@ -58,7 +57,7 @@ export interface AirportOption {
 let _cache: Promise<AipData> | null = null;
 
 /** Fetch + memoise the AIP cache for the page's lifetime. Fails closed (empty
- *  waypoints/airways) rather than throwing — there is no VY cache yet. */
+ *  waypoints/airways) rather than throwing when the cache is missing. */
 export function fetchAip(): Promise<AipData> {
   if (!_cache) {
     _cache = fetch(AIP_URL, { cache: "no-store" })

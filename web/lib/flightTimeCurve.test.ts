@@ -1,12 +1,9 @@
 /**
  * The route picker must predict flight times for the aircraft being flown.
  *
- * This file used to carry a hard-coded distance-to-time table measured on a
- * B738 to RFL350 and applied to every airframe, which is how a correctly
- * simulated 70-minute ATR 72 leg got scored against a 49-minute "reference"
- * and marked FAIL. The curve now comes from the server, derived from the
- * type's own Thai APM performance, and an airframe with no Thai APM data of
- * its own is reported unsupported instead of being approximated.
+ * The curve comes from the server, derived from the type's own Thai APM
+ * performance, and an airframe with no Thai APM data of its own is reported
+ * unsupported instead of being approximated by another airframe's curve.
  */
 
 import { readFileSync } from "node:fs";
@@ -15,12 +12,11 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  estimateReferenceMin,
   estimateSimMin,
   fetchFlightTimeCurve,
   isSupportedCurve,
   type FlightTimeCurve,
-} from "./cat62";
+} from "./flightTimeCurve";
 
 /** An AT76 curve at FL180, as /api/flight_time_curve serves it. */
 const ATR_CURVE: FlightTimeCurve = {
@@ -67,12 +63,6 @@ describe("estimateSimMin", () => {
   });
 });
 
-describe("estimateReferenceMin", () => {
-  it("adds the server's terminal-area margin to the prediction", () => {
-    expect(estimateReferenceMin(ATR_CURVE, 200)).toBeCloseTo(53.6, 5);
-  });
-});
-
 describe("fetchFlightTimeCurve", () => {
   it("reads a supported curve, keeping the dataset it came from", async () => {
     stubCurveResponse({
@@ -110,7 +100,7 @@ describe("fetchFlightTimeCurve", () => {
 
 describe("no aircraft-blind fallback survives in this module", () => {
   const SRC = readFileSync(
-    fileURLToPath(new URL("./cat62.ts", import.meta.url)),
+    fileURLToPath(new URL("./flightTimeCurve.ts", import.meta.url)),
     "utf8",
   );
 
@@ -118,10 +108,13 @@ describe("no aircraft-blind fallback survives in this module", () => {
     expect(SRC).not.toMatch(/SIM_TIME_TABLE/);
   });
 
+  it("no longer calls the retired CAT062 reference endpoint", () => {
+    expect(SRC).not.toMatch(/cat62_reference/);
+  });
+
   it("cannot estimate without a curve for a specific airframe", () => {
-    // Both estimators take a FlightTimeCurve as their first argument, so
-    // there is no distance-only path left to call.
+    // The estimator takes a FlightTimeCurve as its first argument, so there
+    // is no distance-only path left to call.
     expect(estimateSimMin.length).toBe(2);
-    expect(estimateReferenceMin.length).toBe(2);
   });
 });

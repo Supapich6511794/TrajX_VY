@@ -10,10 +10,10 @@
  *
  * What it is NOT
  * --------------
- * It does not touch the airspace. The published sectors in
- * `public/data/sectors_corrected` are the baseline and stay the baseline: every
- * result here is expressed as *groupings of* those sectors, every group can be
- * read back to its members, and nothing is written anywhere. A merged position
+ * It does not touch the airspace. The published sectors (the AIXM airspace
+ * boundaries under `public/data/aixm_vy`) are the baseline and stay the
+ * baseline: every result here is expressed as *groupings of* those sectors,
+ * every group can be read back to its members, and nothing is written anywhere. A merged position
  * is a staffing decision — who works which airspace this hour — not a new
  * volume. The report says so in as many words, because a table of "sector A+B"
  * is otherwise easy to mistake for a redrawn map.
@@ -89,7 +89,7 @@ export interface DynamicSectorConfig {
    *  traffic would have done does not throw the work away. */
   overrides?: Record<string, HourDecision>;
   /** Which airspace layer to plan. Only one layer is ever merged at a time: a
-   *  TMA and an en-route sector are different jobs, not two halves of one. */
+   *  TMA and the CTA above it are different jobs, not two halves of one. */
   layer: string;
   /** A position may be formed while its COMBINED traffic stays under this many
    *  aircraft in the hour. The operational knob. */
@@ -117,7 +117,7 @@ export interface DynamicSectorConfig {
 
 export const DEFAULT_DYNAMIC_CONFIG: DynamicSectorConfig = {
   mode: "auto",
-  layer: "bacc",
+  layer: "tma",
   mergeBelow: 6,
   maxSectorsPerPosition: 3,
   splitAbove: 14,
@@ -142,7 +142,7 @@ export interface AreaContext {
 export interface DynamicPosition {
   /** Published sectors worked as one, sorted. */
   sectors: string[];
-  /** "1N+1S" for a band-box, "1N" for a sector worked on its own. */
+  /** "North+South" for a band-box, "North" for a sector worked on its own. */
   label: string;
   /** Distinct aircraft in the position over the hour. Not the sum of the member
    *  counts: an aircraft that crosses from one member to another is one
@@ -810,7 +810,7 @@ export interface DynamicLogEntry {
   /** Position within the hour, so the log has a stable order. */
   seq: number;
   kind: "merge" | "split" | "overload" | "keep";
-  /** "1N+2N", "1N → 2N", or the sector on its own. */
+  /** "North+East", "North → East", or the sector on its own. */
   label: string;
   detail: string;
   /** Sectors this line is about — what the map should show. */
@@ -931,8 +931,8 @@ export function dynamicLogCsv(plan: DynamicPlan): string {
 
 // --- saying it in words -----------------------------------------------------
 
-/** "1N: 2 flights + 1S: 3 flights → merged as 1N+1S" — the merge, in the form a
- *  watch supervisor would write it. */
+/** "North: 2 flights + South: 3 flights → merged as North+South" — the merge,
+ *  in the form a watch supervisor would write it. */
 export function describePosition(p: DynamicPosition): string {
   const parts = p.members.map((m) => m.sector + ": " + m.flights + " flight" + (m.flights === 1 ? "" : "s"));
   if (!p.merged) return parts[0] + " → worked on its own";
@@ -982,8 +982,8 @@ function csv(header: string[], rows: (string | number)[][]): string {
  * The plan as a flat table: one row per published sector per hour.
  *
  * Every row names the sector it is about AND the position it was worked from,
- * so the file can be read either way round — "what happened to 1N all day", or
- * "what did the 1N+1S position hold at 0300". `basis` repeats on every row that
+ * so the file can be read either way round — "what happened to North all day", or
+ * "what did the North+South position hold at 0300". `basis` repeats on every row that
  * this is an operational grouping over an unchanged sector map, because a
  * column called `position` is otherwise one screenshot away from being read as
  * a new airspace design.

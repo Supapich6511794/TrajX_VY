@@ -16,7 +16,7 @@ import type { Holding } from "@/lib/holdings";
 import type { TrajectoryResult, TrajectoryPoint } from "@/lib/trajectory/types";
 
 const cfg = resolveConfig();
-const THR = { lat: 13.69171389, lon: 100.76103333 };
+const THR = { lat: 21.72005833, lon: 95.97401111 }; // VYMD RW17
 const NM = 60;
 
 /** A straight-in arrival: `distNm` out, closing at `gsKt`, 1 sample / 10 s. */
@@ -55,10 +55,10 @@ function arrival(
       flightKey: key,
       callsign: key,
       aircraftType: "A320",
-      adep: "VTCC",
-      ades: "VTBS",
+      adep: "VYMK",
+      ades: "VYMD",
       eobtIso: "2025-12-23T00:00:00Z",
-      arrRwy: "RW19",
+      arrRwy: "RW17",
       arrThreshold: THR,
       starOpen: true,
       vectorHeadingDeg: 14.3,
@@ -129,7 +129,7 @@ describe("collectArrivals", () => {
   it("takes arrivals that have a resolved runway and threshold", () => {
     const { inputs } = collect([arrival("A", 20), arrival("B", 30)]);
     expect(inputs.map((i) => i.id)).toEqual(["A", "B"]);
-    expect(inputs[0].arrRwy).toBe("RW19");
+    expect(inputs[0].arrRwy).toBe("RW17");
     expect(inputs[0].threshold).toEqual(THR);
   });
 
@@ -137,16 +137,16 @@ describe("collectArrivals", () => {
     // The ladder row names the flow an aircraft is on, so ADEP/ADES/STAR have
     // to survive collect -> sequence. A flight with no coded STAR keeps the
     // field empty rather than inheriting anyone else's.
-    const withStar = arrival("A", 20, 180, { star: "EAST1C" });
-    const direct = arrival("B", 30, 180, { adep: "VTUU" });
+    const withStar = arrival("A", 20, 180, { star: "DOGI1E" });
+    const direct = arrival("B", 30, 180, { adep: "VYHH" });
     const [stream] = sequenceArrivals(cfg, collect([withStar, direct]).inputs);
     const byId = new Map(stream.arrivals.map((a) => [a.id, a]));
     expect(byId.get("A")).toMatchObject({
-      adep: "VTCC",
-      ades: "VTBS",
-      star: "EAST1C",
+      adep: "VYMK",
+      ades: "VYMD",
+      star: "DOGI1E",
     });
-    expect(byId.get("B")).toMatchObject({ adep: "VTUU", ades: "VTBS" });
+    expect(byId.get("B")).toMatchObject({ adep: "VYHH", ades: "VYMD" });
     expect(byId.get("B")!.star).toBeUndefined();
   });
 
@@ -221,8 +221,8 @@ describe("collectArrivals -> sequence -> plan", () => {
     );
     expect(plans).toHaveLength(1);
     const plan = plans[0];
-    expect(plan.ades).toBe("VTBS");
-    expect(plan.runway).toBe("RW19");
+    expect(plan.ades).toBe("VYMD");
+    expect(plan.runway).toBe("RW17");
     expect(plan.order.map((p) => p.arrival.callsign)).toEqual(["A1", "A2", "A3"]);
 
     // First lands unimpeded; the two behind need room.
@@ -239,10 +239,10 @@ describe("collectArrivals -> sequence -> plan", () => {
   });
 
   it("keeps separate runways in separate sequences", () => {
-    const other = arrival("B1", 12, 180, { arrRwy: "RW01" });
+    const other = arrival("B1", 12, 180, { arrRwy: "RW35" });
     const { inputs } = collect([arrival("A1", 10), other]);
     const plans = planArrivals(cfg, sequenceArrivals(cfg, inputs));
-    expect(plans.map((p) => p.runway).sort()).toEqual(["RW01", "RW19"]);
+    expect(plans.map((p) => p.runway).sort()).toEqual(["RW17", "RW35"]);
     for (const p of plans) expect(p.actions).toEqual([]);
   });
 });
@@ -293,7 +293,7 @@ describe("nextHoldOnRoute — where an arrival can actually be held", () => {
   });
 
   it("opens the menu where the STAR does, not at top of descent", () => {
-    // On a real VTCC-VTBS leg top of descent falls ~8 minutes and several
+    // On a domestic leg top of descent can fall several minutes and several
     // en-route fixes BEFORE the STAR is joined, so TOD alone still offered a
     // hold out in the cruise. The server names the STAR's first fix; from there
     // on is the arrival, and that is where holding belongs.

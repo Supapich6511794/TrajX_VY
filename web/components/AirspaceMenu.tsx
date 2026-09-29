@@ -2,8 +2,8 @@
 
 /**
  * AirspaceMenu — a top-toolbar "Airspace" button (sits beside Layers) that
- * opens a dropdown of the airspace sector layers (BACC sectors/subsectors,
- * CTR, TMA, PDR). Moved out of the Layer Options panel so the sector toggles
+ * opens a dropdown of the airspace layers (CTR, TMA, CTA, the Yangon FIR and
+ * PDR). Moved out of the Layer Options panel so the sector toggles
  * are one click away from the map. State is lifted to MapApp (the `sectorsOn`
  * flags) and flows to LeafletMap, so toggling shows/hides the polygons live.
  * Closes on outside click.
@@ -42,7 +42,7 @@ export function AirspaceBody({
           type="button"
           className={colorMode === "zone" ? "active" : ""}
           onClick={() => onColorMode("zone")}
-          title="The zone's legend colour (BACC / CTR / TMA / …)"
+          title="The zone's legend colour (CTR / TMA / CTA / …)"
         >
           Zone
         </button>

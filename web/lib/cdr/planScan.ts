@@ -4,8 +4,8 @@
  * The live detector (useCdr) only looks a short window ahead of the current
  * clock — that drives the realtime toast/badge. The Dashboard, by contrast,
  * wants the WHOLE picture: every loss of separation the filed plans will
- * produce, including ones far in the future that haven't alerted yet ("THA100 &
- * TGW122 will lose separation at 00:24"). Because the trajectories are fully
+ * produce, including ones far in the future that haven't alerted yet ("UBA100 &
+ * MMA122 will lose separation at 00:24"). Because the trajectories are fully
  * precomputed, we can simply march each pair along its real path across the
  * entire shared timeline once and record where they breach minima.
  *

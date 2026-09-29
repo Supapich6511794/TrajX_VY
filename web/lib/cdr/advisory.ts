@@ -81,8 +81,11 @@ function kinematicOf(frame: EnuFrame, ac: CdrAircraft): Kinematic {
 /**
  * Semicircular cruising-level rule (ICAO Annex 2, Appendix 3): eastbound tracks
  * (000–179°) fly ODD thousands of feet, westbound (180–359°) fly EVEN. Only
- * enforced at cruising levels (≥ FL110, above the transition); below that,
- * climb/descent levels aren't bound by it.
+ * enforced at cruising levels (≥ FL110 here); below that, climb/descent levels
+ * aren't bound by it. The 11 000 ft floor is a cruising-level cut-off, not a
+ * transition altitude: Myanmar publishes TA per aerodrome (AIP Myanmar Table
+ * 3.6, 4 000–17 000 ft; see `lib/transitionAltitude.ts`), and this check has
+ * no aerodrome context.
  */
 export function respectsSemicircular(altFt: number, trackDeg: number): boolean {
   if (altFt < 11000) return true;

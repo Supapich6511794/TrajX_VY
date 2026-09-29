@@ -6,15 +6,18 @@
  * pure function of the traffic — the same sample must always produce the same
  * grouping, or nothing can be checked against it.
  *
- * The adjacency half is tested against the REAL published BACC geometry, not a
- * fixture: whether the 12 Thai en-route sectors share boundaries is a fact about
- * the dataset, and a synthetic square grid would prove nothing about it.
+ * The adjacency half is tested against the REAL published Yangon FIR geometry
+ * (AIP Myanmar AIXM export), not a fixture: which of its TMAs and CTRs share a
+ * boundary is a fact about the dataset, and a synthetic square grid would prove
+ * nothing about it. The planner half uses a synthetic line of sectors, because
+ * the published volumes barely touch at all — which is itself asserted below.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { buildAirspaceIndex } from "@/lib/airspace";
+import type { SectorCollection } from "@/lib/geojson";
 
 import {
   applyPlan,
@@ -34,75 +37,69 @@ import type { SectorHourRow } from "./flightEvents";
 import { areAdjacent, buildSectorAdjacency, sectorsOf } from "./sectorAdjacency";
 
 // --- the real airspace ------------------------------------------------------
-// sectors_corrected/ is Bangkok ACC's own internal sector split — not
-// published in any AIP/AIXM feed, so there is no VY equivalent and the Thai
-// files have been removed. `load` fails closed (empty collection) so the rest
-// of this file's synthetic-data tests still collect and run; the two describes
-// below that assert real BACC facts are skipped instead of failing against an
-// empty index.
-const HAS_VT_FIXTURES = existsSync(
-  resolve(__dirname, "../../public/data/sectors_corrected/bacc_geo.geojson"),
-);
-const load = (p: string) => {
-  try {
-    return JSON.parse(
-      readFileSync(resolve(__dirname, "../../public/data/" + p), "utf-8"),
-    );
-  } catch {
-    return { type: "FeatureCollection", features: [] };
-  }
-};
-const realIndex = buildAirspaceIndex({
-  bacc: load("sectors_corrected/bacc_geo.geojson"),
-  ctr: load("sectors_corrected/ctr.geojson"),
-  tma: load("sectors_corrected/tma.geojson"),
+// The layers exactly as `fetchSector` builds them: the AIXM boundary file split
+// by its `type`.
+const boundaries = JSON.parse(
+  readFileSync(
+    resolve(__dirname, "../../public/data/aixm_vy/airspace_boundaries.geojson"),
+    "utf-8",
+  ),
+) as SectorCollection;
+const ofType = (type: string): SectorCollection => ({
+  ...boundaries,
+  features: boundaries.features.filter(
+    (f) => String((f.properties as Record<string, unknown> | null)?.type) === type,
+  ),
 });
-const baccAdj = buildSectorAdjacency(realIndex, "bacc");
+const realIndex = buildAirspaceIndex({
+  ctr: ofType("CTR"),
+  tma: ofType("TMA"),
+  cta: ofType("CTA"),
+});
+const tmaAdj = buildSectorAdjacency(realIndex, "tma");
+const ctrAdj = buildSectorAdjacency(realIndex, "ctr");
 
-describe.skipIf(!HAS_VT_FIXTURES)("sector adjacency, against the published BACC geometry", () => {
-  it("knows every sector, with the altitude slabs collapsed into one", () => {
-    const names = sectorsOf(baccAdj);
-    expect(names.length).toBeGreaterThan(0);
-    // 3S and 6S are published as _lower / _upper slabs; a controller works "3S".
-    expect(names.some((n) => /_lower|_upper/.test(n))).toBe(false);
-    expect(names).toContain("3S");
+describe("sector adjacency, against the published Yangon FIR geometry", () => {
+  it("knows every TMA, under the name the flight events carry", () => {
+    expect(sectorsOf(tmaAdj)).toEqual(["Mandalay TMA", "Mingaladon TMA", "Naypyitaw TMA"]);
   });
 
-  it("finds the 27 boundary pairs the 12 published sectors share", () => {
-    const pairs = sectorsOf(baccAdj).reduce(
-      (n, s) => n + (baccAdj.get(s)?.size ?? 0),
-      0,
-    );
-    expect(sectorsOf(baccAdj)).toHaveLength(12);
-    expect(pairs / 2).toBe(27);
-  });
-
-  it("gives every en-route sector at least one neighbour to merge with", () => {
-    for (const s of sectorsOf(baccAdj)) {
-      expect(baccAdj.get(s)?.size ?? 0).toBeGreaterThan(0);
+  it("finds that the three TMAs share no boundary", () => {
+    // Mandalay, Naypyitaw and Mingaladon (Yangon) sit hundreds of miles apart
+    // along the central valley: nothing there can be band-boxed.
+    for (const s of sectorsOf(tmaAdj)) {
+      expect(tmaAdj.get(s)?.size).toBe(0);
     }
-  });
-
-  it("is symmetric and has no self-loops", () => {
-    for (const a of sectorsOf(baccAdj)) {
-      expect(baccAdj.get(a)?.has(a)).toBeFalsy();
-      for (const b of baccAdj.get(a) ?? []) {
-        expect(areAdjacent(baccAdj, b, a)).toBe(true);
-      }
-    }
-  });
-
-  it("leaves a sector no one touches out of every merge", () => {
-    expect(areAdjacent(baccAdj, "1N", "NOT A SECTOR")).toBe(false);
   });
 
   it("reports the CTRs as islands, because they are", () => {
     // Control zones sit around their own aerodromes. "Nothing to band-box" is
     // the right answer for that layer, not a bug to paper over.
-    const ctr = buildSectorAdjacency(realIndex, "ctr");
-    const links = sectorsOf(ctr).reduce((n, s) => n + (ctr.get(s)?.size ?? 0), 0);
-    expect(sectorsOf(ctr).length).toBeGreaterThan(10);
+    const links = sectorsOf(ctrAdj).reduce((n, s) => n + (ctrAdj.get(s)?.size ?? 0), 0);
+    expect(sectorsOf(ctrAdj).length).toBeGreaterThan(30);
     expect(links / 2).toBeLessThan(3);
+  });
+
+  it("is symmetric and has no self-loops", () => {
+    for (const adj of [tmaAdj, ctrAdj]) {
+      for (const a of sectorsOf(adj)) {
+        expect(adj.get(a)?.has(a)).toBeFalsy();
+        for (const b of adj.get(a) ?? []) {
+          expect(areAdjacent(adj, b, a)).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("leaves a sector no one touches out of every merge", () => {
+    expect(areAdjacent(tmaAdj, "Mingaladon TMA", "NOT A SECTOR")).toBe(false);
+    expect(areAdjacent(tmaAdj, "Mingaladon TMA", "Naypyitaw TMA")).toBe(false);
+  });
+
+  it("gives the single-volume CTA layer no one to merge with", () => {
+    const cta = buildSectorAdjacency(realIndex, "cta");
+    expect(sectorsOf(cta)).toEqual(["Yangon CTA"]);
+    expect(cta.get("Yangon CTA")?.size).toBe(0);
   });
 });
 
@@ -124,7 +121,7 @@ function row(
   sector: string,
   flights: string[],
   hourUtc = HOUR,
-  layer = "bacc",
+  layer = DEFAULT_DYNAMIC_CONFIG.layer,
 ): SectorHourRow {
   return {
     sector,
@@ -323,10 +320,10 @@ describe("planDynamicSectors — merging and splitting back over a run", () => {
   });
 
   it("ignores rows from other airspace layers rather than mixing them in", () => {
-    const withTma = [...rows, row("BANGKOK TMA", ["X"], H(3), "tma")];
-    const p = planDynamicSectors(withTma, LINE, cfg());
+    const withCtr = [...rows, row("Mingaladon CTR", ["X"], H(3), "ctr")];
+    const p = planDynamicSectors(withCtr, LINE, cfg());
     expect(p.hours.flatMap((h) => h.positions.flatMap((x) => x.sectors))).not.toContain(
-      "BANGKOK TMA",
+      "Mingaladon CTR",
     );
   });
 
@@ -405,53 +402,52 @@ describe("the exported plan", () => {
 
 // --- against the real airspace ---------------------------------------------
 
-describe.skipIf(!HAS_VT_FIXTURES)("planning over the published BACC sectors", () => {
-  const quiet = sectorsOf(baccAdj).map((sector, i) =>
-    row(sector, i < 3 ? ["Q" + i] : [], H(3)),
-  );
-  const busy = sectorsOf(baccAdj).map((sector) =>
+describe("planning over the published Yangon FIR TMAs", () => {
+  const tmas = sectorsOf(tmaAdj);
+  const quiet = tmas.map((sector, i) => row(sector, i < 2 ? ["Q" + i] : [], H(3)));
+  const busy = tmas.map((sector) =>
     row(sector, Array.from({ length: 12 }, (_, i) => sector + "B" + i), H(9)),
   );
 
-  it("band-boxes a quiet night into far fewer positions", () => {
-    const plan = planDynamicSectors([...quiet], baccAdj, cfg({ mergeBelow: 6 }));
+  it("refuses to band-box a quiet night across TMAs that do not touch", () => {
+    // Every TMA is under the merge threshold — and none shares a boundary, so
+    // each still needs its own position.
+    const plan = planDynamicSectors([...quiet], tmaAdj, cfg({ mergeBelow: 6 }));
     const h = plan.hours[0];
-    expect(h.baselineSectors).toBe(12);
-    expect(h.positionsOpen).toBeLessThan(12);
-    expect(h.positions.some((p) => p.merged)).toBe(true);
+    expect(h.baselineSectors).toBe(3);
+    expect(h.positionsOpen).toBe(3);
+    expect(h.positions.every((p) => !p.merged)).toBe(true);
+    expect(plan.spans).toEqual([]);
   });
 
-  it("keeps every published sector accounted for, merged or not", () => {
-    const plan = planDynamicSectors([...quiet], baccAdj, cfg({ mergeBelow: 6 }));
-    expect(plan.hours[0].positions.flatMap((p) => p.sectors).sort()).toEqual(
-      sectorsOf(baccAdj),
-    );
+  it("keeps every published TMA accounted for", () => {
+    const plan = planDynamicSectors([...quiet], tmaAdj, cfg({ mergeBelow: 6 }));
+    expect(plan.hours[0].positions.flatMap((p) => p.sectors).sort()).toEqual(tmas);
   });
 
-  it("opens all twelve when the traffic is there", () => {
-    const plan = planDynamicSectors([...busy], baccAdj, cfg({ mergeBelow: 6 }));
+  it("opens all three when the traffic is there", () => {
+    const plan = planDynamicSectors([...busy], tmaAdj, cfg({ mergeBelow: 6 }));
     const h = plan.hours[0];
-    expect(h.positionsOpen).toBe(12);
+    expect(h.positionsOpen).toBe(3);
     expect(h.positions.every((p) => !p.merged)).toBe(true);
   });
 
-  it("only ever groups sectors that share a boundary", () => {
-    const plan = planDynamicSectors([...quiet], baccAdj, cfg({ mergeBelow: 6 }));
-    for (const p of plan.hours[0].positions) {
+  it("only ever groups CTRs that share a boundary", () => {
+    const ctrs = sectorsOf(ctrAdj);
+    const night = ctrs.map((sector) => row(sector, [], H(3), "ctr"));
+    const plan = planDynamicSectors(night, ctrAdj, cfg({ layer: "ctr", mergeBelow: 6 }));
+    const h = plan.hours[0];
+    expect(h.positions.flatMap((p) => p.sectors).sort()).toEqual(ctrs);
+    for (const p of h.positions) {
       // Every member must touch at least one other member of its own position,
       // or the "position" is two pieces of unconnected airspace.
       if (!p.merged) continue;
       for (const s of p.sectors) {
-        expect(p.sectors.some((o) => o !== s && areAdjacent(baccAdj, s, o))).toBe(true);
+        expect(p.sectors.some((o) => o !== s && areAdjacent(ctrAdj, s, o))).toBe(true);
       }
     }
-  });
-
-  it("splits back the moment the morning traffic arrives", () => {
-    const plan = planDynamicSectors([...quiet, ...busy], baccAdj, cfg({ mergeBelow: 6 }));
-    const morning = plan.hours.find((h) => h.hourUtc === H(9));
-    expect(morning?.splitBack.length).toBeGreaterThan(0);
-    expect(plan.spans.every((sp) => sp.toHourUtc <= H(9))).toBe(true);
+    // Islands stay islands: almost every CTR is still worked on its own.
+    expect(h.positionsOpen).toBeGreaterThan(ctrs.length - 3);
   });
 });
 
@@ -551,10 +547,10 @@ describe("an overloaded sector has its airspace re-cut", () => {
   it("refuses to cut around active restricted airspace", () => {
     const h = planDynamicSectors([inWest(16)], PAIR, areaCfg(), {
       shapes: SHAPES,
-      blockersAt: () => [{ ident: "VTR9", rings: areaBox(99.7, 13.8, 0.2) }],
+      blockersAt: () => [{ ident: "R99", rings: areaBox(99.7, 13.8, 0.2) }],
     }).hours[0];
     expect(h.transfers).toEqual([]);
-    expect(h.blocked[0].reason).toMatch(/VTR9/);
+    expect(h.blocked[0].reason).toMatch(/R99/);
   });
 
   it("does not re-cut a sector that is inside a band-box", () => {

@@ -1,8 +1,8 @@
 /**
  * Directional and vertical limits on the ATS routes themselves.
  *
- * An airway is not automatically two-way. AIP Thailand ENR 3 prints a direction
- * per route — Y8 is a *uni-directional southbound route* — and AIXM states it
+ * An airway is not automatically two-way. The AIP (ENR 3) prints a direction
+ * per route — in AIRAC 2609 Y8 may only be flown BUXEL -> MENEX -> IKERA — and AIXM states it
  * per segment, relative to that segment's own start and end:
  *
  *     BOTH      either way

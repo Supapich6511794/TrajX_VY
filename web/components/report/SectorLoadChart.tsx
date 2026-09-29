@@ -4,8 +4,8 @@
  * SectorLoadChart — aircraft per hour, for one sector, across the whole run.
  *
  * The panel above it answers "what happened in this sector in THIS hour". That
- * number means little on its own: six aircraft is a dead night in Bangkok TMA
- * and a busy hour in 4S. The shape of the day is what makes one hour readable,
+ * number means little on its own: six aircraft is a dead night in a busy
+ * terminal area and a full hour in a quiet control zone. The shape of the day is what makes one hour readable,
  * so the chart draws every hour of the sample and marks the one being read.
  *
  * Three things are on it, and no more:

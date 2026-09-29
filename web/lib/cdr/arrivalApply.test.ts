@@ -15,8 +15,8 @@ function inbound(distNm: number, gsKt: number): TrajectoryPoint[] {
   for (let t = 0; t <= totalSec + 1e-9; t += 10) {
     const flown = (gsKt * t) / 3600;
     pts.push({
-      lat: 13.69 + (distNm - flown) / NM,
-      lon: 100.75,
+      lat: 21.72 + (distNm - flown) / NM,
+      lon: 95.974,
       epoch_ts: new Date((T0 + t) * 1000).toISOString(),
       altitude_ft: 3000,
       gs_kt: gsKt,
@@ -99,9 +99,9 @@ describe("applySpeedReduction", () => {
 
 /** A published 1-minute right-hand pattern → 60 s leg + 60 s turn, twice. */
 const HOLD: ArrivalHold = {
-  ident: "LETMA",
-  lat: 13.69 + 20 / NM, // 20 NM out on the inbound track below
-  lon: 100.75,
+  ident: "HOLD1",
+  lat: 21.72 + 20 / NM, // 20 NM out on the inbound track below
+  lon: 95.974,
   inboundCourseDeg: 180,
   turn: "R",
   legSec: 60,
@@ -126,10 +126,10 @@ function result(points: TrajectoryPoint[]): TrajectoryResult {
     validation: null,
     meta: {
       flightKey: "T1",
-      callsign: "THA100",
+      callsign: "UBA100",
       aircraftType: "A320",
-      adep: "VTCC",
-      ades: "VTBS",
+      adep: "VYMK",
+      ades: "VYMD",
       eobtIso: new Date(T0 * 1000).toISOString(),
     },
   };
@@ -178,7 +178,7 @@ describe("applyArrivalHold", () => {
   it("actually leaves the inbound track — there is a racetrack to draw", () => {
     const after = applyArrivalHold(before, { ...HOLD, tManSec: AT_FIX }, 1);
     const offTrack = after.points.filter(
-      (p) => Math.abs(p.lon - 100.75) > 0.01,
+      (p) => Math.abs(p.lon - 95.974) > 0.01,
     );
     expect(offTrack.length).toBeGreaterThan(10);
   });

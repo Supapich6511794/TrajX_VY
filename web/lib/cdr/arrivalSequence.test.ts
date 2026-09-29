@@ -2,23 +2,23 @@
  * Arrival sequencing + in-trail spacing.
  *
  * The synthetic cases use straight-in arrivals on one meridian so the expected
- * spacing is exact arithmetic; the last block runs the real 30-flight STAR
- * arrival sample (all VTBS RW19) to prove the module handles actual generated
- * traffic rather than only hand-built geometry.
+ * spacing is exact arithmetic; the last block runs a mixed-type, mixed-speed
+ * bank of a dozen arrivals into one runway to check the stream-level
+ * invariants (order, wake coverage, named drivers, worst-first deficits).
  */
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { planArrivalFix } from "./arrivalFix";
 import { sequenceArrivals, type ArrivalInput } from "./arrivalSequence";
 import { resolveConfig } from "./config";
 import type { FutureSample } from "./types";
 
 const cfg = resolveConfig();
 
-/** VTBS threshold-ish reference point; all synthetic traffic flies due south
- *  down the 100.75 meridian towards it, so distance is pure latitude. */
-const THR = { lat: 13.69, lon: 100.75 };
+/** VYMD RW17 threshold (runway_vy.csv, rounded); all synthetic traffic flies
+ *  due south down its meridian towards it, so distance is pure latitude. The
+ *  real runway points 171° true — close enough, and the maths stays exact. */
+const THR = { lat: 21.72, lon: 95.974 };
 const NM_PER_DEG = 60;
 const STEP = 10; // seconds between projected samples
 
@@ -48,8 +48,8 @@ function inbound(
     id,
     callsign: id,
     type,
-    ades: "VTBS",
-    arrRwy: "RW19",
+    ades: "VYMD",
+    arrRwy: "RW17",
     threshold: THR,
     future,
     gsKt,
@@ -107,8 +107,8 @@ function viaPath(
     id,
     callsign: id,
     type,
-    ades: "VTBS",
-    arrRwy: "RW19",
+    ades: "VYMD",
+    arrRwy: "RW17",
     threshold: THR,
     future,
     gsKt,
@@ -124,17 +124,17 @@ describe("sequenceArrivals — landing order", () => {
       inbound("B", "A320", 20, 180),
     ]);
     expect(streams).toHaveLength(1);
-    expect(streams[0].ades).toBe("VTBS");
-    expect(streams[0].runway).toBe("RW19");
+    expect(streams[0].ades).toBe("VYMD");
+    expect(streams[0].runway).toBe("RW17");
     expect(streams[0].arrivals.map((a) => a.id)).toEqual(["A", "B", "C"]);
     expect(streams[0].arrivals.map((a) => a.position)).toEqual([1, 2, 3]);
   });
 
   it("keeps one stream per runway — arrivals to different runways do not "
     + "sequence against each other", () => {
-    const other = { ...inbound("D", "A320", 12, 180), arrRwy: "RW19L" };
+    const other = { ...inbound("D", "A320", 12, 180), arrRwy: "RW35" };
     const streams = sequenceArrivals(cfg, [inbound("A", "A320", 10, 180), other]);
-    expect(streams.map((s) => s.runway).sort()).toEqual(["RW19", "RW19L"]);
+    expect(streams.map((s) => s.runway).sort()).toEqual(["RW17", "RW35"]);
     for (const s of streams) expect(s.pairs).toHaveLength(0);
   });
 
@@ -246,13 +246,13 @@ describe("sequenceArrivals — required minima (Doc 4444 §8.7.3)", () => {
 
   it("resolves the position-dependent minimum WHERE THE PAIR IS AT TOUCHDOWN, "
     + "not where the follower is now", () => {
-    // 3 NM inside the Bangkok TMA, 5 NM en-route. An arrival still an hour out
+    // 3 NM inside a TMA, 5 NM en-route. An arrival still an hour out
     // is en-route RIGHT NOW, but the gap being measured is the one it will have
     // on final — inside the TMA. Charging it 5 NM would invent a deficit that
     // the aircraft never actually has.
     const TMA_RADIUS_NM = 40;
     const inTma = (lat: number, lon: number) =>
-      Math.hypot((lat - THR.lat) * 60, (lon - THR.lon) * 58.3) < TMA_RADIUS_NM;
+      Math.hypot((lat - THR.lat) * 60, (lon - THR.lon) * 60 * Math.cos((THR.lat * Math.PI) / 180)) < TMA_RADIUS_NM;
     const cfgTma = resolveConfig({
       sepMinNmAt: (lat: number, lon: number) => (inTma(lat, lon) ? 3 : 5),
     });
@@ -279,7 +279,7 @@ describe("sequenceArrivals — required minima (Doc 4444 §8.7.3)", () => {
   it("still applies the en-route minimum when the pair is far out at touchdown", () => {
     const cfgTma = resolveConfig({
       sepMinNmAt: (lat: number, lon: number) =>
-        Math.hypot((lat - THR.lat) * 60, (lon - THR.lon) * 58.3) < 40 ? 3 : 5,
+        Math.hypot((lat - THR.lat) * 60, (lon - THR.lon) * 60 * Math.cos((THR.lat * Math.PI) / 180)) < 40 ? 3 : 5,
     });
     // The follower is still 45 NM out when the leader lands — outside the TMA.
     const [s] = sequenceArrivals(cfgTma, [
@@ -353,84 +353,47 @@ describe("sequenceArrivals — required minima (Doc 4444 §8.7.3)", () => {
   });
 });
 
-describe("sequenceArrivals — real STAR arrival sample", () => {
-  // The generated 30-flight arrival set: all VTBS RW19, so it is one runway
-  // stream and every consecutive pair is a real in-trail case.
-  interface Feat {
-    properties: Record<string, string | number | null>;
-    geometry: { type: string; coordinates: number[] | number[][] };
-  }
-  const gj = JSON.parse(
-    readFileSync(
-      resolve(__dirname, "../../../dummy_data/star_arrival_30_flights.geojson"),
-      "utf-8",
-    ),
-  ) as { features: Feat[] };
-
-  const routes = gj.features.filter((f) => f.properties.feature_type === "route");
-  const byKey = new Map<string, Feat[]>();
-  for (const f of gj.features) {
-    if (f.properties.feature_type === "route") continue;
-    const k = String(f.properties.flight_key);
-    byKey.set(k, [...(byKey.get(k) ?? []), f]);
-  }
-
-  // Land every flight at the same point (its route's final vertex = VTBS), and
-  // build each one's future from its sample times relative to a common clock.
-  const t0 = Math.min(
-    ...[...byKey.values()].map((pts) =>
-      new Date(String(pts[0].properties.epoch_ts).replace(" ", "T")).getTime(),
-    ),
+describe("sequenceArrivals — a mixed arrival bank into one runway", () => {
+  // A dozen straight-ins to VYMD RW17 with mixed wake categories and speeds,
+  // so it is one runway stream and every consecutive pair is a real in-trail
+  // case. Some pairs are deliberately tight (they must show as deficits).
+  const BANK: [string, string, number, number][] = [
+    ["UBA101", "A320", 8, 160],
+    ["MMA202", "AT72", 12, 150],
+    ["KMV303", "B77W", 15, 180],
+    ["UBA404", "A320", 18, 170], // 3 NM behind a HEAVY: wake deficit
+    ["MMA505", "A321", 26, 200],
+    ["UBA606", "AT72", 30, 170],
+    ["KMV707", "A388", 38, 220],
+    ["MMA808", "A320", 43, 220], // 5 NM behind a SUPER: short of 7
+    ["UBA909", "B738", 55, 240],
+    ["MMA110", "E190", 58, 240],
+    ["KMV211", "A333", 70, 250],
+    ["UBA312", "A320", 82, 250],
+  ];
+  const inputs: ArrivalInput[] = BANK.map(([id, type, dist, gs]) =>
+    inbound(id, type, dist, gs),
   );
-  const inputs: ArrivalInput[] = [];
-  for (const r of routes) {
-    const key = String(r.properties.flight_key);
-    const pts = byKey.get(key) ?? [];
-    if (pts.length < 2) continue;
-    const line = r.geometry.coordinates as number[][];
-    const end = line[line.length - 1];
-    const times = pts.map(
-      (p) => new Date(String(p.properties.epoch_ts).replace(" ", "T")).getTime(),
-    );
-    const future: FutureSample[] = pts.map((p, i) => ({
-      dt: (times[i] - t0) / 1000,
-      lat: (p.geometry.coordinates as number[])[1],
-      lon: (p.geometry.coordinates as number[])[0],
-      altFt: Number(p.properties.altitude_ft ?? 0),
-    }));
-    inputs.push({
-      id: key,
-      callsign: String(r.properties.callsign),
-      type: String(r.properties.aircraft_type),
-      ades: String(r.properties.ades),
-      arrRwy: String(r.properties.arr_rwy),
-      threshold: { lat: end[1], lon: end[0] },
-      future,
-      gsKt: Number(pts[0].properties.gs_kt ?? 250),
-      trackDeg: Number(pts[0].properties.track_deg ?? 0),
-    });
-  }
-
   const streams = sequenceArrivals(cfg, inputs);
+  const N = BANK.length;
 
-  it("builds one VTBS RW19 stream holding all 30 arrivals", () => {
-    expect(inputs).toHaveLength(30);
+  it("builds one VYMD RW17 stream holding every arrival", () => {
     expect(streams).toHaveLength(1);
-    expect(streams[0].ades).toBe("VTBS");
-    expect(streams[0].runway).toBe("RW19");
-    expect(streams[0].arrivals).toHaveLength(30);
-    expect(streams[0].pairs).toHaveLength(29);
+    expect(streams[0].ades).toBe("VYMD");
+    expect(streams[0].runway).toBe("RW17");
+    expect(streams[0].arrivals).toHaveLength(N);
+    expect(streams[0].pairs).toHaveLength(N - 1);
   });
 
   it("produces a strictly increasing landing order", () => {
     const etas = streams[0].arrivals.map((a) => a.etaSec);
     expect(etas).toEqual([...etas].sort((x, y) => x - y));
     expect(streams[0].arrivals.map((a) => a.position)).toEqual(
-      Array.from({ length: 30 }, (_, i) => i + 1),
+      Array.from({ length: N }, (_, i) => i + 1),
     );
   });
 
-  it("assigns a known wake category to every aircraft type in the sample", () => {
+  it("assigns a known wake category to every aircraft type in the bank", () => {
     for (const a of streams[0].arrivals) {
       expect(a.wakeKnown, `${a.callsign} (${a.type})`).toBe(true);
     }
@@ -445,8 +408,33 @@ describe("sequenceArrivals — real STAR arrival sample", () => {
     }
   });
 
+  it("mixes wake categories so the §8.7.3.4 minima actually bind", () => {
+    const wakes = new Set(streams[0].arrivals.map((a) => a.wake));
+    expect([...wakes].sort()).toEqual(["HEAVY", "MEDIUM", "SUPER"]);
+    expect(streams[0].pairs.some((p) => p.requiredBy === "wake")).toBe(true);
+  });
+
+  it("is neither all-legal nor all-illegal — a MIX to sequence", () => {
+    expect(streams[0].deficits.length).toBeGreaterThan(0);
+    expect(streams[0].deficits.length).toBeLessThan(streams[0].pairs.length);
+  });
+
+  it("measures spacing from the paths, never falling back to an estimate", () => {
+    for (const p of streams[0].pairs) expect(p.estimated).toBe(false);
+  });
+
+  it("yields an actionable instruction for every deficit", () => {
+    for (const p of streams[0].deficits) {
+      const plan = planArrivalFix(cfg, p, { openStar: true, vectorHeadingDeg: 15 });
+      expect(plan.fixes.length).toBeGreaterThan(0);
+      expect(plan.fixes.some((f) => f.sufficient)).toBe(true);
+      expect(plan.fixes[0].target).toBe(p.follower.id);
+    }
+  });
+
   it("ranks deficits worst-first, and every one is a genuine shortfall", () => {
     const d = streams[0].deficits;
+    expect(d.length).toBeGreaterThan(0);
     for (let i = 1; i < d.length; i++) {
       expect(d[i - 1].deficitNm).toBeGreaterThanOrEqual(d[i].deficitNm);
     }

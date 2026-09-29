@@ -644,7 +644,7 @@ export default function PreviewModal({
         <div className="cdr-modal-body">
           <div className="cdr-modal-map">
             <MapContainer
-              center={[13.7, 100.6]}
+              center={[16.9, 96.13]}
               zoom={8}
               zoomControl={false}
               scrollWheelZoom

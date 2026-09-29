@@ -128,8 +128,8 @@ export interface ArrivalContext {
   /** The published vector heading in °TRUE — the geometry the engine flies. */
   vectorHeadingDeg?: number;
   /** The same heading in °MAGNETIC, as the chart prints it. An instruction
-   *  quotes THIS: the VTBS note reads "After ESGEN, ATKIN maintain heading
-   *  015°", and 015 magnetic is 014 true after the 0°42'W variation — reading
+   *  quotes THIS: a chart note such as "After <fix>, maintain heading 015°" is
+   *  magnetic, and 015 magnetic is 014 true after a 0°42'W variation — reading
    *  the true course back to a controller is the wrong number. Falls back to
    *  the true one only when the magnetic course was not published. */
   vectorHeadingMagDeg?: number;

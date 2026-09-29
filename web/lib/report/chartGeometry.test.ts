@@ -155,14 +155,14 @@ describe("tracks", () => {
   };
   // Second flight is shorter, so its columns run out part way down.
   const rows: Cell[][] = [
-    ["lon_THA1", "lat_THA1", "lon_THA2", "lat_THA2"],
+    ["lon_UBA1", "lat_UBA1", "lon_UBA2", "lat_UBA2"],
     [100, 13, 101, 14],
     [101, 14, 102, 15],
     [102, 15, "", ""],
   ];
 
   it("names a series after its flight, not its column", () => {
-    expect(pathPlot(spec, rows, BOX).seriesNames).toEqual(["THA1", "THA2"]);
+    expect(pathPlot(spec, rows, BOX).seriesNames).toEqual(["UBA1", "UBA2"]);
   });
 
   it("lifts the pen at a blank rather than drawing back to (0, 0)", () => {

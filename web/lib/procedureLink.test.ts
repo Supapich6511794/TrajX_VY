@@ -7,14 +7,14 @@ import { describe, expect, it } from "vitest";
 
 import { soleApproachFor, soleProcedure, soleRunwayOf } from "./procedureLink";
 
-/** VTCC: NORT1C is coded for RW36 only; EAST1C serves both ends. */
+/** A VY aerodrome: NORT1C is coded for RW36 only; EAST1C serves both ends. */
 const STAR_RUNWAYS: Record<string, string[]> = {
   NORT1C: ["RW36"],
   EAST1C: ["RW18", "RW36"],
   OPEN1A: [],
 };
 
-/** VTCC RW36 publishes exactly R36; VTBS RW09 publishes two. */
+/** RW36 publishes exactly R36; RW09 (another aerodrome) publishes two. */
 const APPROACHES: Record<string, string[]> = {
   RW36: ["R36"],
   RW09: ["R09-Y", "R09-Z"],
@@ -44,7 +44,7 @@ describe("soleRunwayOf", () => {
 
 describe("soleApproachFor", () => {
   it("names the approach when the runway publishes exactly one", () => {
-    // The case from the panel: VTCC RW36 has only R36, so leaving the picker
+    // The case from the panel: RW36 has only R36, so leaving the picker
     // on "None" served nobody.
     expect(soleApproachFor(APPROACHES, "RW36")).toBe("R36");
   });
@@ -67,13 +67,13 @@ describe("soleApproachFor", () => {
 
 describe("soleProcedure", () => {
   it("names the procedure when filtering left exactly one", () => {
-    // VTCC RW36 + a route leaving over LAMPANG: one SID survives both filters,
+    // RW36 + a route leaving over LSO: one SID survives both filters,
     // so "None (direct departure)" is not a choice the data offers.
-    expect(soleProcedure(["LPN1C"])).toBe("LPN1C");
+    expect(soleProcedure(["LSO1C"])).toBe("LSO1C");
   });
 
   it("leaves a real choice alone", () => {
-    expect(soleProcedure(["LPN1C", "LPN2C"])).toBeNull();
+    expect(soleProcedure(["LSO1C", "LSO2C"])).toBeNull();
   });
 
   it("says nothing when the filters left none", () => {

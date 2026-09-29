@@ -18,7 +18,7 @@ import type { PdrActivity, PdrArea, TimedPoint } from "./types";
 const MON = Date.UTC(2026, 8, 7); // Monday
 const HOUR = 3600000;
 
-/** MON-FRI 0100-0900 UTC, like VTD43. */
+/** MON-FRI 0100-0900 UTC — a typical weekday training-area window. */
 const workdaySchedule: PdrActivity = {
   designator: "TEST1",
   type: "D",

@@ -22,13 +22,13 @@ import {
   type ReportFlight,
 } from "./flightEvents";
 
-/** Two BACC sectors side by side, split at lon 101. */
+/** Two synthetic TMA sectors side by side, split at lon 101 (GND to FL460). */
 const SECTORS = {
   type: "FeatureCollection" as const,
   features: [
     {
       type: "Feature" as const,
-      properties: { name: "WEST", lower: 0, upper: 460 },
+      properties: { name: "West", lower: "GND SFC", upper: "460 STD" },
       geometry: {
         type: "Polygon" as const,
         coordinates: [[[99, 13], [101, 13], [101, 17], [99, 17], [99, 13]]],
@@ -36,7 +36,7 @@ const SECTORS = {
     },
     {
       type: "Feature" as const,
-      properties: { name: "EAST", lower: 0, upper: 460 },
+      properties: { name: "East", lower: "GND SFC", upper: "460 STD" },
       geometry: {
         type: "Polygon" as const,
         coordinates: [[[101, 13], [103, 13], [103, 17], [101, 17], [101, 13]]],
@@ -45,7 +45,7 @@ const SECTORS = {
   ],
 };
 
-const index = buildAirspaceIndex({ bacc: SECTORS });
+const index = buildAirspaceIndex({ tma: SECTORS });
 const emptyIndex = buildAirspaceIndex({});
 
 const START = Date.UTC(2026, 8, 7, 10, 0, 0); // 1000Z
@@ -63,10 +63,10 @@ function flight(over: Partial<ReportFlight> = {}): ReportFlight {
   }
   return {
     flightKey: "F1",
-    callsign: "THA100",
+    callsign: "UBA100",
     actype: "B738",
-    adep: "VTBS",
-    ades: "VTUD",
+    adep: "VYYY",
+    ades: "VYMD",
     points,
     route: [{ ident: "ALPHA", lat: 15, lon: 100 }],
     toc: {
@@ -92,8 +92,8 @@ describe("buildFlightEvents", () => {
   it("brackets the flight with takeoff and landing", () => {
     expect(kinds[0]).toBe("TAKEOFF");
     expect(kinds[kinds.length - 1]).toBe("LANDING");
-    expect(rows[0].ident).toBe("VTBS");
-    expect(rows[rows.length - 1].ident).toBe("VTUD");
+    expect(rows[0].ident).toBe("VYYY");
+    expect(rows[rows.length - 1].ident).toBe("VYMD");
   });
 
   it("records TOC and TOD at their published times", () => {
@@ -111,17 +111,17 @@ describe("buildFlightEvents", () => {
 
   it("records entry and exit for both sectors crossed", () => {
     const entries = rows.filter((r) => r.event === "SECTOR_ENTRY");
-    expect(entries.map((r) => r.ident)).toEqual(["WEST", "EAST"]);
+    expect(entries.map((r) => r.ident)).toEqual(["West", "East"]);
     expect(rows.filter((r) => r.event === "SECTOR_EXIT")).toHaveLength(2);
   });
 
   it("times the sector change at the boundary crossing, not at the ends", () => {
     // lon 101 is sample 20 -> 1020Z.
     const east = rows.find(
-      (r) => r.event === "SECTOR_ENTRY" && r.ident === "EAST",
+      (r) => r.event === "SECTOR_ENTRY" && r.ident === "East",
     );
     expect(east?.timeUtc).toContain("10:20");
-    expect(east?.layer).toBe("bacc");
+    expect(east?.layer).toBe("tma");
   });
 
   it("returns events in time order", () => {
@@ -161,50 +161,50 @@ describe("buildSectorHours", () => {
   const events = [
     ...buildFlightEvents(flight(), index),
     ...buildFlightEvents(
-      flight({ flightKey: "F2", callsign: "TGW200" }),
+      flight({ flightKey: "F2", callsign: "KBZ200" }),
       index,
     ),
   ];
 
   it("counts the aircraft entering each sector in each hour", () => {
-    const west = buildSectorHours(events).find((r) => r.sector === "WEST");
+    const west = buildSectorHours(events).find((r) => r.sector === "West");
     expect(west?.hourUtc).toBe("2026-09-07T10:00Z");
     expect(west?.entries).toBe(2);
-    expect(west?.entryFlights.sort()).toEqual(["TGW200", "THA100"]);
+    expect(west?.entryFlights.sort()).toEqual(["KBZ200", "UBA100"]);
   });
 
   it("names the flights, so a count can be traced back", () => {
-    const east = buildSectorHours(events).find((r) => r.sector === "EAST");
-    expect(east?.entryFlights).toContain("THA100");
+    const east = buildSectorHours(events).find((r) => r.sector === "East");
+    expect(east?.entryFlights).toContain("UBA100");
   });
 
   it("counts conflicts to solve and how many were resolved", () => {
     const conflicts: ReportConflict[] = [
       {
         id: "c1",
-        aCallsign: "THA100",
-        bCallsign: "TGW200",
+        aCallsign: "UBA100",
+        bCallsign: "KBZ200",
         startMs: START + 10 * 60000,
-        sector: "WEST",
+        sector: "West",
         resolved: true,
       },
       {
         id: "c2",
-        aCallsign: "THA100",
-        bCallsign: "AIQ300",
+        aCallsign: "UBA100",
+        bCallsign: "MAI300",
         startMs: START + 25 * 60000,
-        sector: "EAST",
+        sector: "East",
         resolved: false,
       },
     ];
     const rows = buildSectorHours(events, conflicts);
-    const west = rows.find((r) => r.sector === "WEST")!;
-    const east = rows.find((r) => r.sector === "EAST")!;
+    const west = rows.find((r) => r.sector === "West")!;
+    const east = rows.find((r) => r.sector === "East")!;
     expect(west.conflictsTotal).toBe(1);
     expect(west.conflictsResolved).toBe(1);
     expect(east.conflictsTotal).toBe(1);
     expect(east.conflictsResolved).toBe(0);
-    expect(east.conflictFlights).toContain("AIQ300");
+    expect(east.conflictFlights).toContain("MAI300");
   });
 
   it("buckets a conflict into the hour it starts in", () => {
@@ -214,18 +214,18 @@ describe("buildSectorHours", () => {
         aCallsign: "A",
         bCallsign: "B",
         startMs: Date.UTC(2026, 8, 7, 11, 30),
-        sector: "WEST",
+        sector: "West",
         resolved: false,
       },
     ];
     const rows = buildSectorHours(events, late);
     const h11 = rows.find(
-      (r) => r.sector === "WEST" && r.hourUtc === "2026-09-07T11:00Z",
+      (r) => r.sector === "West" && r.hourUtc === "2026-09-07T11:00Z",
     );
     expect(h11?.conflictsTotal).toBe(1);
     // …and does not pollute the 1000Z row.
     const h10 = rows.find(
-      (r) => r.sector === "WEST" && r.hourUtc === "2026-09-07T10:00Z",
+      (r) => r.sector === "West" && r.hourUtc === "2026-09-07T10:00Z",
     );
     expect(h10?.conflictsTotal).toBe(0);
   });
@@ -257,7 +257,7 @@ describe("buildSectorHours", () => {
  * workload figure, and of the band-boxing decision built on top of it.
  */
 describe("aircraft present, not just aircraft arriving", () => {
-  // Airborne 1045-1125Z: in WEST across the hour boundary, then EAST.
+  // Airborne 1045-1125Z: in West across the hour boundary, then East.
   const LATE = Date.UTC(2026, 8, 7, 10, 45, 0);
   const crossing = () => {
     const points = [];
@@ -276,27 +276,27 @@ describe("aircraft present, not just aircraft arriving", () => {
     rows.find((r) => r.sector === sector && r.hourUtc === hour);
 
   it("counts the aircraft in the hour it entered", () => {
-    expect(at("WEST", "2026-09-07T10:00Z")?.occupancy).toBe(1);
+    expect(at("West", "2026-09-07T10:00Z")?.occupancy).toBe(1);
   });
 
   it("still counts it in the NEXT hour, which it neither entered nor left", () => {
     // The bug this exists to prevent: a sector reading "0 traffic" at 1100
     // while an aircraft that arrived at 1050 is still inside it.
-    const next = at("WEST", "2026-09-07T11:00Z");
+    const next = at("West", "2026-09-07T11:00Z");
     expect(next?.entries).toBe(0);
     expect(next?.occupancy).toBe(1);
-    expect(next?.occupancyFlights).toEqual(["THA100"]);
+    expect(next?.occupancyFlights).toEqual(["UBA100"]);
   });
 
   it("does not count it in a sector it had already left", () => {
-    expect(at("EAST", "2026-09-07T10:00Z")).toBeUndefined();
-    expect(at("EAST", "2026-09-07T11:00Z")?.occupancy).toBe(1);
+    expect(at("East", "2026-09-07T10:00Z")).toBeUndefined();
+    expect(at("East", "2026-09-07T11:00Z")?.occupancy).toBe(1);
   });
 
   it("counts one aircraft once, however many samples it left inside", () => {
     const twice = buildSectorHours([...crossing(), ...crossing()]);
     const west = twice.find(
-      (r) => r.sector === "WEST" && r.hourUtc === "2026-09-07T10:00Z",
+      (r) => r.sector === "West" && r.hourUtc === "2026-09-07T10:00Z",
     );
     expect(west?.occupancy).toBe(1);
   });
@@ -319,16 +319,16 @@ describe("CSV output", () => {
 
   it("quotes a field containing a comma", () => {
     const withComma = buildFlightEvents(
-      flight({ callsign: "THA100, HEAVY" }),
+      flight({ callsign: "UBA100, HEAVY" }),
       index,
     );
-    expect(flightEventsCsv(withComma)).toContain('"THA100, HEAVY"');
+    expect(flightEventsCsv(withComma)).toContain('"UBA100, HEAVY"');
   });
 
   it("writes the sector-hour table with its counts", () => {
     const csv = sectorHoursCsv(buildSectorHours(rows));
     expect(csv).toContain("conflicts_resolved");
-    expect(csv).toContain("WEST");
+    expect(csv).toContain("West");
   });
 });
 
@@ -337,24 +337,24 @@ describe("every row says which flight and what it did", () => {
 
   it("names the flight and the sector on a crossing", () => {
     const entry = rows.find(
-      (r) => r.event === "SECTOR_ENTRY" && r.ident === "EAST",
+      (r) => r.event === "SECTOR_ENTRY" && r.ident === "East",
     )!;
-    expect(entry.description).toBe("THA100 entered EAST");
-    expect(entry.callsign).toBe("THA100");
-    expect(entry.ident).toBe("EAST");
+    expect(entry.description).toBe("UBA100 entered East");
+    expect(entry.callsign).toBe("UBA100");
+    expect(entry.ident).toBe("East");
   });
 
   it("names the flight and the fix on a waypoint", () => {
     const wp = rows.find((r) => r.event === "WAYPOINT")!;
-    expect(wp.description).toBe("THA100 passed ALPHA");
+    expect(wp.description).toBe("UBA100 passed ALPHA");
   });
 
   it("describes the departure, the profile points and the arrival", () => {
     const by = (e: string) => rows.find((r) => r.event === e)!.description;
-    expect(by("TAKEOFF")).toBe("THA100 departed VTBS");
+    expect(by("TAKEOFF")).toBe("UBA100 departed VYYY");
     expect(by("TOC")).toMatch(/reached top of climb at 33000 ft/);
     expect(by("TOD")).toMatch(/started descent from 33000 ft/);
-    expect(by("LANDING")).toBe("THA100 landed VTUD");
+    expect(by("LANDING")).toBe("UBA100 landed VYMD");
   });
 
   it("gives every row a non-empty description", () => {
@@ -364,7 +364,7 @@ describe("every row says which flight and what it did", () => {
   it("puts the description in the CSV", () => {
     const csv = flightEventsCsv(rows);
     expect(csv).toContain("description");
-    expect(csv).toContain("THA100 entered EAST");
+    expect(csv).toContain("UBA100 entered East");
   });
 });
 
@@ -389,21 +389,21 @@ describe("the one-hour export", () => {
     altFt,
   });
   const row: SectorHourRow = {
-    sector: "1N",
-    layer: "bacc",
+    sector: "MINGALADON TMA",
+    layer: "tma",
     hourUtc: "2025-12-23T00:00Z",
     entries: 3,
-    entryFlights: ["THA100", "BKP102", "NOK104"],
-    entryEvents: [entry("THA100", "00:05"), entry("BKP102", "00:06", 28000), entry("NOK104", "00:41")],
+    entryFlights: ["UBA100", "KBZ102", "MAI104"],
+    entryEvents: [entry("UBA100", "00:05"), entry("KBZ102", "00:06", 28000), entry("MAI104", "00:41")],
     occupancy: 3,
-    occupancyFlights: ["BKP102", "NOK104", "THA100"],
+    occupancyFlights: ["KBZ102", "MAI104", "UBA100"],
     occupancyPoints: [],
     conflictsTotal: 1,
     conflictsResolved: 0,
-    conflictFlights: ["BKP102", "NOK104"],
+    conflictFlights: ["KBZ102", "MAI104"],
     conflictsByFlight: {
-      BKP102: { total: 1, resolved: 0 },
-      NOK104: { total: 1, resolved: 0 },
+      KBZ102: { total: 1, resolved: 0 },
+      MAI104: { total: 1, resolved: 0 },
     },
   };
   const lines = (r: SectorHourRow) => sectorHourCsv(r).trim().split("\r\n");
@@ -420,7 +420,7 @@ describe("the one-hour export", () => {
         "hour_conflicts_total,hour_conflicts_resolved",
     );
     expect(first).toBe(
-      "1N,bacc,2025-12-23T00:00Z,THA100,A320,2025-12-23T00:05:00Z,00:05,32000,yes,no,0,0,1,0",
+      "MINGALADON TMA,tma,2025-12-23T00:00Z,UBA100,A320,2025-12-23T00:05:00Z,00:05,32000,yes,no,0,0,1,0",
     );
   });
 
@@ -433,10 +433,10 @@ describe("the one-hour export", () => {
     const byFlight = Object.fromEntries(
       lines(row).slice(1).map((l) => [l.split(",")[3], l.split(",")]),
     );
-    expect(byFlight.THA100[9]).toBe("no");
-    expect(byFlight.BKP102[9]).toBe("yes");
-    expect(byFlight.BKP102[10]).toBe("1");
-    expect(byFlight.BKP102[11]).toBe("0");
+    expect(byFlight.UBA100[9]).toBe("no");
+    expect(byFlight.KBZ102[9]).toBe("yes");
+    expect(byFlight.KBZ102[10]).toBe("1");
+    expect(byFlight.KBZ102[11]).toBe("0");
   });
 
   it("carries the selected hour and nothing else", () => {
@@ -458,11 +458,11 @@ describe("the one-hour export", () => {
     // It was already inside when the hour began: no crossing, still workload.
     const inside: SectorHourRow = {
       ...row,
-      conflictFlights: [...row.conflictFlights, "PGY108"],
-      conflictsByFlight: { ...row.conflictsByFlight, PGY108: { total: 1, resolved: 1 } },
+      conflictFlights: [...row.conflictFlights, "GMR108"],
+      conflictsByFlight: { ...row.conflictsByFlight, GMR108: { total: 1, resolved: 1 } },
     };
     const last = lines(inside).at(-1) as string;
-    expect(last).toBe("1N,bacc,2025-12-23T00:00Z,PGY108,,,,,no,yes,1,1,1,0");
+    expect(last).toBe("MINGALADON TMA,tma,2025-12-23T00:00Z,GMR108,,,,,no,yes,1,1,1,0");
   });
 
   it("repeats the hour totals so the file stands on its own", () => {
@@ -511,7 +511,7 @@ describe("the aircraft-per-hour series", () => {
   const rows = buildSectorHours(
     buildFlightEvents(flight({ points, toc: null, tod: null }), index),
   );
-  const series = sectorLoadSeries(rows, "bacc", "WEST");
+  const series = sectorLoadSeries(rows, "tma", "West");
 
   it("covers every hour the sector was used, in time order", () => {
     expect(series.map((p) => p.hourUtc)).toEqual([
@@ -528,7 +528,7 @@ describe("the aircraft-per-hour series", () => {
 
   it("carries the same numbers as the table it is drawn from", () => {
     for (const p of series) {
-      const r = rows.find((x) => x.sector === "WEST" && x.hourUtc === p.hourUtc);
+      const r = rows.find((x) => x.sector === "West" && x.hourUtc === p.hourUtc);
       expect(p.present).toBe(r?.occupancy);
       expect(p.entries).toBe(r?.entries);
       expect(p.conflicts).toBe(r?.conflictsTotal);
@@ -536,10 +536,10 @@ describe("the aircraft-per-hour series", () => {
   });
 
   it("returns nothing for a sector that was never flown", () => {
-    expect(sectorLoadSeries(rows, "bacc", "NOWHERE")).toEqual([]);
+    expect(sectorLoadSeries(rows, "tma", "NOWHERE")).toEqual([]);
   });
 
   it("keeps the layers apart", () => {
-    expect(sectorLoadSeries(rows, "tma", "WEST")).toEqual([]);
+    expect(sectorLoadSeries(rows, "ctr", "West")).toEqual([]);
   });
 });

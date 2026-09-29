@@ -5,9 +5,9 @@
  * controller reads an arrival ladder: first to land at the top, each row
  * showing the gap to the aircraft ahead against the gap it needs.
  *
- *   1  THA100  A320  M     ——
+ *   1  UBA100  A320  M     ——
  *   2  UAE102  B77W  H    4.0 / 5.0 NM  wake    ⚠ 1.0 NM short
- *   3  AIQ103  A320  M    6.6 / 5.0 NM  wake
+ *   3  KMV103  A320  M    6.6 / 5.0 NM  wake
  *
  * The number that matters is the SHORTFALL, and it is the stream's, not the
  * pair's: `arrivalPlan` re-times the whole order, so an aircraft can need a
@@ -42,9 +42,10 @@ interface Props {
   /** Highlight one aircraft (e.g. the map selection). */
   selectedId?: string | null;
   onSelect?: (id: string) => void;
-  /** The ATC clearance each arrival is flown under, by flight key. The VTBS
-   *  STAR charts forbid entering the approach without one, so showing it is
-   *  how a controller sees WHICH flow an aircraft is on. */
+  /** The ATC clearance each arrival is flown under, by flight key. An
+   *  open STAR ends in a vector leg and the approach may not be entered without
+   *  a clearance, so showing it is how a controller sees WHICH flow an aircraft
+   *  is on. */
   clearanceOf?: (id: string) => string | undefined;
   /** Issue the instruction on a row. Only called for kinds the app can fly;
    *  omit to render the panel read-only. */

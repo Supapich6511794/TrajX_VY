@@ -99,8 +99,9 @@ export interface DepartureConfig {
   /** Horizontal minimum two departures on the SAME track must end up with
    *  (NM). Doc 4444 §5.6 has no time minimum for that case — the aircraft are
    *  simply separated by distance instead (§8.7.3), so the interval is however
-   *  long it takes the follower to be this far in trail. 3 NM is the Bangkok
-   *  TMA radar minimum, which is where a departure is. */
+   *  long it takes the follower to be this far in trail. 3 NM is the Doc 4444
+   *  §5.4.1.2 terminal radar minimum, which is where a departure is — the
+   *  Myanmar terminal minimum must be confirmed from AIP Myanmar. */
   sameTrackSepNm: number;
   /** Category assumed for a type not in the wake table. */
   unknownTypeCategory: WakeCategory;

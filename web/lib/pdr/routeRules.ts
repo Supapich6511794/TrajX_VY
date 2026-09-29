@@ -2,13 +2,14 @@
  * The rules attached to a published route — availability, direction, and the
  * conditions the AIP prints beside it.
  *
- * AIP Thailand ENR 1.10 publishes a flight-planning route per city pair, split
- * by RNAV capability and DIRECTIONAL (VTBS->VTCC is not the same entry as
- * VTCC->VTBS). Some entries carry a condition, and in the 2608 data those come
- * in exactly four shapes:
+ * The AIP (ENR 1.10) may publish a flight-planning route per city pair, split
+ * by RNAV capability and DIRECTIONAL (VYYY->VYMD is not the same entry as
+ * VYMD->VYYY). No such table is shipped for Myanmar yet (`fetchAipRoutes`
+ * fails closed to an empty list), so everything here stays dormant until one
+ * is. Conditions on an entry are understood in four shapes:
  *
- *   "when VT D60 is not active"                       -> depends on a PDR
- *   "when VT D59 is active"                           -> the complement of one
+ *   "when VY D23A is not active"                      -> depends on a PDR
+ *   "when VY R13 is active"                           -> the complement of one
  *   "Excluding Public Holiday; MON-FRI 0100-0900 UTC" -> a time window
  *   "for jet aircraft" / "for propeller aircraft"     -> an aircraft class
  *
@@ -16,7 +17,7 @@
  * itself routes traffic around a danger area by publishing an alternative and
  * conditioning it on that area's activity. Once the PDR schedules are known
  * (./schedule), those conditions can actually be evaluated instead of shown as
- * prose, which is what lets the panel say "file this one instead, D59 is
+ * prose, which is what lets the panel say "file this one instead, R13 is
  * active until 1700Z".
  *
  * Anything that does not parse stays `unknown` and is quoted verbatim — never
@@ -30,8 +31,8 @@ import type { PdrArea, Timesheet } from "./types";
 
 // --- aircraft class --------------------------------------------------------
 
-/** Turboprops in the Thai APM performance dataset plus the common regional
- *  types the dummy-traffic generators emit. Everything else is treated as a
+/** Common turboprops (regional, utility and military transport types) plus
+ *  the ones the dummy-traffic generators emit. Everything else is treated as a
  *  jet; a type in neither group is reported `unknown` rather than guessed. */
 const PROPELLER_TYPES = new Set([
   "AT43", "AT45", "AT72", "AT75", "AT76",
@@ -66,7 +67,7 @@ export type ConditionState = "met" | "unmet" | "unknown";
 
 export type RouteCondition =
   /** Available only while the named PDR is NOT active (or IS, when `want` is
-   *  "active" — the AIP publishes both halves for VT D59). */
+   *  "active" — an AIP can publish both halves for one area). */
   | { kind: "area"; area: string; want: "active" | "inactive"; text: string }
   /** Available only inside a published window, optionally excluding holidays. */
   | { kind: "window"; sheet: Timesheet; excludesHolidays: boolean; text: string }
@@ -75,7 +76,16 @@ export type RouteCondition =
   /** Published, but not in a shape this app understands. */
   | { kind: "unparsed"; text: string };
 
-const AREA_RE = /when\s+(VT)\s*([PRD]\s*\d+[A-Z0-9]*)\s+is\s+(not\s+)?active/i;
+/** ICAO nationality prefix the AIP prints in front of an area designator in
+ *  a route condition ("when VY D23A is not active"). The PDR areas themselves
+ *  are keyed WITHOUT it (type + designator, "D23A"), matching the ident built
+ *  from `restricted_areas.geojson`. */
+export const AREA_ICAO_PREFIX = "VY";
+
+const AREA_RE = new RegExp(
+  "when\\s+" + AREA_ICAO_PREFIX + "\\s*([PRD])\\s*(\\d+[A-Z0-9]*)\\s+is\\s+(not\\s+)?active",
+  "i",
+);
 const WINDOW_RE =
   /(MON|TUE|WED|THU|FRI|SAT|SUN)\s*-\s*(MON|TUE|WED|THU|FRI|SAT|SUN)\s+(\d{4})\s*-\s*(\d{4})/i;
 
@@ -85,7 +95,8 @@ export function parseCondition(text: string): RouteCondition {
 
   const area = AREA_RE.exec(raw);
   if (area) {
-    // "VT D60" and "VTD60" are both printed; the areas are keyed "VTD60".
+    // "VY D23A", "VYD23A" and "VY D 23A" all name area "D23A" — the areas
+    // are keyed type + designator, without the ICAO prefix.
     const ident = (area[1] + area[2]).replace(/\s+/g, "").toUpperCase();
     return {
       kind: "area",

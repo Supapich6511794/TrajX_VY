@@ -127,12 +127,12 @@ describe("detectConflicts", () => {
   it("stable id regardless of input order", () => {
     const lat = 13;
     const b = 100 + 20 * degEastPerNm(lat);
-    const A = ac({ id: "THA1", lat, lon: 100, trackDeg: 90 });
-    const B = ac({ id: "AIQ2", lat, lon: b, trackDeg: 270 });
+    const A = ac({ id: "UBA1", lat, lon: 100, trackDeg: 90 });
+    const B = ac({ id: "KMV2", lat, lon: b, trackDeg: 270 });
     const c1 = detectConflicts([A, B], cfg)[0];
     const c2 = detectConflicts([B, A], cfg)[0];
     expect(c1.id).toBe(c2.id);
-    expect(c1.id).toBe("AIQ2|THA1"); // sorted
+    expect(c1.id).toBe("KMV2|UBA1"); // sorted
   });
 
   it("uses the REAL future path: head-on nose vectors that actually diverge are NOT flagged", () => {

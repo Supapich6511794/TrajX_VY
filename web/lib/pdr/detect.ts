@@ -24,8 +24,8 @@
  *
  * The suggestion pool is the published-route table itself, never a synthesised
  * routing. A route this tool proposes is one the AIP already prints for the
- * pair, so accepting it cannot invent an unpublished path through Thai
- * airspace; the worst case is that it proposes a route the controller rejects.
+ * pair, so accepting it cannot invent an unpublished path through the
+ * FIR; the worst case is that it proposes a route the controller rejects.
  */
 
 import type { Fix } from "@/lib/aip";
@@ -74,11 +74,11 @@ export interface PdrFinding {
   id: string;
   severity: PdrSeverity;
   category: PdrCategory;
-  /** One-line headline, e.g. "Route enters VTD43 while active". */
+  /** One-line headline, e.g. "Route enters R13 while active". */
   title: string;
   /** WHY — the published rule and how this plan breaches it. */
   reason: string;
-  /** The authority behind it, e.g. "AIP THAILAND ENR 5.1 / AIXM 2608". */
+  /** The authority behind it, e.g. "AIP MYANMAR ENR 5.1 / AIXM 2609". */
   source: string;
   /** Area ident when the finding is about one, so the UI can focus the map. */
   area?: string;
@@ -174,7 +174,7 @@ export interface PdrCheckInput {
   airways: Record<string, string[]>;
   /** Filed RNAV capability — picks which half of the published table applies. */
   rnav?: boolean;
-  /** Can the flight fly an RNAV route? Defaults to true: the Thai commercial
+  /** Can the flight fly an RNAV route? Defaults to true: the commercial
    *  fleet is RNAV-equipped, and assuming otherwise would hide the RNAV half of
    *  the published table. Set false for a conventional-only aircraft and the
    *  RNAV routes stop being offered. */
@@ -210,9 +210,9 @@ export interface PdrCheckInput {
   authorizedAreas?: string[];
 }
 
-const AIP_SOURCE = "AIP THAILAND ENR 5.1 / AIXM 2608";
-const ENR_SOURCE = "AIP THAILAND ENR 1.10";
-const ENR3_SOURCE = "AIP THAILAND ENR 3 / AIXM 2608 RouteSegment";
+const AIP_SOURCE = "AIP MYANMAR ENR 5.1 / AIXM 2609";
+const ENR_SOURCE = "AIP MYANMAR ENR 1.10";
+const ENR3_SOURCE = "AIP MYANMAR ENR 3 / AIXM 2609 RouteSegment";
 
 const SEVERITY_RANK: Record<PdrSeverity, number> = {
   violation: 0,
@@ -320,7 +320,7 @@ function incursionSeverity(
  * Whether moving the flight in time could clear this area, and what to say.
  *
  * Only offered when the published schedule actually HAS an inactive period.
- * An area published Daily 0000-2400 — VTR1 Bangkok City, say — is never
+ * An area published Daily 0000-2400 — a city prohibited area, say — is never
  * inactive, so "fly outside the active window" is not an option and suggesting
  * it sends the controller looking for a date that does not exist. An area whose
  * activation is by NOTAM is a third case: the check assumes it is cold, so
@@ -390,7 +390,7 @@ function incursionFinding(
   if (restriction && restriction !== "-") parts.push("Restriction: " + restriction + ".");
   if (hazard && hazard !== "-") parts.push("Hazard: " + hazard + ".");
   // For an R area the published remarks ARE the authorization condition
-  // ("Permission to entry : Only authorized aircraft by RTN"), so they are the
+  // ("Permission to entry : Only authorized aircraft"), so they are the
   // operative text, not a footnote.
   const remarks = a.activity?.remarks?.trim();
   if (a.kind === "R" && remarks && remarks !== "-") {
@@ -451,8 +451,8 @@ function incursionFinding(
     severity = "caution";
   }
   return {
-    // Several polygons share one ident (VTD21 is published as three lettered
-    // sub-areas), and a route can cross the same area twice, so the id carries
+    // Several polygons share one ident (R13 SHANTE is published as eight
+    // polygons), and a route can cross the same area twice, so the id carries
     // the AIXM designator and the position in the sorted list as well.
     id: "area:" + (a.activity?.designator ?? a.ident) + ":" + inc.entryMs + ":" + seq,
     severity,
@@ -514,7 +514,7 @@ function airwayFindings(issues: AirwayIssue[]): PdrFinding[] {
         title: issue.route + " does not join " + issue.fromFix + " and " + issue.toFix,
         reason:
           issue.detail +
-          " The span may rely on a segment outside the Thai AIRAC export, or the airway may be mis-typed.",
+          " The span may rely on a segment outside the Myanmar AIRAC export, or the airway may be mis-typed.",
         source: ENR3_SOURCE,
       };
     },
@@ -729,8 +729,8 @@ function buildSuggestions(
  * The level remedy carries a restriction that is easy to get wrong. Climbing
  * only helps when the aircraft is INSIDE the area at cruise. A crossing during
  * the climb-out or the descent is not fixed by raising the requested level: the
- * aircraft still passes through that altitude near the field, so VTR1 at 2600 ft
- * off VTBS is crossed whether the flight is planned at FL160 or FL350. Offering
+ * aircraft still passes through that altitude near the field, so a GND-3000 ft
+ * area off the departure runway is crossed whether the flight is planned at FL160 or FL350. Offering
  * "climb above it" there would be advice that cannot work.
  */
 function buildRemedies(

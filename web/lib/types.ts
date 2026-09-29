@@ -65,7 +65,7 @@ export type FirCollection = FeatureCollection<
 export interface ProcedureLineProperties {
   fid: number;
   area_code?: string;
-  /** Aerodrome ICAO the procedure serves, e.g. "VTBS". */
+  /** Aerodrome ICAO the procedure serves, e.g. "VYYY". */
   airport_identifier: string;
   /** Procedure name, e.g. "BIDA2A". */
   procedure_identifier: string;

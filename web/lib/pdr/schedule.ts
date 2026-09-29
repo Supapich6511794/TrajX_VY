@@ -3,8 +3,8 @@
  *
  * The AIP states an area's activity as a set of AIXM timesheets, and the whole
  * point of this module is that a route only conflicts with a P/D/R area if it
- * is inside the volume *while the area is active*. A flight crossing VTD43 at
- * 1200Z is fine; the same route at 0300Z is not.
+ * is inside the volume *while the area is active*. A flight crossing a MON-FRI
+ * 0100-0900 danger area at 1200Z is fine; the same route at 0300Z is not.
  *
  * Three details in the real data drive most of the code here, and getting any
  * of them wrong flips the answer for a whole class of areas:
@@ -16,9 +16,9 @@
  *  2. **Some windows are solar**, not clock — "sunset to sunrise" moves with
  *     the date and the area's position (see ./solar).
  *  3. **Some sheets subtract.** A sheet marked `excluded` carves time OUT of
- *     the others: VTD70 is MON-FRI 0130-0930 *except public holidays*. OR-ing
- *     every sheet together, the obvious implementation, gets that area exactly
- *     backwards on a holiday.
+ *     the others: "MON-FRI 0130-0930 *except public holidays*" is
+ *     two sheets, the second one excluded. OR-ing every sheet together, the
+ *     obvious implementation, gets that area exactly backwards on a holiday.
  *
  * Where the app genuinely cannot answer — a public holiday with no holiday
  * calendar in the dataset, or a polygon with no activity record at all — the
@@ -27,8 +27,8 @@
  *
  * The one deliberate assumption
  * ----------------------------
- * 21 areas publish no timesheet at all: their activity note reads "Notified by
- * NOTAM" and the AIP says nothing more. Those are reported INACTIVE here. It is
+ * An area may publish no timesheet at all, only the activity note "Notified by
+ * NOTAM". Those are reported INACTIVE here. It is
  * a modelling choice, not a reading of the data: a fast-time run has no NOTAM
  * feed, and calling them active for want of one shut whole routes for areas
  * that are cold on most days — the tool contradicting itself about airspace it
@@ -36,17 +36,21 @@
  * the reason travels with the answer, and the moment a NOTAM source is wired in
  * this branch is the only place that has to change.
  *
+ * The Myanmar AIRAC 2609 export publishes NEITHER for any P/R/D area — every
+ * record has an empty `sheets` list and an empty activity note — so today
+ * every VY area evaluates to `unknown` ("assume active"). That is the safe
+ * reading; the schedule logic stays in place for when timetables are ingested.
+ *
  * A note on what a day code means
  * ------------------------------
  * AIXM says a sheet's `day` is the day the period STARTS, read in its own
  * `timeReference` — UTC throughout this dataset — and that is what this file
- * implements. It matters for the wrapped windows: VTD60 is "MON-FRI 2300-1700
- * UTC", so this makes it active Mon 2300Z to Tue 1700Z and leaves Monday
- * daytime cold.
+ * implements. It matters for the wrapped windows: "MON-FRI 2300-1700 UTC" is
+ * active Mon 2300Z to Tue 1700Z and leaves Monday daytime cold.
  *
- * Read as LOCAL days (ICT = UTC+7) the same line would mean 0600-2400 local on
- * weekdays, which is the more natural shape for a military training area, and
- * would flag a different set of flights. The AIXM export states UTC, so UTC is
+ * Read as LOCAL days (Myanmar, MMT = UTC+6:30) the same line would mean
+ * 0530-2330 local on weekdays, which is the more natural shape for a military
+ * training area, and would flag a different set of flights. The AIXM export states UTC, so UTC is
  * what is honoured here; if the underlying AIP turns out to publish these in
  * local time, the fix belongs in the ingest (shifting the day codes with the
  * times), not in this evaluator.
@@ -210,8 +214,8 @@ function daysCovered(sheet: Timesheet): number {
  *
  * The distinction matters for the advice the check gives. An area published
  * MON-FRI 0100-0900 has inactive periods, so "fly outside the active window" is
- * a real option. VTR1 Bangkok City is published Daily 0000-2400: it is never
- * inactive, and telling a controller to change the date would waste their time.
+ * a real option. An area published Daily 0000-2400 (a city prohibited area,
+ * say) is never inactive, and telling a controller to change the date would waste their time.
  *
  * Conservative in both directions. A solar window ("sunset to sunrise") is not
  * treated as always-active because it genuinely has a gap; an area with no

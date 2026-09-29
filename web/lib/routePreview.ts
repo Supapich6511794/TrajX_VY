@@ -4,17 +4,18 @@
  * user types or picks waypoints (before they press Generate).
  *
  * Only EXACT ident matches contribute a point — partially-typed tokens
- * (e.g. "VANK" before "VANKO") are ignored so the preview appears the
+ * (e.g. "BOMA" before "BOMAS") are ignored so the preview appears the
  * moment a full waypoint name is recognised, not for every keystroke.
  *
- * If two consecutive matched fixes are both on the Y8 airway and the
- * route uses "Y8" between them, the intermediate Y8 fixes are filled in
- * so the preview matches what the generator would actually fly.
+ * If two consecutive matched fixes are both on the same airway and the
+ * route names that airway between them (e.g. "BGO W13 MIA"), the
+ * intermediate airway fixes are filled in so the preview matches what the
+ * generator would actually fly.
  *
  * The ADEP/ADES airports are deliberately NOT added as preview points —
- * the user composes the en-route portion (BKK Y8 PUT) and the airport
- * legs are implicit, so showing extra VTBS/VTSP dots next to BKK/PUT
- * would just clutter the same spot.
+ * the user composes the en-route portion (BGO W13 MIA) and the airport
+ * legs are implicit, so showing extra VYYY/VYMD dots next to the
+ * terminal navaids would just clutter the same spot.
  */
 import type { Fix } from "./aip";
 
@@ -28,7 +29,7 @@ export interface PreviewPoint {
   fromUser: boolean;
 }
 
-/** Airway-designator pattern: Y8, A1, M300, UL637 etc. Matched against
+/** Airway-designator pattern: W13, A1, M300, UL637 etc. Matched against
  *  the supplied airways map; anything not a known airway is treated as a
  *  plain connector. */
 const AIRWAY_RE = /^[A-Z]{1,2}\d+[A-Z]?$/;
@@ -152,22 +153,4 @@ export function resolvePreviewFromIdents(
 ): PreviewPoint[] {
   if (idents.length === 0) return [];
   return resolveRoutePreview(idents.join(" DCT "), fixes);
-}
-
-/** Convenience: full Y8 between its termini (for the legacy Airway-CSV
- *  route mode, VTBS↔VTSP only). ADEP decides which end to start from. */
-export function resolvePreviewFullY8(
-  fixes: Fix[],
-  airways: Record<string, string[]>,
-  adep: string,
-): PreviewPoint[] {
-  const y8 = airways.Y8 ?? [];
-  if (y8.length < 2) return [];
-  const A = adep.trim().toUpperCase();
-  const ordered = A === "VTSP" ? [...y8].reverse() : y8;
-  return resolveRoutePreview(
-    `${ordered[0]} Y8 ${ordered[ordered.length - 1]}`,
-    fixes,
-    airways,
-  );
 }

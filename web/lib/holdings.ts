@@ -1,11 +1,9 @@
 /**
  * Holding patterns for this deployment's FIR (VY/Myanmar). The AIP holding
- * table (published + enroute racetracks) only exists for VT — loaded from
- *   public/data/bangkok_fir_holdings_airac2607/bangkok_fir_holdings_airac2607.geojson
- * — and there's no VY equivalent to source it from yet, so `HOLDINGS_URL`
- * below points at a VY path that doesn't exist. The fetch fails closed (see
- * `fetchHoldings`/`fetchHoldingPatterns`), so those two categories simply
- * come back empty rather than showing Thai holds to a Myanmar client.
+ * table (published + enroute racetracks) is read from `HOLDINGS_URL` below.
+ * No VY holding table has been sourced yet, so that file is absent: the fetch
+ * fails closed (see `fetchHoldings`/`fetchHoldingPatterns`) and those two
+ * categories simply come back empty until the file is supplied.
  *
  * Missed-approach and HILPT holds (coded inside the approach procedures
  * themselves, not the AIP table) ARE available for VY — see `ILS_WP_URL` /
@@ -36,10 +34,10 @@ export interface Holding {
   maxAltFt: number | null;
 }
 
-// No VY AIP holding table has been published yet — this 404s and the
-// existing "offline / missing file" fallback below (and in
-// `fetchHoldingPatterns`) returns an empty map, so Published/Enroute holds
-// simply aren't offered rather than falling back to the Thai (VT) table.
+// No VY AIP holding table has been sourced yet — this 404s and the
+// "offline / missing file" fallback below (and in `fetchHoldingPatterns`)
+// returns an empty map, so Published/Enroute holds simply aren't offered.
+// Drop a GeoJSON with the properties read below at this path to enable them.
 const HOLDINGS_URL = "/data/aixm_vy/holdings_published.geojson";
 
 let _cache: Map<string, Holding> | null = null;
@@ -119,8 +117,8 @@ export function holdLoopSec(h: Holding, gsKt: number): number {
  * reaches the client as a flat ident list with nothing marking where the
  * en-route portion ends. Top of descent is the fallback for a flight with no
  * STAR (or an older payload that carries no entry fix), and it is a looser
- * gate: on a 55-minute VTCC-VTBS leg it falls ~8 minutes and several en-route
- * fixes before the STAR is actually joined. Phase is the last resort, for a
+ * gate: on a domestic leg (VYMD-VYYY, say) it can fall several minutes and
+ * several en-route fixes before the STAR is actually joined. Phase is the last resort, for a
  * trajectory with no vertical profile at all.
  */
 export function makeArrivalHoldGate(traj: {
@@ -172,15 +170,14 @@ export function holdLegSec(h: Holding, gsKt: number): number {
  *     INSIDE a procedure, identified by their ARINC 424 path terminator:
  *       HM = hold to manual termination  → the MISSED APPROACH hold
  *       HF = hold to fix, one circuit    → HILPT (hold in lieu of proc turn)
- *     (HA is treated as HILPT too; neither the Thai nor the VY dataset codes
- *     any.)
+ *     (HA is treated as HILPT too.)
  *
  * The same physical racetrack is often in BOTH sources — the missed-approach
  * hold is usually also a published hold at that fix. They're deduped on
  * (ident, turn, inbound course ±3°) so each pattern is drawn exactly once, with
  * the more specific procedure-derived category winning. The ±3° tolerance
- * absorbs the rounding between the two files (e.g. UNTAB 36° vs 35°, in the
- * Thai dataset — not verified against VY, which may round differently).
+ * absorbs the rounding between the two files (a course coded 36° in one and
+ * 35° in the other is the same hold).
  * ------------------------------------------------------------------------- */
 
 export type HoldingCategory = "published" | "missed" | "enroute" | "hilpt";
@@ -208,7 +205,8 @@ export interface HoldingPattern {
   /** Airport ICAO the hold is coded against, or "ENRT" for an enroute hold. */
   region: string;
   /** Inbound holding course — the track flown TO the fix. Both sources code it
-   *  magnetic; treated as true, since Bangkok FIR variation is under 1°. */
+   *  magnetic; treated as true, since variation in the FIR is about 1° (the VY
+   *  runway table gives VYYY RW03 as 34° magnetic / 33° true). */
   inboundCourseDeg: number;
   turn: "L" | "R";
   legTimeMin: number | null;

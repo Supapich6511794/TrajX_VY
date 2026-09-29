@@ -21,7 +21,7 @@
 
 import type { Position } from "geojson";
 
-import { parseAltFt, pointInMultiPolygon } from "@/lib/airspace";
+import { parseVyAltFt, pointInMultiPolygon } from "@/lib/airspace";
 import { horizontalMinimumNm, type CdrConfig, type ManeuverType } from "./config";
 import { respectsSemicircular } from "./advisory";
 import type { ManeuverResolution } from "./types";
@@ -68,12 +68,15 @@ export function restrictedAreasFrom(
     else continue;
     const p = (f.properties ?? {}) as Record<string, unknown>;
     const kindRaw = String(p.type ?? "R").toUpperCase()[0];
+    // aixm_vy/restricted_areas.geojson has no combined ident field — build
+    // one from type + designator (e.g. "R13"), same as the map's own label.
+    const identFromParts = `${p.type ?? ""}${p.designator ?? ""}`.trim();
     out.push({
-      ident: String(p.ident ?? p.name ?? "?"),
+      ident: identFromParts || String(p.ident ?? p.name ?? "?"),
       name: String(p.name ?? ""),
       kind: kindRaw === "P" || kindRaw === "D" ? kindRaw : "R",
-      lowerFt: safeAlt(p.lowerlimit, 0),
-      upperFt: safeAlt(p.upperlimit, Infinity),
+      lowerFt: safeAlt(p.lower ?? p.lowerlimit, 0),
+      upperFt: safeAlt(p.upper ?? p.upperlimit, Infinity),
       mp,
     });
   }
@@ -81,7 +84,7 @@ export function restrictedAreasFrom(
 }
 
 function safeAlt(v: unknown, fallback: number): number {
-  const n = parseAltFt(v, false);
+  const n = parseVyAltFt(v);
   return Number.isFinite(n) || n === Infinity ? n : fallback;
 }
 

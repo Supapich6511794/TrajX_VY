@@ -23,17 +23,17 @@ const pt = (i: number, lat: number, lon: number): TrajectoryPoint => ({
   phase: "cruise",
 });
 
-const route = (n: number, lat0 = 13): TrajectoryPoint[] =>
-  Array.from({ length: n }, (_, i) => pt(i, lat0 + i * 0.01, 100 + i * 0.01));
+const route = (n: number, lat0 = 17): TrajectoryPoint[] =>
+  Array.from({ length: n }, (_, i) => pt(i, lat0 + i * 0.01, 96 + i * 0.01));
 
 /** A one-polygon sector index covering the sample routes. */
 const index = buildAirspaceIndex({
-  bacc: {
+  cta: {
     type: "FeatureCollection",
     features: [
       {
         type: "Feature",
-        properties: { name: "TEST BACC", lower_limit: "SFC", upper_limit: "UNL" },
+        properties: { type: "CTA", name: "TEST CTA", lower: "GND SFC", upper: "UNL STD" },
         geometry: {
           type: "Polygon",
           coordinates: [
@@ -59,9 +59,9 @@ describe("toSamples", () => {
 
   it("derives a fresh table for a replaced flight's points", () => {
     const a = route(50);
-    const b = route(50, 14);
+    const b = route(50, 18);
     expect(toSamples(a)).not.toBe(toSamples(b));
-    expect(toSamples(b)[0].lat).toBeCloseTo(14, 6);
+    expect(toSamples(b)[0].lat).toBeCloseTo(18, 6);
   });
 
   it("still measures elapsed seconds from the first point", () => {
@@ -82,7 +82,7 @@ describe("buildAirspaceSegments", () => {
     const pts = route(20);
     const first = buildAirspaceSegments(index, pts);
     const rebuilt = buildAirspaceIndex({
-      bacc: { type: "FeatureCollection", features: [] },
+      cta: { type: "FeatureCollection", features: [] },
     } as never);
     // A different index means different volumes — the cached answer must not
     // be handed back for it.

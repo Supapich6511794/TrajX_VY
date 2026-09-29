@@ -49,21 +49,16 @@ import {
 import { parseFlightFile, type FlightRecord } from "@/lib/flightFile";
 import {
   resolvePreviewFromIdents,
-  resolvePreviewFullY8,
   resolveRoutePreview,
   splicePreviewProcedures,
   type PreviewPoint,
 } from "@/lib/routePreview";
 import {
-  estimateReferenceMin,
   estimateSimMin,
-  fetchCat62Reference,
   fetchFlightTimeCurve,
   isSupportedCurve,
-  lookupReferenceMin,
-  type Cat62Table,
   type FlightTimeCurveResult,
-} from "@/lib/cat62";
+} from "@/lib/flightTimeCurve";
 import type { RouteOption } from "@/lib/routeFinder";
 import {
   soleApproachFor,
@@ -102,8 +97,9 @@ import {
 import type { TrajectoryPoint, TrajectoryResult } from "@/lib/trajectory/types";
 import NavIcon from "@/components/nav/NavIcon";
 
-/** How the route portion is supplied (all three kept, none removed). */
-type RouteMode = "fpl" | "build" | "csv";
+/** How the route portion is supplied: a typed Item-15 string, or one built
+ *  fix by fix. */
+type RouteMode = "fpl" | "build";
 
 interface DownloadInfo {
   callsign: string;
@@ -337,11 +333,9 @@ function blankPlan(): PlanDraft {
 }
 
 /** The (route, sid, star) combos a draft will fly: the queued combos, else
- *  a single combo from the current editor route + sid/star, else none. CSV
- *  mode is one server-resolved route. */
+ *  a single combo from the current editor route + sid/star, else none. */
 function draftCombos(d: PlanDraft): RouteCombo[] {
   if (d.routes.length > 0) return d.routes;
-  if (d.routeMode === "csv") return [{ route: "", sid: d.sid, star: d.star }];
   const eff =
     d.routeMode === "build"
       ? d.builtWpts.length
@@ -538,7 +532,7 @@ function RwyDefaultHint({
   if (!def || !month) return null;
   // README's reporting filter: below 100 movements or a single year, the
   // percentage is arithmetic rather than evidence — say so rather than
-  // presenting it with the same confidence as VTBS's 17k movements.
+  // presenting it with the same confidence as a major hub's 17k movements.
   const thin = def.movements < 100 || def.nYears < 2;
   const stat = `${Math.round(def.pct)}% of ${def.movements.toLocaleString()} ${kind}`;
   const mon = MONTH_ABBR[month - 1];
@@ -594,9 +588,9 @@ function GeneratorPanel({
   const [entryFl, setEntryFl] = useState<number | undefined>(undefined);
 
   // Surveillance Profile — output sampling cadence (seconds) applied to the
-  // whole generation. 5 s = en-route radar (default), 4 s = CAT62 terminal,
-  // 1 s = high-rate, or a free "custom" value. Only changes export density;
-  // flight time / CAT62 validation are unaffected.
+  // whole generation. 5 s = en-route radar (default), 4 s = CAT062 terminal
+  // update rate, 1 s = high-rate, or a free "custom" value. Only changes
+  // export density; flight time is unaffected.
   const [survMode, setSurvMode] = useState<"5" | "4" | "1" | "custom">("5");
   const [survCustom, setSurvCustom] = useState(5);
   const outputEveryS = Math.max(
@@ -628,8 +622,8 @@ function GeneratorPanel({
   // option list is derived from the arrival runway below.
   const [approach, setApproach] = useState("");
   // Where to JOIN the approach when the route/STAR passes more than one of its
-  // IAF entry fixes (e.g. VTSP R27-Y reached via a STAR through both STONE and
-  // BARON). "" = auto (the engine scores it). `approachEntryMatches` is the
+  // IAF entry fixes (e.g. an RNP approach reached via a STAR through both of
+  // its IAFs). "" = auto (the engine scores it). `approachEntryMatches` is the
   // realtime list of on-route entry fixes; the join dropdown shows only when
   // it has more than one.
   const [approachTransition, setApproachTransition] = useState("");
@@ -641,7 +635,7 @@ function GeneratorPanel({
   // The active tab's values live in the scalar state above. `plans` holds a
   // snapshot per tab; switching tabs serialises the current scalar state
   // into the outgoing plan and restores the incoming one. This lets one
-  // run cover thousands of flights (2000+ Thai network) without rebuilding
+  // run cover thousands of flights (a whole-network traffic day) without rebuilding
   // the editor for each.
   const initialPlanId = useRef<string>(nextPlanId());
   const [plans, setPlans] = useState<PlanDraft[]>(() => [
@@ -897,12 +891,10 @@ function GeneratorPanel({
   const dep = adep.trim().toUpperCase();
   const des = ades.trim().toUpperCase();
   const pairReady = !!dep && !!des && dep !== des;
-  const isY8Corridor =
-    (dep === "VTBS" && des === "VTSP") || (dep === "VTSP" && des === "VTBS");
 
   // Predefined AIP flight-planning routes (ENR 4). When a city pair has a
   // published route it is used VERBATIM instead of the computed best-route
-  // (no BKK/CMA navaid endpoints). RNAV vs Non-RNAV picks which table.
+  // (no injected navaid endpoints). RNAV vs Non-RNAV picks which table.
   const [aipRoutes, setAipRoutes] = useState<AipRoute[]>([]);
   // Route source: "aip" = pick a published filed route (RNAV + Non-RNAV
   // listed together); "manual" = build it (Type / Pick) from this pair's
@@ -940,7 +932,7 @@ function GeneratorPanel({
 
   // ADES suggestions cascade from ADEP: when the departure aerodrome has
   // published AIP routes, the destination dropdown lists only those filed
-  // destinations (e.g. VTCC → VTBD, VTBS). When a SID is also chosen, narrow
+  // destinations (e.g. VYYY → VYMD, VYNT). When a SID is also chosen, narrow
   // further to destinations whose filed route leaves via that SID's exit fix
   // (the route's first fix matches the SID name, which is coded from that fix —
   // ALBO3C → ALBOS). Falls back to all aerodromes when the ADEP has no AIP
@@ -1479,7 +1471,7 @@ function GeneratorPanel({
   ]);
 
   // K best routes for ANY aerodrome pair — graph search (Yen's
-  // k-shortest) over the whole Thai airway network. Empty when either
+  // k-shortest) over the whole Myanmar airway network. Empty when either
   // airport's coordinates aren't in the AIP (e.g. a free-typed field).
   const bestRoutes = useMemo<(RouteOption & { caps?: boolean[] })[]>(() => {
     if (!pairReady) return [];
@@ -1488,7 +1480,7 @@ function GeneratorPanel({
     // Published AIP routes for BOTH capabilities (RNAV + Non-RNAV). When the
     // SAME route string is filed under both, merge it into ONE entry tagged
     // with both labels (no duplicate row). Used verbatim (no computed path,
-    // no injected BKK/CMA). Falls back to the graph search when the pair has
+    // no injected navaid endpoints). Falls back to the graph search when the pair has
     // no published route at all.
     const both = [
       ...aipRouteOptions(aipRoutes, dep, des, true, allFixes, airwaysMap, depLL, desLL).map(
@@ -1845,18 +1837,6 @@ function GeneratorPanel({
     [procPts, anchorPts],
   );
 
-  // CAT62 reference table (loaded once) for pre-screening candidate
-  // routes against the city-pair reference time.
-  const [cat62, setCat62] = useState<Cat62Table | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    fetchCat62Reference()
-      .then((t) => !cancelled && setCat62(t))
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // Flight-time curve for THIS airframe at THIS level. Refetched when
   // either changes; the server derives it from the type's own Thai APM
@@ -1881,49 +1861,19 @@ function GeneratorPanel({
     };
   }, [actype, rfl]);
 
-  // One target time for the whole pair: the real CAT62 reference if we
-  // have one, otherwise an estimate anchored on the shortest (recommended)
-  // route — so every pair with a usable airframe gets a PASS/FAIL, not
-  // just the few with table entries.
-  const threshold = cat62?.thresholdMin ?? 5;
-  const pairRefMin = useMemo(() => {
-    if (!cat62 || bestRoutes.length === 0) return null;
-    const real = lookupReferenceMin(cat62, dep, des);
-    if (real != null) return real;
-    if (!isSupportedCurve(timeCurve)) return null;
-    return estimateReferenceMin(timeCurve, bestRoutes[0].distanceNm);
-  }, [cat62, dep, des, bestRoutes, timeCurve]);
-
-  // Annotate each candidate route with its predicted flight time +
-  // PASS/FAIL against the pair target, then split passing / failing.
-  const rankedRoutes = useMemo(
+  // Annotate each candidate route with its predicted flight time (from the
+  // airframe's flight-time curve). Informational only — every candidate is
+  // listed; there is no reference-time grading.
+  const shownRoutes = useMemo(
     () =>
       bestRoutes.map((r) => {
         const simMin = isSupportedCurve(timeCurve)
           ? estimateSimMin(timeCurve, r.distanceNm)
           : null;
-        const passed =
-          simMin != null && pairRefMin != null
-            ? Math.abs(simMin - pairRefMin) < threshold
-            : null;
-        return { ...r, simMin, passed };
+        return { ...r, simMin };
       }),
-    [bestRoutes, pairRefMin, threshold, timeCurve],
+    [bestRoutes, timeCurve],
   );
-
-  const passingRoutes = rankedRoutes.filter((r) => r.passed === true);
-  const hasReference = pairRefMin != null;
-  // Published AIP routes are filed VERBATIM — every one is a legitimate
-  // alternative, so NEVER hide one for deviating from the reference time
-  // (e.g. a short direct entry like ALBOS R474 CMP W21 SURGU runs a few
-  // minutes under the longer airway route, but is still a valid filed route).
-  // The PASS/FAIL badge stays for information. The time filter only prunes
-  // the COMPUTED graph-search candidates: prefer passing routes, but if none
-  // pass show everything so the user can still pick + tune (never a dead end).
-  const shownRoutes =
-    !usingAip && hasReference && passingRoutes.length > 0
-      ? passingRoutes
-      : rankedRoutes;
 
   // The route the Item-15 box currently resolves to (typed or built).
   const effectiveRoute =
@@ -1962,7 +1912,8 @@ function GeneratorPanel({
   }, [approach, des, arrRwy, star, effectiveRoute]);
   // Can't queue more routes than there are distinct possible ones.
   // Per-route SID/STAR options: the procedures whose name connects to the
-  // route's first / last fix (Thai naming convention, e.g. OLVUK→OLVU*).
+  // route's first / last fix (ICAO naming convention: a procedure is named
+  // from its fix's first letters, e.g. BOMAS → BOMA*).
   const routeProcs = (routeText: string) => {
     const known = new Set(allFixes.map((f) => f.ident));
     const toks = routeText
@@ -1996,8 +1947,8 @@ function GeneratorPanel({
 
   // SID/STAR filtered to procedures that actually connect to the chosen
   // route's terminal fixes: a SID must reach the route's FIRST en-route fix,
-  // a STAR must start from its LAST. Thai procedure names are coded from that
-  // fix (OLVUK → OLVU1B/OLVU3A…, ENBAT → ENBA2A…), so we match on the
+  // a STAR must start from its LAST. Procedure names are coded from that
+  // fix (BOMAS → BOMA1A/BOMA2B…), so we match on the
   // alphabetic name prefix. Falls back to all options when nothing matches
   // (e.g. a computed route whose entry fix has no same-named SID), so the
   // picker is never an unintended dead-end.
@@ -2149,7 +2100,7 @@ function GeneratorPanel({
   // --- STAR -> runway -> approach, in that order ---------------------------
   // The three are one decision, not three independent pickers: a STAR is coded
   // to the runway it feeds, and a runway's approach is often the only one
-  // published for it (VTCC RW36 has exactly R36). Left unlinked, picking the
+  // published for it (a runway may have exactly one RNP). Left unlinked, picking the
   // STAR still left the approach on "None", and the arrival was generated
   // without the procedure that belongs to it.
 
@@ -2301,12 +2252,7 @@ function GeneratorPanel({
   };
 
   // What the FPL route portion resolves to (for the live preview).
-  const previewRoute =
-    routeMode === "csv"
-      ? `(airway CSV · ${adep || "?"}→${ades || "?"})`
-      : routeMode === "build"
-        ? builtRoute
-        : routeStr.trim();
+  const previewRoute = routeMode === "build" ? builtRoute : routeStr.trim();
 
   /**
    * The whole plan, not just the route portion.
@@ -2356,11 +2302,6 @@ function GeneratorPanel({
         ? withProc(resolvePreviewFromIdents(builtWpts, allFixes))
         : [];
     }
-    if (routeMode === "csv") {
-      return isY8Corridor
-        ? resolvePreviewFullY8(allFixes, airwaysMap, dep)
-        : [];
-    }
     const trimmed = routeStr.trim();
     return trimmed && !routes.some((c) => c.route === trimmed)
       ? withProc(resolveRoutePreview(trimmed, allFixes, airwaysMap))
@@ -2379,7 +2320,6 @@ function GeneratorPanel({
     star,
     sidEnd,
     starEnd,
-    isY8Corridor,
   ]);
 
   // "Current" preview scope — the active tab's flight only: its queued
@@ -2509,7 +2449,7 @@ function GeneratorPanel({
       setDepFixChoiceFor(null);
 
       // Bulk import: one tab per row, ready for "Generate all" (the
-      // 2000-flight Thai network case). Replaces the current plan set.
+      // whole-network traffic-day case). Replaces the current plan set.
       const drafts = all.map(recordToPlan);
       setPlans(drafts);
       loadDraft(drafts[0]);
@@ -2664,16 +2604,14 @@ function GeneratorPanel({
           skipped.push(`${planLabel(d, drafts.indexOf(d))}: no route`);
           continue;
         }
-        const isCsv = d.routeMode === "csv";
         for (const c of list) {
           built.push({
             input: {
-              source: isCsv ? "csv" : "fpl",
-              vtsp_to_vtbs: dp === "VTSP",
+              source: "fpl",
               adep: dp,
               ades: ds,
               actype: d.actype,
-              route: isCsv ? "" : c.route,
+              route: c.route,
               callsign: d.callsign || "FLT",
               eobt: d.eobt,
               gs_kt: d.gsKt,
@@ -2690,7 +2628,7 @@ function GeneratorPanel({
                 ? { approach_transition: d.approachTransition }
                 : {}),
             },
-            label: isCsv ? `Airway CSV · ${dp}→${ds}` : c.route || "(route)",
+            label: c.route || "(route)",
           });
         }
       }
@@ -2794,17 +2732,9 @@ function GeneratorPanel({
         throw new Error(`ADEP and ADES must differ (both ${dep}).`);
       }
 
-      // Direction is implied by the departure aerodrome (used by CSV/Y8
-      // mode only; FPL mode flies the route exactly as typed).
-      const vtspToVtbs = dep === "VTSP";
-      // "build" piggybacks the FPL pipeline with the composed string.
-      const apiSource = routeMode === "csv" ? "csv" : "fpl";
-      const apiRoute =
-        routeMode === "build"
-          ? builtRoute
-          : routeMode === "csv"
-            ? ""
-            : routeStr;
+      // "build" piggybacks the FPL pipeline with the composed string; the
+      // route is flown exactly as typed/built.
+      const apiRoute = routeMode === "build" ? builtRoute : routeStr;
 
       if (
         routeMode === "build" &&
@@ -2817,22 +2747,17 @@ function GeneratorPanel({
         throw new Error("Enter an Item-15 route string.");
       }
 
-      // One trajectory per (route, SID, STAR) combo. CSV mode is a single
-      // route; otherwise fly the queued combos, or the single box if none
-      // queued (carrying the editor's current SID/STAR).
+      // One trajectory per (route, SID, STAR) combo: fly the queued combos,
+      // or the single box if none queued (carrying the editor's current
+      // SID/STAR).
       const comboList: RouteCombo[] =
-        apiSource === "csv"
-          ? [{ route: "", sid, star }]
-          : routes.length > 0
-            ? routes
-            : [{ route: apiRoute, sid, star }];
+        routes.length > 0 ? routes : [{ route: apiRoute, sid, star }];
       const multi = comboList.length > 1;
 
       const settled = await Promise.all(
         comboList.map((c, i) =>
           generateTrajectory({
-            source: apiSource,
-            vtsp_to_vtbs: vtspToVtbs,
+            source: "fpl",
             adep: dep,
             ades: des,
             actype,
@@ -2864,12 +2789,9 @@ function GeneratorPanel({
       const newDownloads: DownloadInfo[] = settled.map((s, i) => ({
         callsign: s.result.meta.callsign,
         flightKey: s.result.meta.flightKey,
-        route:
-          apiSource === "csv"
-            ? `Airway CSV · ${dep}→${des}`
-            : [comboList[i].sid, comboList[i].route || "(route)", comboList[i].star]
-                .filter(Boolean)
-                .join(" · "),
+        route: [comboList[i].sid, comboList[i].route || "(route)", comboList[i].star]
+          .filter(Boolean)
+          .join(" · "),
         gpkg: s.downloads.gpkg,
         csv: s.downloads.csv,
         geojson: s.downloads.geojson,
@@ -3235,8 +3157,8 @@ function GeneratorPanel({
 
           {/* Surveillance Profile — output sampling cadence for the exported
               track (and the UTC timestamps in the files). Applies to every
-              plan in this generation; output density only, so the CAT62
-              flight-time check is unaffected. */}
+              plan in this generation; output density only, so the flight
+              time is unaffected. */}
           <div className="field surv">
             <span>Surveillance Profile</span>
             <div
@@ -3292,7 +3214,7 @@ function GeneratorPanel({
 
           {/* Advanced: speed-schedule tuning. Collapsed by default; the
               fields override the airframe BADA defaults so the user can
-              tune total flight time toward the CAT62 reference.
+              tune total flight time.
               --- DISABLED: speed schedule (advanced) — kept for future use.
               Re-enable by uncommenting this block AND the related state,
               buildSpeedOverrides(), and the ...overrides / ...speedOverrides
@@ -3313,8 +3235,7 @@ function GeneratorPanel({
             {tuneOpen && (
               <div className="tune-body">
                 <p className="tune-hint">
-                  Leave blank to use the B738 defaults. Tune these to match
-                  the CAT62 reference time (shown on each result).
+                  Leave blank to use the B738 defaults.
                 </p>
                 <div className="field-row">
                   <label className="field">
@@ -3433,31 +3354,13 @@ function GeneratorPanel({
                   <span>
                     {usingAip ? "AIP filed routes" : "Best routes"} ({dep} →{" "}
                     {des})
-                    {usingAip
-                      ? " — RNAV"
-                      : hasReference
-                        ? passingRoutes.length > 0
-                          ? " — within 5 min of reference"
-                          : " — none within 5 min; showing all"
-                        : " — ranked shortest first"}
+                    {usingAip ? " — RNAV" : " — ranked shortest first"}
                   </span>
                   {(showAllRoutes ? shownRoutes : shownRoutes.slice(0, 4)).map(
                     (r) => {
-                      const passTag =
-                        r.passed === true
-                          ? " · PASS"
-                          : r.passed === false
-                            ? " · FAIL"
-                            : "";
                       const queued = routes.some((c) => c.route === r.text);
                       const selected = routeStr === r.text;
-                      const cls = [
-                        selected ? "rt-best" : "",
-                        r.passed === true ? "rt-pass" : "",
-                        r.passed === false ? "rt-fail" : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" ");
+                      const cls = selected ? "rt-best" : "";
                       return (
                         <button
                           key={r.text}
@@ -3479,7 +3382,6 @@ function GeneratorPanel({
                           {queued && <span className="rt-cap added">✓ queued</span>}
                           {r.text} · {r.distanceNm} NM
                           {r.simMin != null && <> · ~{Math.round(r.simMin)} min</>}
-                          {passTag}
                         </button>
                       );
                     },
@@ -3535,7 +3437,7 @@ function GeneratorPanel({
                       value={routeStr}
                       list="manual-fixes"
                       onChange={(e) => setRouteStr(e.target.value)}
-                      placeholder="e.g. SABIS Y8 SAVSA"
+                      placeholder="e.g. BGO W13 MIA"
                     />
                     <datalist id="manual-fixes">
                       {manualFixes.map((f) => (
@@ -3561,16 +3463,6 @@ function GeneratorPanel({
               </>
             )}
 
-            {routeMode === "csv" && (
-              <p className="rt-csv-note">
-                Uses the pre-resolved route from{" "}
-                <code>csv Y8 </code> in the direction{" "}
-                <strong>
-                  {adep || "?"} → {ades || "?"}
-                </strong>{" "}
-                 .
-              </p>
-            )}
 
           </div>
 
@@ -3719,7 +3611,7 @@ function GeneratorPanel({
 
           {/* Join-point picker — appears only when the route/STAR passes more
               than one of the approach's IAF entry fixes, so the pilot chooses
-              where to enter (e.g. VTSP R27-Y at STONE vs BARON). One match or
+              where to enter (e.g. an RNP approach with two IAFs). One match or
               none → the engine auto-scores it and this stays hidden. */}
           {approach && approachEntryMatches.length > 1 && (
             <div className="field-row">
@@ -3945,7 +3837,7 @@ function GeneratorPanel({
                 value={flightQuery}
                 onChange={setFlightQuery}
                 suggestions={flightSugg}
-                placeholder="VTBS VTSP · THA201 — empty = all flights"
+                placeholder="VYYY VYMD · UBA201 — empty = all flights"
               />
             </label>
             <label className="field">
@@ -3954,7 +3846,7 @@ function GeneratorPanel({
                 value={routeQuery}
                 onChange={setRouteQuery}
                 suggestions={routeSugg}
-                placeholder="BKK Y8 PUT · R2 — empty = all routes"
+                placeholder="BGO W13 MIA · R2 — empty = all routes"
               />
             </label>
           </div>

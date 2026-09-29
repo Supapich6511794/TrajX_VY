@@ -89,8 +89,8 @@ export interface VerticalProfileMeta {
   constraints?: CrossingConstraint[];
 }
 
-/** CAT62 flight-time validation result, null when the city pair has no
- *  reference entry in cat62_reference.json. */
+/** Server-side flight-time validation result (graded by the engine), null
+ *  when the engine produced none. Not displayed in the UI. */
 export interface FlightTimeValidation {
   route: string;
   cat62Min: number;
@@ -147,10 +147,10 @@ export interface TrajectoryResult {
     vectorHeadingMagDeg?: number;
     /** Was this trajectory generated ON vectors rather than the procedure? */
     vectored?: boolean;
-    /** The ATC clearance the arrival was flown under. The VTBS STAR charts
-     *  forbid entering the approach without one, so BOTH flows carry it —
-     *  "DIRECT LETMA, CLEARED R19 APPROACH" or "AFTER ATKIN MAINTAIN HEADING
-     *  015, VECTORS R19". */
+    /** The ATC clearance the arrival was flown under. An approach is never
+     *  entered without one, so BOTH flows carry it — e.g. "DIRECT <IAF>,
+     *  CLEARED R21 APPROACH" or "AFTER <fix> MAINTAIN HEADING 015, VECTORS
+     *  R21". */
     clearance?: string;
   };
 }

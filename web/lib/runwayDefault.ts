@@ -1,22 +1,28 @@
 /**
  * Default runway in use, by aerodrome and month of year.
  *
- * Reads the measured climatology in `public/data/airports/runway_default.csv`
- * (Cat Analytics' `flight_data.runway_default` — see
- * `Data/Runway/runway_default_README.md` for how it was built). Each row is
- * one airport × month-of-year × direction × runway, with `is_default = t`
- * marking that group's most-used runway (rnk 1).
+ * Reads a measured runway-usage climatology from
+ * `public/data/airports/runway_default.csv`. Each row is one airport ×
+ * month-of-year × direction × runway, with `is_default = t` marking that
+ * group's most-used runway (rnk 1). Columns read: airport, month_of_year,
+ * direction (DEP / ARR / ALL), runway, pct, movements, n_years, is_default.
+ *
+ * OPTIONAL DATA: no such table has been built for the Yangon FIR yet, so the
+ * file is normally absent. The loader fails closed — a missing or unreadable
+ * file yields an empty table, every lookup returns null, and the runway
+ * pickers are simply not pre-filled (the engine's own "Auto" choice stands).
  *
  * This is MEASURED usage, not the AIP's preferential-runway system: it says
  * what traffic actually did in that month across all pooled years, which is
  * why it is only ever used to PRE-FILL the runway pickers — the user can
  * always override it.
  *
- * Two rules from the README are enforced here:
+ * Two rules are enforced here:
  *   - Departures read the DEP rows and arrivals the ARR rows. The combined
- *     ALL bucket averages two segregated operations at the parallel-runway
- *     fields (VTBS/VTBD) and describes neither, so it is only a fallback for
- *     the small aerodromes that have no rows at all for one direction.
+ *     ALL bucket averages two operations that a multi-runway aerodrome may
+ *     segregate onto different runways, and then describes neither, so it is
+ *     only a fallback for aerodromes that have no rows at all for one
+ *     direction.
  *   - `movements` / `n_years` travel with the answer, so a default resting on
  *     a handful of movements can be shown as the thin evidence it is.
  */
@@ -32,7 +38,7 @@ export interface RunwayDefault {
   /** Share of that airport/month/direction's movements (0–100). */
   pct: number;
   /** Movements behind the figure, and how many years they came from — read
-   *  these before trusting `pct` (README: <100 movements is arithmetic, not
+   *  these before trusting `pct` (under ~100 movements is arithmetic, not
    *  evidence). */
   movements: number;
   nYears: number;
@@ -79,11 +85,15 @@ function parse(text: string): DefaultIndex {
   return out;
 }
 
-/** Load + memoise the whole table (~170 kB, fetched once per session). */
+/** Load + memoise the whole table (fetched once per session; empty when the
+ *  file is absent, which is the normal state for this deployment). */
 function loadIndex(): Promise<DefaultIndex> {
   if (!_index) {
     _index = fetch("/data/airports/runway_default.csv")
       .then((r) => {
+        // 404 is this file's normal state: parse("") is an empty table, and
+        // memoising it keeps every lookup a quiet null, not a fetch per call.
+        if (r.status === 404) return "";
         if (!r.ok) throw new Error(`runway_default.csv: HTTP ${r.status}`);
         return r.text();
       })

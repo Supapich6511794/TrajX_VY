@@ -18,14 +18,14 @@
  *     aircraft. This is who can actually transmit the instruction. When the two
  *     differ, the fix crosses a boundary and has to be coordinated.
  *
- * The airspace hierarchy itself (PDR > CTR > TMA > sector > subsector) is
+ * The airspace hierarchy itself (PDR > CTR > TMA > CTA > FIR) is
  * `lib/airspace.ts`; this module only asks it the right questions — with one
  * deliberate difference. That hierarchy puts a Prohibited/Danger/Restricted
- * area on top, because for a MAP LABEL "you are inside VTD58" is the fact that
+ * area on top, because for a MAP LABEL "you are inside R13" is the fact that
  * matters. A PDR is not an ATS unit, though: nobody works it and nobody can be
  * asked to resolve a conflict in it. So the unit is resolved with the PDR layer
  * removed, and the areas are reported separately — the conflict still belongs
- * to whatever CTR/TMA/sector contains it.
+ * to whatever CTR/TMA/CTA/FIR contains it.
  *
  * Pure — the resolver is injected, so nothing here loads or knows about GeoJSON.
  */
@@ -58,9 +58,9 @@ export type AirspaceResolver = (
 /** The ATS unit picture for one conflict. */
 export interface ConflictSector {
   /** The unit that owns the conflict — where the CPA falls. "" when it is
-   *  outside every known volume (the data covers the Bangkok FIR only). */
+   *  outside every known volume (the data covers the Yangon FIR only). */
   label: string;
-  /** Which layer of the hierarchy that is, so the UI can say "sector" vs
+  /** Which layer of the hierarchy that is, so the UI can say "CTA" vs
    *  "TMA" vs "CTR" rather than guessing from the string. */
   layer: SectorKey | null;
   /** Who is working each aircraft right now, by flight id. Empty string for an
@@ -74,17 +74,12 @@ export interface ConflictSector {
   restricted: string[];
 }
 
-/** What a unit is called in a sentence — "Sector 3S", "Bangkok TMA". */
+/** What a unit is called in a sentence — "Mingaladon TMA", "Yangon FIR".
+ *  Every VY layer's label already carries the volume's own name. */
 export function unitName(label: string, layer: SectorKey | null): string {
   if (!label) return "outside known airspace";
-  switch (layer) {
-    case "bacc":
-    case "subsector":
-      return `Sector ${label}`;
-    // CTR/TMA/PDR labels already carry the volume's own name.
-    default:
-      return label;
-  }
+  void layer;
+  return label;
 }
 
 /**
@@ -145,7 +140,7 @@ export function conflictSector(
   // Only a real disagreement counts. Two aircraft neither of which is inside a
   // known volume are not "in different sectors" — they are both off the map,
   // and calling that a coordination problem would cry wolf on every pair that
-  // strays outside the Bangkok data.
+  // strays outside the Yangon FIR data.
   const ua = byFlight[ids.a];
   const ub = byFlight[ids.b];
   const coordination = !!ua && !!ub && ua !== ub;

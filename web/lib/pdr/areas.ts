@@ -4,34 +4,35 @@
  * The two halves of a PDR live in different files and neither is complete on
  * its own:
  *
- *   * `/data/sectors_corrected/pdr.geojson` — the geometry and the vertical
- *     band (AIP ENR 5.1), which is what the map already draws and what
- *     `lib/cdr/constraints` already tests routes against. It carries NO time
- *     of activity at all, which is why the existing constraint engine treats
- *     every area as permanently hot. VT-only — no VY equivalent exists (no
- *     published internal sector-style PDR geometry for Myanmar), so this half
- *     is empty for this deployment until that data shows up.
- *   * `/data/aixm_vy/pdr_activity.json` — the timetables. No geometry, and
- *     its designators are bare numbers ("31", "33"...) rather than VT's
- *     `<ident>A<areacode>` lettered-sub-area scheme below, so the join logic
- *     here is VT-specific and simply has nothing to join against for VY.
+ *   * `/data/aixm_vy/restricted_areas.geojson` (via `fetchSector("pdr")`) —
+ *     the geometry and the vertical band (AIP ENR 5.1), which is what the map
+ *     draws and what `lib/cdr/constraints` tests routes against. Each feature
+ *     carries `type` ("P"/"R"/"D"), `designator` ("13", "19A"), `name` and
+ *     AIP-style `lower`/`upper` strings ("GND SFC", "240 STD", "8000 MSL").
+ *     It carries NO time of activity.
+ *   * `/data/VY_AIP/pdr_activity.json` — the timetables (AIP Myanmar ENR 5.1, built by `scripts/build_vy_aip.py`). No geometry; each
+ *     record has the same `type` + `designator` pair.
  *
- * The join key needs one wrinkle, on the VT side. The AIXM export splits six
- * areas into lettered sub-areas that the GeoJSON keeps as one ident plus an
- * `areacode`: VTD21 areacode 1/2/3 is VTD21A1/A2/A3 in AIXM, and likewise for
- * VTD30, 33, 34, 59 and 60. Those are matched on `<ident>A<areacode>` first,
- * then on the bare ident. An area that still finds no match keeps
- * `activity: null` and is treated as permanently active downstream — the
- * safe reading, and the one the app had before this module existed.
+ * The join key is type + designator ("R13", "D23A"), the same ident
+ * `restrictedAreasFrom` and the map label build. Designators are not unique
+ * without the type in general, and lettered sub-areas ("R19A".."R19D") are
+ * already separate designators on BOTH sides, so no sub-area rewriting is
+ * needed. Several polygons can share one ident (R13 SHANTE is eight); each
+ * joins to the same record. An area that finds no match keeps
+ * `activity: null` and is treated as permanently active downstream — the safe
+ * reading. A missing activity file therefore fails closed, too.
+ *
+ * Features without `designator` (older overlay shapes with a combined `ident`)
+ * fall back to `ident`, then `name`, and to `lowerlimit`/`upperlimit`.
  */
 
 import type { Position } from "geojson";
 
-import { parseAltFt } from "@/lib/airspace";
+import { parseVyAltFt } from "@/lib/airspace";
 
 import type { PdrActivity, PdrActivityFile, PdrArea } from "./types";
 
-const ACTIVITY_URL = "/data/aixm_vy/pdr_activity.json";
+const ACTIVITY_URL = "/data/VY_AIP/pdr_activity.json";
 
 let _cache: Promise<PdrActivityFile> | null = null;
 
@@ -81,13 +82,24 @@ function bboxCentre(bbox: [number, number, number, number]): {
 /** Index the activity table by designator for the two-step join. */
 function activityIndex(file: PdrActivityFile | null): Map<string, PdrActivity> {
   const m = new Map<string, PdrActivity>();
-  for (const a of file?.areas ?? []) m.set(a.designator.toUpperCase(), a);
+  for (const a of file?.areas ?? []) {
+    const key = areaKey(a.type, a.designator);
+    if (key && !m.has(key)) m.set(key, a);
+  }
   return m;
+}
+
+/** The join key: area class + designator, upper-cased, no spaces ("R13"). */
+export function areaKey(type: unknown, designator: unknown): string {
+  const d = String(designator ?? "").replace(/\s+/g, "").toUpperCase();
+  if (!d) return "";
+  const t = String(type ?? "").trim().toUpperCase();
+  return t + d;
 }
 
 /** An altitude limit that survives a missing/garbled value. */
 function safeAlt(v: unknown, fallback: number): number {
-  const n = parseAltFt(v, false);
+  const n = parseVyAltFt(v);
   return Number.isFinite(n) || n === Infinity ? n : fallback;
 }
 
@@ -100,9 +112,9 @@ function safeAlt(v: unknown, fallback: number): number {
  *
  * This walks the features itself rather than post-processing
  * `restrictedAreasFrom`: that helper drops features with no polygon geometry,
- * so its output cannot be zipped back against `coll.features` by index to
- * recover each area's `areacode`. The result is still a `RestrictedArea`, so it
- * stays usable everywhere the CD&R constraint engine expects one.
+ * so its output cannot be zipped back against `coll.features` by index. The
+ * result is still a `RestrictedArea` with the same ident, so it stays usable
+ * everywhere the CD&R constraint engine expects one.
  */
 export function buildPdrAreas(
   coll: { features: GeoJSON.Feature[] } | null | undefined,
@@ -120,13 +132,10 @@ export function buildPdrAreas(
     else continue;
 
     const props = (f.properties ?? {}) as Record<string, unknown>;
-    const ident = String(props.ident ?? props.name ?? "?").trim().toUpperCase();
-    const areacode = String(props.areacode ?? "").trim();
-    // Sub-area first (VTD21 + "1" -> VTD21A1), then the bare ident.
-    const match =
-      (areacode ? index.get(ident + "A" + areacode) : undefined) ??
-      index.get(ident) ??
-      null;
+    const ident =
+      areaKey(props.type, props.designator) ||
+      String(props.ident ?? props.name ?? "?").trim().toUpperCase();
+    const match = index.get(ident) ?? null;
 
     const kindRaw = String(props.type ?? "R").toUpperCase()[0];
     const bbox = bboxOf(mp);
@@ -134,8 +143,8 @@ export function buildPdrAreas(
       ident,
       name: String(props.name ?? ""),
       kind: kindRaw === "P" || kindRaw === "D" ? kindRaw : "R",
-      lowerFt: safeAlt(props.lowerlimit, 0),
-      upperFt: safeAlt(props.upperlimit, Infinity),
+      lowerFt: safeAlt(props.lower ?? props.lowerlimit, 0),
+      upperFt: safeAlt(props.upper ?? props.upperlimit, Infinity),
       mp,
       activity: match,
       centroid: bboxCentre(bbox),

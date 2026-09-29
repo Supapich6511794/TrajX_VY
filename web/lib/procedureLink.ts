@@ -3,7 +3,7 @@
  *
  * The three pickers look independent, but the data is not. A STAR is coded to
  * the runway(s) it feeds, and a runway's instrument approach is frequently the
- * only one published for it — VTCC RW36 has exactly R36. Treated as three
+ * only one published for it — a runway often has exactly one RNP. Treated as three
  * separate choices, picking the STAR left the approach on "None" and the
  * arrival was generated without the procedure that belongs to it.
  *

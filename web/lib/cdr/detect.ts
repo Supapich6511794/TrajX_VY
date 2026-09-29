@@ -172,7 +172,7 @@ function scanPair(
 /** Classify one candidate pair from its scan, or null if it isn't a conflict. */
 function classifyPair(A: ProjTrack, B: ProjTrack, cfg: CdrConfig): Conflict | null {
   // Position-dependent horizontal minimum: 3 NM if EITHER aircraft is in the
-  // tighter-minimum airspace (Bangkok TMA), else 5 NM — taken at the current
+  // tighter-minimum airspace (a TMA in REDUCED_TERMINAL_SEP_TMAS), else 5 NM — taken at the current
   // positions (the pair is within the short realtime look-ahead of the CPA).
   const sh = sepMinNmForPair(
     cfg,

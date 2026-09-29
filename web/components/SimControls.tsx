@@ -12,6 +12,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { TrajectoryResult } from "@/lib/trajectory/types";
 import {
+  fetchTransitionTable,
+  flightLevelThresholdFt,
+  type TransitionTable,
+} from "@/lib/transitionAltitude";
+import {
   SIM_SPEEDS,
   type SimPlayback,
   type SimSpeed,
@@ -118,17 +123,27 @@ function PhaseChip({ phase }: { phase: "climb" | "cruise" | "descent" }) {
   return <span className={`sim-phase ph-${phase}`}>{label}</span>;
 }
 
-/** Live altitude readout (formatted as FL above the transition altitude). */
-function AltReadout({ ft }: { ft: number | null | undefined }) {
+/** Live altitude readout: a flight level at or above `flThresholdFt` (the
+ *  departure TA while climbing, the destination TL while descending — see
+ *  `flightLevelThresholdFt`), feet below it. */
+function AltReadout({
+  ft,
+  flThresholdFt,
+}: {
+  ft: number | null | undefined;
+  flThresholdFt: number;
+}) {
   if (ft == null) {
     return <span className="sim-alt">—</span>;
   }
   const ftInt = Math.round(ft);
-  // Show FLxxx above 10,000 ft (typical ATC transition); altitude in ft below.
   const display =
-    ftInt >= 10000 ? `FL${Math.round(ftInt / 100)}` : `${ftInt.toLocaleString()} ft`;
+    ftInt >= flThresholdFt ? `FL${Math.round(ftInt / 100)}` : `${ftInt.toLocaleString()} ft`;
   return (
-    <span className="sim-alt" title={`${ftInt.toLocaleString()} ft AMSL`}>
+    <span
+      className="sim-alt"
+      title={`${ftInt.toLocaleString()} ft AMSL · FL above ${flThresholdFt.toLocaleString()} ft`}
+    >
       {display}
     </span>
   );
@@ -197,7 +212,7 @@ function RouteSourcePicker({
   }, [open]);
 
   // Search over the flight identity (callsign / ADEP / ADES / type) AND the
-  // route number, so "THA" , "VTBS VTSP" and "R57" all find their row — with a
+  // route number, so "UBA" , "VYYY VYMD" and "R57" all find their row — with a
   // whole traffic day loaded this list is hundreds of entries long.
   const rows = useMemo(
     () =>
@@ -249,7 +264,7 @@ function RouteSourcePicker({
             <input
               type="search"
               value={query}
-              placeholder="Search callsign, VTBS VTSP, R57…"
+              placeholder="Search callsign, VYYY VYMD, R57…"
               onChange={(e) => setQuery(e.target.value)}
               // The menu closes on outside mousedown; keep clicks in the box
               // (and Escape) from bubbling out to the listbox handlers.
@@ -357,6 +372,14 @@ export default function SimControls({
   allRoutesHidden = false,
   onToggleAllRoutes,
 }: SimControlsProps) {
+  const [transitions, setTransitions] = useState<TransitionTable>(() => new Map());
+  useEffect(() => {
+    let live = true;
+    fetchTransitionTable().then((t) => live && setTransitions(t));
+    return () => {
+      live = false;
+    };
+  }, []);
   if (!sim.ready) return null;
   // In "all routes" mode the playback clock runs on a synthetic two-point
   // span (just first/last epoch across every route), so its interpolated
@@ -365,6 +388,8 @@ export default function SimControls({
   // first-point value (the "always 6,000 ft" bug).
   const isAllRoutes = playbackIdx === "all";
   const ac = isAllRoutes ? null : sim.aircraft;
+  const meta = isAllRoutes ? null : trajectories[playbackIdx]?.meta;
+  const flThresholdFt = flightLevelThresholdFt(transitions, ac?.phase, meta?.adep, meta?.ades);
   // UTC of the clock's t=0. In "all" mode that's the earliest departure across
   // the set, otherwise the picked route's own first sample — either way it is
   // whatever `useSimPlayback` was handed, so the readout matches the map.
@@ -411,7 +436,7 @@ export default function SimControls({
       )}
 
       <div className="sim-live" aria-live="polite" title={activeLabel ?? undefined}>
-        <AltReadout ft={ac?.altitudeFt ?? null} />
+        <AltReadout ft={ac?.altitudeFt ?? null} flThresholdFt={flThresholdFt} />
         <SpeedReadout gsKt={ac?.gsKt ?? null} tasKt={ac?.tasKt ?? null} />
         {ac && <PhaseChip phase={ac.phase} />}
       </div>

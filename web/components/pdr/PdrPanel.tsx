@@ -326,7 +326,7 @@ export default function PdrPanel({
 
   // Search: finds one flight among thousands, inside whichever tab is open. It
   // sits BEFORE the tab split, so the tab counts are counts of the matches —
-  // search "THA" and Clear / Check / Rejected say how many THA flights are in
+  // search "UBA" and Clear / Check / Rejected say how many UBA flights are in
   // each, which is how you learn which tab a flight is on without opening all
   // three. The query survives a tab change, for the same reason.
   const [query, setQuery] = useState("");

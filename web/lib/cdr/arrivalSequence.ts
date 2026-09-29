@@ -22,7 +22,8 @@
  * The required spacing is the largest of:
  *   · the radar minimum — 2.5 NM once both are established on the same final
  *     approach track within 10 NM of the threshold (§8.7.3.2 b), otherwise the
- *     ordinary position-dependent minimum (3 NM in the Bangkok TMA);
+ *     ordinary position-dependent minimum (3 NM in a reduced-minimum TMA —
+ *     see `REDUCED_TERMINAL_SEP_TMAS` — else 5 NM);
  *   · the wake turbulence minimum for the leader/follower category pair
  *     (§8.7.3.4, e.g. 5 NM for a MEDIUM behind a HEAVY);
  *   · runway occupancy, converted to distance at the follower's final speed.
@@ -469,7 +470,7 @@ function measurePair(
     !estimated &&
     leader.establishedAtLanding &&
     isEstablished(cfg, atLanding, follower.threshold);
-  // The minimum is position-dependent (3 NM inside the Bangkok TMA, 5 NM
+  // The minimum is position-dependent (3 NM inside a reduced-minimum TMA, 5 NM
   // en-route), so it must be resolved WHERE THE PAIR IS when the spacing is
   // measured — the follower's position at the leader's touchdown, which is in
   // the terminal area. Reading it at the follower's CURRENT position would

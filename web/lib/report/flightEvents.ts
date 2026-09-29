@@ -72,9 +72,9 @@ export interface FlightEventRow {
   event: FlightEventKind;
   /** Waypoint ident, or the sector/unit name for the sector events. */
   ident: string;
-  /** Which airspace layer the sector events refer to (bacc / ctr / tma / …). */
+  /** Which airspace layer the sector events refer to (ctr / tma / cta / …). */
   layer: string;
-  /** The row in words — "THA100 entered sector 4S". The coded columns are for
+  /** The row in words — "UBA100 entered Mingaladon TMA". The coded columns are for
    *  filtering and pivoting; this is so a reader can see what happened without
    *  decoding `event` + `ident` in their head. */
   description: string;

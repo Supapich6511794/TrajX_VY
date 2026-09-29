@@ -13,18 +13,17 @@
  *
  * Adjacency here means *the boundaries meet*, tested in two passes:
  *
- *   1. **Shared vertices.** The Thai sector polygons are cut from a common
- *      boundary set, so neighbours share coordinates exactly — all 27 adjacent
- *      pairs among the 12 BACC sectors match on this alone. A quantised vertex
- *      set makes it O(n+m).
+ *   1. **Shared vertices.** Sector polygons cut from a common boundary set share
+ *      coordinates exactly along the line they have in common, so most
+ *      neighbours match on this alone. A quantised vertex set makes it O(n+m).
  *   2. **Vertex on an edge.** Where one polygon carries a vertex that the other
  *      does not, the point still lies ON its neighbour's boundary. Only run
  *      when pass 1 finds nothing and the bounding boxes overlap.
  *
  * Both are boundary tests, not overlap tests: a sector sitting *inside* another
- * (a subsector inside its sector) is a containment relationship, and merging
+ * (a CTR inside the TMA above it, say) is a containment relationship, and merging
  * across it would double-count the traffic. Layers are kept apart for the same
- * reason — a TMA and an en-route sector are different jobs, not two halves of
+ * reason — a TMA and the CTA above it are different jobs, not two halves of
  * one.
  */
 
@@ -47,8 +46,8 @@ const EDGE_EPS_DEG = 5e-4;
 type Ring = ReadonlyArray<readonly number[]>;
 
 /** Every ring of every polygon of every feature under one display name. A
- *  sector modelled as two altitude slabs (3S_lower / 3S_upper) is ONE sector
- *  and contributes both. */
+ *  sector published as several features (altitude slabs, or separate lateral
+ *  pieces under one name) is ONE sector and contributes them all. */
 function ringsOf(entries: IndexEntry[]): Ring[] {
   const rings: Ring[] = [];
   for (const e of entries) for (const poly of e.mp) for (const ring of poly) rings.push(ring);
@@ -149,10 +148,10 @@ function segmentGrid(rings: Ring[]): Map<string, number[][]> {
  * approximation: a segment within EDGE_EPS of the vertex has a padded extent
  * that covers the vertex, so it was filed in that cell when the grid was built.
  *
- * The naive form — every vertex against every segment — cost 1.4 s for the 12
- * BACC sectors, on the main thread, while the panel waited. The sectors are
- * large polygons with heavily overlapping bounding boxes, so the pre-reject
- * that was supposed to keep this rare rejected almost nothing.
+ * The naive form — every vertex against every segment — is quadratic in the
+ * vertex count and ran on the main thread while the panel waited; for large
+ * sector polygons with heavily overlapping bounding boxes the bbox pre-reject
+ * that was supposed to keep it rare rejects almost nothing.
  */
 function vertexOnEdge(rings: Ring[], grid: Map<string, number[][]>): boolean {
   const eps2 = EDGE_EPS_DEG * EDGE_EPS_DEG;
@@ -191,7 +190,7 @@ export function buildSectorAdjacency(
   if (cached) return cached;
 
   const entries = index[layer] ?? [];
-  // Collapse the features down to sectors: two altitude slabs of 3S are one.
+  // Collapse the features down to sectors: features sharing a name are one.
   const byName = new Map<string, IndexEntry[]>();
   for (const e of entries) {
     const name = sectorDisplayName(layer, e.label);

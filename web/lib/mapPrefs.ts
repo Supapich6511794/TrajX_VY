@@ -19,15 +19,15 @@ export interface TileSource {
   className?: string;
   labelClassName?: string;
   /** Deepest zoom this source actually has tiles for. Esri's Gray Canvas
-   *  services top out at 16 everywhere (verified over both Bangkok and
-   *  Yangon: 16 draws real streets, 17 returns the SAME placeholder tile —
-   *  "Map data not yet available" — for both), unlike World_Imagery
+   *  services top out at 16 everywhere (verified over Yangon and a second
+   *  regional capital: 16 draws real streets, 17 returns the SAME placeholder
+   *  tile — "Map data not yet available" — for both), unlike World_Imagery
    *  satellite, which has real detail well past 16. Left unset it defaults
    *  to Leaflet's normal 18, so zooming in past a canvas source's real
    *  coverage silently swaps in that placeholder graphic instead of the
    *  street-name/PDR context the map needs at close range — worse for
    *  Myanmar's smaller aerodromes, which need a tighter zoom to read than a
-   *  big Bangkok view does. Setting this makes Leaflet stop fetching past
+   *  big-city view does. Setting this makes Leaflet stop fetching past
    *  that level and upscale the last real tile instead. */
   maxNativeZoom?: number;
 }
@@ -39,7 +39,7 @@ export interface TileSource {
  * generalised vector coastline does not, which is why this is a tile and not a
  * polygon set.
  *
- * The BASE alone, never the matching reference layer. Measured over Thailand at
+ * The BASE alone, never the matching reference layer. Measured over mainland Southeast Asia at
  * z7: 13.6% of this tile's pixels differ from the land/water fill and every one
  * is within +/-2 grey of it, i.e. anti-aliasing rather than features. CARTO's
  * `dark_nolabels` came to 21.5% at distinctly separate greys — its road,

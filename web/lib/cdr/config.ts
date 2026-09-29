@@ -30,7 +30,7 @@ import { wakeCategoryOf, type WakeCategory } from "./wake";
 export const RVSM_TOP_FT = 41000; // FL410
 
 /** Horizontal separation minima (NM), selectable per operating environment
- *  (Doc 4444 §5.4.1.2). "enroute" is the default for this Thai-FIR tool. */
+ *  (Doc 4444 §5.4.1.2). "enroute" is the default for this Yangon FIR tool. */
 export interface HorizontalMinima {
   enrouteNm: number;
   terminalNm: number;
@@ -169,8 +169,9 @@ export interface CdrConfig {
    *  (e.g. inside a TMA) but defaults to en-route for this FIR-scale tool. */
   environment: "enroute" | "terminal";
   /** OPTIONAL position-dependent horizontal minimum (NM) — supplied at runtime
-   *  so the minimum can vary with airspace (e.g. 3 NM inside the Bangkok TMA,
-   *  5 NM elsewhere). When set it overrides the flat `environment` minimum.
+   *  so the minimum can vary with airspace (e.g. 3 NM inside a TMA listed in
+   *  `REDUCED_TERMINAL_SEP_TMAS`, 5 NM elsewhere). When set it overrides the
+   *  flat `environment` minimum.
    *  Not serialisable; injected via `configOverrides` from the map layer. */
   sepMinNmAt?: (lat: number, lon: number, altFt: number | null) => number;
   /** Consecutive clear ticks required before a conflict is declared RESOLVED —
@@ -193,7 +194,20 @@ export interface CdrConfig {
   turnSafetyBufferSec: number;
 }
 
-/** The default ICAO Doc 4444 profile for the Bangkok FIR fast-time tool. Every
+/**
+ * TMAs inside which the reduced TERMINAL horizontal minimum
+ * (`horizontal.terminalNm`, Doc 4444 §5.4.1.2) applies instead of the en-route
+ * one. Names are the upper-case `name` of the TMA feature in
+ * `aixm_vy/airspace_boundaries.geojson` (e.g. "MINGALADON TMA").
+ *
+ * EMPTY by default, so 5 NM applies everywhere. Myanmar's terminal radar
+ * separation minima must be confirmed from AIP Myanmar (ENR 1.6 / AD 2) before
+ * any TMA is listed here — Doc 4444 only PERMITS 3 NM where the surveillance
+ * coverage supports it; it does not apply it by default.
+ */
+export const REDUCED_TERMINAL_SEP_TMAS: ReadonlySet<string> = new Set<string>([]);
+
+/** The default ICAO Doc 4444 profile for the Yangon FIR fast-time tool. Every
  *  value is overridable — pass a partial to `resolveConfig` to retune. */
 export const DEFAULT_CDR_CONFIG: CdrConfig = {
   horizontal: { enrouteNm: 5, terminalNm: 3 }, // Doc 4444 §5.4.1.2
@@ -205,7 +219,7 @@ export const DEFAULT_CDR_CONFIG: CdrConfig = {
     establishedToleranceDeg: 10,
     minApproachGsKt: 160,
     maxSpeedReductionKt: 40,
-    speedControlRangeNm: 40, // roughly the Bangkok TMA
+    speedControlRangeNm: 40, // roughly a TMA's radius
     maxDownwindExtensionNm: 80, // 40 NM of downwind, at the 2:1 rate
     maxHoldLoops: 6, // ~24 min at a 4-minute published pattern
   },
@@ -291,7 +305,8 @@ export function horizontalMinimumNm(cfg: CdrConfig): number {
 }
 
 /** Horizontal minimum (NM) at a position — the runtime `sepMinNmAt` resolver
- *  when present (e.g. 3 NM in the Bangkok TMA), else the flat environment one. */
+ *  when present (e.g. 3 NM in a reduced-minimum TMA), else the flat
+ *  environment one. */
 export function sepMinNmAtPos(
   cfg: CdrConfig,
   lat: number,
@@ -305,7 +320,7 @@ export function sepMinNmAtPos(
 
 /** Horizontal minimum (NM) for a PAIR at their two positions — the smaller of
  *  the two applies (if EITHER aircraft is in the tighter-minimum airspace, e.g.
- *  the Bangkok TMA, the 3 NM standard governs the encounter). */
+ *  a reduced-minimum TMA, the 3 NM standard governs the encounter). */
 export function sepMinNmForPair(
   cfg: CdrConfig,
   aLat: number,

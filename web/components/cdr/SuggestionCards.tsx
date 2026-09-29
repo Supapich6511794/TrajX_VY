@@ -149,8 +149,8 @@ export default function SuggestionCards({
     // the maneuver separates the pair fine, then clips someone else and gets
     // dropped. Name that aircraft — resolving IT usually unblocks this pair.
     const worst = blockers?.[0];
-    // …and let the controller GO there. "Resolve THA574 first" with no way to
-    // reach THA574 is a dead end: its own conflict is somewhere down a stack of
+    // …and let the controller GO there. "Resolve UBA574 first" with no way to
+    // reach UBA574 is a dead end: its own conflict is somewhere down a stack of
     // dozens, and an aircraft that is merely in the way has no row at all.
     const blockerConflict = worst ? blockerConflictOf?.(worst) ?? null : null;
     return (

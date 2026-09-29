@@ -256,7 +256,7 @@ export default function RouteResultTabs({
     </div>
   );
 
-  /** Trajectory-summary section — hero stats, CAT62, metadata, waypoints. */
+  /** Trajectory-summary section — hero stats, metadata, waypoints. */
   const renderSummary = (withTitle: boolean) => (
     <div className="rt-summary">
       {withTitle && <h4 className="rt-section-title">Trajectory summary</h4>}
@@ -282,53 +282,6 @@ export default function RouteResultTabs({
           </dd>
         </div>
       </dl>
-
-      {/* CAT62 flight-time validation — green PASS / red FAIL with delta. */}
-      {trajectory.validation && (
-        <div
-          className={`rt-cat62 ${
-            trajectory.validation.passed ? "pass" : "fail"
-          }`}
-        >
-          <div className="rt-cat62-head">
-            <span className="rt-cat62-title">
-              {trajectory.validation.source === "estimate"
-                ? "Flight-time check"
-                : "CAT62 check"}
-              {trajectory.validation.source === "estimate" && (
-                <span
-                  className="rt-cat62-est"
-                  title="No CAT62 sample for this city pair — reference is a distance-based estimate. Replace with a real CAT062 figure for an authoritative check."
-                >
-                  est
-                </span>
-              )}
-            </span>
-            <span className="rt-cat62-status">
-              {trajectory.validation.status}
-            </span>
-          </div>
-          <div className="rt-cat62-row">
-            <span>
-              {trajectory.validation.source === "estimate" ? "Est" : "Ref"}{" "}
-              <strong>{Math.round(trajectory.validation.cat62Min)} min</strong>
-            </span>
-            <span>
-              Sim{" "}
-              <strong>
-                {Math.round(trajectory.validation.simulatedMin)} min
-              </strong>
-            </span>
-            <span>
-              Δ{" "}
-              <strong>
-                {trajectory.validation.deltaMin >= 0 ? "+" : "-"}
-                {Math.abs(Math.round(trajectory.validation.deltaMin))} min
-              </strong>
-            </span>
-          </div>
-        </div>
-      )}
 
       {/* Secondary metadata strip. */}
       <dl className="rt-summary-meta">

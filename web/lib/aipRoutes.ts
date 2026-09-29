@@ -1,38 +1,38 @@
 /**
  * aipRoutes — client loader + lookup for the predefined AIP flight-planning
- * routes (`/data/aip_routes_VT.json`, Thai eAIP ENR 4).
+ * routes (`/data/aip_routes_VY.json`: published city-pair routes, AIP ENR).
  *
  * The Generator uses these published routes VERBATIM in place of the
  * computed best-route, so a city pair flies its real filed route — no
- * graph-search shortest path, and no injected terminal navaid (BKK / CMA /
- * MUBUS): the route string holds only published fixes/airways, and the
- * ADEP/ADES are anchored by their own coordinates downstream.
+ * graph-search shortest path, and no injected terminal navaid: the route
+ * string holds only published fixes/airways, and the ADEP/ADES are anchored
+ * by their own coordinates downstream.
  *
  * Routes are DIRECTIONAL (adep→ades ≠ ades→adep) and split by RNAV vs
  * Non-RNAV capability.
  *
- * This is a Thai eAIP scrape with no VY equivalent; the file has been
- * removed with the rest of the Thailand data. `fetchAipRoutes()` fails
- * closed (empty list) rather than throwing, so the Generator just falls
- * back to its computed best-route for every pair until a real VY published-
- * route table exists at this same path/shape.
+ * DORMANT: no Myanmar published-route table has been extracted yet, so the
+ * file does not exist. `fetchAipRoutes()` fails closed — an empty list, never
+ * a throw — so the Generator falls back to its computed best-route for every
+ * pair and the PDR check reports "no published route" for every pair. Drop a
+ * `{ airac, routes: AipRoute[] }` file at this path and both pick it up.
  */
 
 import type { Fix } from "./aip";
 import type { RouteOption } from "./routeFinder";
 import { resolveRoutePreview } from "./routePreview";
 
-const AIP_ROUTES_URL = "/data/aip_routes_VT.json";
+const AIP_ROUTES_URL = "/data/aip_routes_VY.json";
 
 export interface AipRoute {
   adep: string;
   ades: string;
   rnav: boolean;
   route: string;
-  /** Optional note for conditional routes (e.g. "when VT D60 is not active"). */
+  /** Optional note for conditional routes (e.g. "when VY D23A is not active"). */
   condition?: string;
   /** Set on an overfly-mix route synthesized for a pair with no direct filed
-   *  route, naming the hub fix its two halves were joined at (e.g. "BKK"). */
+   *  route, naming the hub fix its two halves were joined at (e.g. "BGO"). */
   via?: string;
 }
 
@@ -44,7 +44,8 @@ interface AipRoutesFile {
 let _cache: Promise<AipRoute[]> | null = null;
 
 /** Fetch + memoise the predefined-route table for the page's lifetime. Fails
- *  closed (empty list) rather than throwing — there is no VY table yet. */
+ *  closed (empty list) rather than throwing — on a missing file (the VY
+ *  default today), a non-JSON body, or a file without a `routes` array. */
 export function fetchAipRoutes(): Promise<AipRoute[]> {
   if (!_cache) {
     _cache = fetch(AIP_ROUTES_URL, { cache: "no-store" })
@@ -54,7 +55,7 @@ export function fetchAipRoutes(): Promise<AipRoute[]> {
         }
         return res.json() as Promise<AipRoutesFile>;
       })
-      .then((j) => j.routes ?? [])
+      .then((j) => (Array.isArray(j?.routes) ? j.routes : []))
       .catch(() => []);
   }
   return _cache;

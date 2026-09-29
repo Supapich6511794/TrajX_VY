@@ -1,9 +1,8 @@
 /**
  * Sunrise / sunset, for the areas whose published activity is solar.
  *
- * Three prohibited areas and three restricted ones (VTP36/37/38, VTR51/52/62)
- * are active "sunset to sunrise" — AIXM states that as `startEvent`/`endEvent`
- * = SS/SR rather than a clock time, because the answer moves with the date and
+ * An area can be published active "sunset to sunrise" — AIXM states that as
+ * `startEvent`/`endEvent` = SS/SR rather than a clock time, because the answer moves with the date and
  * with where the area is. To decide whether a flight crosses one of them while
  * it is hot, those events have to become real UTC instants.
  *
@@ -59,7 +58,7 @@ function sunPosition(jc: number): { declDeg: number; eqTimeMin: number } {
 
 /** Sunrise and sunset (UTC epoch ms) on the UTC day containing `when`, at
  *  (lat, lon). Null when the sun neither rises nor sets that day — impossible
- *  in the Thai FIR, but the polar case is handled rather than returning NaN. */
+ *  in the Yangon FIR, but the polar case is handled rather than returning NaN. */
 export function sunTimes(
   when: Date,
   lat: number,

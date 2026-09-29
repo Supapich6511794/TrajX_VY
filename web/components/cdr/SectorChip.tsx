@@ -23,8 +23,8 @@ export default function SectorChip({
   ids?: { a: string; b: string };
   nameOf?: (id: string) => string;
 }) {
-  // Nothing known (polygons still loading, or the pair is outside the Bangkok
-  // data) — say nothing rather than showing an empty chip that reads as "no
+  // Nothing known (polygons still loading, or the pair is outside the FIR's
+  // airspace data) — say nothing rather than showing an empty chip that reads as "no
   // sector" when the truth is "not known".
   if (!sector || (!sector.label && !sector.restricted.length)) return null;
 
