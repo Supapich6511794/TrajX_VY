@@ -264,7 +264,7 @@ def build_flight_timeline(
     total_distance_nm = sum(leg_distances)
 
     # Start the climb at the departure runway threshold and end the descent
-    # at the arrival runway threshold (Thai AIP AD 2 elevations) when a
+    # at the arrival runway threshold (AIP AD 2 elevations) when a
     # runway is known; otherwise fall back to the aerodrome field elevation.
     dep_elev = (
         dep_elev_ft

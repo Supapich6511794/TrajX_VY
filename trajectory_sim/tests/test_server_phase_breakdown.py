@@ -27,20 +27,22 @@ from trajectory_sim.performance import time_to_climb_s  # noqa: E402
 
 _PHASES = ("climb", "cruise", "descent")
 
-#: The reported flight: BKP211, an ATR 72-600 off VTBS to VTPO, filed FL250
-#: (above the type's FL180 reachable ceiling) on a SID with altitude
-#: constraints -- which is what makes the phase labels non-contiguous.
-_BKP211 = {
+#: The reported flight shape: an ATR 72-600 (AT76) off VYYY to VYMD, filed
+#: FL250 (above the type's FL180 reachable ceiling) on a SID with altitude
+#: constraints (PARL1A: at or above 13000 at GONAS, 16000 at YY911) -- the kind
+#: of profile whose constraint level-offs can make the phase labels
+#: non-contiguous. The partition must hold either way.
+_AT76_LEG = {
     "source": "fpl",
-    "callsign": "BKP211",
+    "callsign": "UBA211",
     "actype": "AT76",
-    "adep": "VTBS",
-    "ades": "VTPO",
-    "route": "OLVUK Y26 ELDAL Y32 KIMET",
+    "adep": "VYYY",
+    "ades": "VYMD",
+    "route": "PARLA DCT NPT W13 MIA",
     "eobt": "2026-07-08T23:00",
     "rfl": 250,
-    "sid": "OLVU1G",
-    "sid_runway": "RW20L",
+    "sid": "PARL1A",
+    "sid_runway": "RW21",
 }
 
 
@@ -50,7 +52,7 @@ def client() -> TestClient:
 
 
 def _generate(client: TestClient, **overrides: object) -> dict:
-    resp = client.post("/api/generate", json={**_BKP211, **overrides})
+    resp = client.post("/api/generate", json={**_AT76_LEG, **overrides})
     assert resp.status_code == 200, resp.text
     return resp.json()
 

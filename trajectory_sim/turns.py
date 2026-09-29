@@ -3,7 +3,7 @@
 A route is a list of fixes, and joining them with straight lines makes every
 course change an instantaneous corner — the aircraft pivots on the spot. Real
 aircraft roll into a banked turn and fly an arc, which is what the AIP charts
-draw (e.g. VTBD's departure curving off the runway track onto the first fix).
+draw (e.g. a departure curving off the runway track onto the first fix).
 
 ARINC 424 says how each of them is flown, and there are two kinds:
 
@@ -16,7 +16,7 @@ ARINC 424 says how each of them is flown, and there are two kinds:
   ``DE21L`` is coded ``EY`` — you cannot cut the corner off the runway); the leg
   TERMINATES ON AN ALTITUDE (``CA``/``VA``/``FA``), which ends exactly where the
   altitude is made, so a turn started before it would be a turn started below
-  the altitude the procedure requires (VTBS OLVU1K's "climb on 015° to 700 ft"
+  the altitude the procedure requires (a SID's "climb on 015° to 700 ft"
   turns AT 700 ft, not on the way up to it); and a leg coded ``turn_direction``
   L/R is a "turn that way, then direct to my fix" leg (``DF``), which is a turn
   made after leaving the previous fix.
@@ -349,7 +349,7 @@ def turn_arc(
         # No bank floor here, unlike the fly-by. A capture is already the last
         # resort — the fly-by has handed the corner over — and its alternative
         # is not a wider turn, it is no turn at all: the raw corner, pivoted on
-        # the spot. VTSP's ANPU1D turns 94 deg at BARON onto a fix 1.7 NM away,
+        # the spot. A STAR that turns 94 deg at BARON onto a fix 1.7 NM away,
         # and a hard turn there is closer to the truth than an instant one.
         radius_nm = min(radius_nm, 0.9 * to_target_nm / (2.0 * cos_psi))
     if radius_nm <= 0:
@@ -385,4 +385,62 @@ def turn_arc(
     # drop it and hand back only what it flies from there.
     return generate_arc_points(
         centre_lat, centre_lon, radius_nm, entry_deg, sign * swept_deg, step_deg
+    )[1:]
+
+
+def turn_to_heading(
+    start_lat: float,
+    start_lon: float,
+    inbound_track_deg: float,
+    target_track_deg: float,
+    radius_nm: float,
+    step_deg: float = _ARC_STEP_DEG,
+) -> list[tuple[float, float]]:
+    """The arc flown from a fix until established on a GIVEN heading.
+
+    :func:`turn_arc` turns until pointed AT A FIX — its target is a place. This
+    turns until pointed along a fixed COURSE — its target is a direction, e.g.
+    a runway's own extended centreline, which is a line, not a point on it.
+    Aiming a :func:`turn_arc` at a point near that line only approximates the
+    heading (worse the farther the point actually reached is placed to make it
+    converge), and using a point far along the line does the same for a
+    different reason: a geodesic does not hold a constant true bearing over
+    long distances the way a rhumb line does, so "far enough to look like a
+    fixed heading" and "far enough that the geodesic itself has curved" fight
+    each other. Solving for the heading directly has neither problem.
+
+    Takes the SHORT way round — same convention as :func:`turn_arc`'s single
+    turn direction, and there is no reason to publish the long way for a
+    course-establishment turn.
+
+    Args:
+        start_lat, start_lon: Fix the turn begins over.
+        inbound_track_deg: True track the aircraft arrives on.
+        target_track_deg: True track to roll out established on.
+        radius_nm: Turn radius, e.g. from :func:`turn_radius_nm`.
+        step_deg: Angular spacing of the emitted points.
+
+    Returns:
+        Points along the arc in flight order, EXCLUDING the start fix and
+        ENDING at the roll-out point, where the track is exactly
+        ``target_track_deg``. Empty when the course change is negligible (the
+        aircraft is already on the target heading) or the radius/step is
+        non-positive.
+    """
+    if radius_nm <= 0 or step_deg <= 0:
+        return []
+    turn_deg = signed_turn_deg(inbound_track_deg, target_track_deg)
+    if abs(turn_deg) < MIN_TURN_DEG:
+        return []
+
+    sign = 1.0 if turn_deg > 0 else -1.0
+    centre_lat, centre_lon = project_point(
+        start_lat, start_lon, inbound_track_deg + 90.0 * sign, radius_nm
+    )
+    entry_deg = inbound_track_deg - 90.0 * sign  # bearing centre -> start fix
+
+    # The aircraft is already AT the start fix, so drop the first point (as
+    # turn_arc does) and hand back only what it flies from there.
+    return generate_arc_points(
+        centre_lat, centre_lon, radius_nm, entry_deg, turn_deg, step_deg
     )[1:]

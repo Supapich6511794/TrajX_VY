@@ -1,7 +1,7 @@
 """Acceptance criteria: flight-time validation must use the REAL aircraft.
 
 The flight-time check used to score every airframe against a hard-coded
-distance-to-time curve measured on a B738 to RFL350. A 285 NM VTBS->VTPO leg
+distance-to-time curve measured on a B738 to RFL350. A 285 NM domestic leg
 flown by an AT76 (ATR 72-600) simulated correctly at 70 min was compared to a
 49 min "reference" -- 349 kt average, a jet -- and reported FAIL. The
 simulation was right; the reference was another aircraft.
@@ -37,12 +37,12 @@ from trajectory_sim.performance import (
 )
 from trajectory_sim.validation import (
     ACCEPTANCE_THRESHOLD_MIN,
-    CAT62Reference,
     estimate_profile,
     estimate_sim_min,
+    validate_against_estimate,
 )
 
-#: The reported flight: BKP211, AT76, VTBS -> VTPO.
+#: The reported flight: an AT76 on a 285 NM domestic leg.
 _ATR = "AT76"
 _ATR_CRUISE_FT = 18000.0
 #: A type WITH Thai APM rates but no operational speed schedule of its own --
@@ -118,7 +118,7 @@ class TestPerformanceComesFromTheThaiAPM:
         assert est.aircraft_type == _ATR
 
     def test_the_reachable_ceiling_is_the_types_own_observed_top(self) -> None:
-        """AT76 tops out at FL180 in the Bangkok data, well under its FL250
+        """AT76 tops out at FL180 in the Thai APM data, well under its FL250
         service ceiling -- so a filed FL250 is clamped, not extrapolated."""
         assert reachable_ceiling_ft(_ATR) == pytest.approx(_ATR_CRUISE_FT)
 
@@ -145,32 +145,20 @@ class TestNoFallbackToTheHardCodedB738:
         assert SUBSTITUTE_TYPE in str(exc.value)
 
     def test_validate_reports_no_check_rather_than_a_b738_number(self) -> None:
-        """A pair with no CAT62 sample flown by an unsupported type must get
-        NO verdict. A wrong PASS/FAIL is worse than none."""
-        ref = CAT62Reference({})
+        """An unsupported type must get NO verdict. A wrong PASS/FAIL is
+        worse than none."""
         assert (
-            ref.validate(
-                "VTBS", "VTPO", 70.0,
+            validate_against_estimate(
+                "VYYY", "VYMD", 70.0,
                 distance_nm=285.4, aircraft_type=_UNKNOWN_TYPE,
             )
             is None
         )
 
     def test_validate_still_declines_when_no_type_is_given(self) -> None:
-        ref = CAT62Reference({})
-        assert ref.validate("VTBS", "VTPO", 70.0, distance_nm=285.4) is None
-
-    def test_a_real_cat62_sample_is_used_whatever_the_airframe(self) -> None:
-        """Real measurements stay authoritative -- the type gate applies to
-        the derived estimate only."""
-        ref = CAT62Reference({"VTBS-VTPO": 66.0})
-        got = ref.validate(
-            "VTBS", "VTPO", 64.0,
-            distance_nm=285.4, aircraft_type=_UNKNOWN_TYPE,
-        )
-        assert got is not None
-        assert got.source == "cat62"
-        assert got.status == "PASS"
+        assert validate_against_estimate(
+            "VYYY", "VYMD", 70.0, distance_nm=285.4, aircraft_type=None
+        ) is None
 
     def test_no_hard_coded_distance_time_curve_survives(self) -> None:
         """Source guard: the B738 lookup table must stay deleted."""

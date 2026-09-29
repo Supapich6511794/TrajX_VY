@@ -16,9 +16,9 @@ from trajectory_sim.output import (
 )
 
 _WAYPOINTS = [
-    (13.6811, 100.7470),  # near VTBS
-    (11.0, 100.0),         # mid
-    (8.1132, 98.3170),     # near VTSP
+    (16.9073, 96.1332),   # near VYYY
+    (19.3, 96.1),          # mid
+    (21.7011, 95.9775),    # near VYMD
 ]
 _EOBT = datetime(2026, 1, 3, 8, 15, tzinfo=timezone.utc)
 
@@ -33,10 +33,10 @@ def _build_default_gdf() -> gpd.GeoDataFrame:
     return build_trajectory_gdf(
         waypoint_sequence=_WAYPOINTS,
         eobt=_EOBT,
-        callsign="THA204",
+        callsign="UBA204",
         aircraft_type="B738",
-        adep="VTBS",
-        ades="VTSP",
+        adep="VYYY",
+        ades="VYMD",
     )
 
 
@@ -60,8 +60,8 @@ def test_gdf_crs_is_4326() -> None:
 
 def test_gdf_flight_key_format() -> None:
     gdf = _build_default_gdf()
-    assert gdf["flight_key"].iloc[0] == "THA204_20260103T0815Z"
-    assert (gdf["flight_key"] == "THA204_20260103T0815Z").all()
+    assert gdf["flight_key"].iloc[0] == "UBA204_20260103T0815Z"
+    assert (gdf["flight_key"] == "UBA204_20260103T0815Z").all()
 
 
 def test_gdf_first_timestamp_equals_eobt() -> None:
@@ -99,22 +99,22 @@ def test_gdf_rejects_naive_eobt() -> None:
         build_trajectory_gdf(
             waypoint_sequence=_WAYPOINTS,
             eobt=datetime(2026, 1, 3, 8, 15),
-            callsign="THA204",
+            callsign="UBA204",
             aircraft_type="B738",
-            adep="VTBS",
-            ades="VTSP",
+            adep="VYYY",
+            ades="VYMD",
         )
 
 
 def test_gdf_rejects_single_waypoint() -> None:
     with pytest.raises(ValueError, match="at least 2"):
         build_trajectory_gdf(
-            waypoint_sequence=[(13.0, 100.0)],
+            waypoint_sequence=[(16.9, 96.1)],
             eobt=_EOBT,
-            callsign="THA204",
+            callsign="UBA204",
             aircraft_type="B738",
-            adep="VTBS",
-            ades="VTSP",
+            adep="VYYY",
+            ades="VYMD",
         )
 
 
@@ -135,30 +135,31 @@ def test_write_geopackage_full_y8_route_no_pk_conflict(tmp_path: Path) -> None:
     """Regression: a multi-leg route where any leg's duration falls
     just above a 4-s grid boundary used to produce two trajectory rows
     inside the same 1-ms GPKG-precision slot, breaking the new UNIQUE
-    (flight_key, epoch_ts) index. Run the full Y8 fix sequence end to
-    end — it failed before the geodesy fix and must succeed now."""
-    # Real Y8 ordered fixes (BKK -> ... -> PUT), coords from the airway
-    # CSV. Inline so this test doesn't depend on file I/O paths.
+    (flight_key, epoch_ts) index. Run the 11-fix airway sequence that
+    exposed it end to end — it failed before the geodesy fix and must succeed
+    now. The leg lengths are what reproduce the bug, so the coordinates are
+    kept exactly as they were found (a real airway from an earlier data set);
+    only the labels are placeholders."""
     y8 = [
-        (13.89355556, 100.59619444),  # BKK
-        (13.18615, 100.38491389),     # MOTNA
-        (12.99959167, 100.19014722),  # SABIS
-        (12.58640278, 99.76043056),   # VANKO
-        (11.72832222, 99.76120833),   # BUXEL
-        (11.14186111, 99.76183333),   # MENEX
-        (9.52955278, 99.25888889),    # IKERA
-        (9.12951111, 99.13474722),    # SAPUD
-        (8.80486667, 98.86893333),    # LAMUL
-        (8.50444444, 98.62459167),    # SAVSA
-        (8.11397222, 98.307),         # PUT
+        (13.89355556, 100.59619444),
+        (13.18615, 100.38491389),
+        (12.99959167, 100.19014722),
+        (12.58640278, 99.76043056),
+        (11.72832222, 99.76120833),
+        (11.14186111, 99.76183333),
+        (9.52955278, 99.25888889),
+        (9.12951111, 99.13474722),
+        (8.80486667, 98.86893333),
+        (8.50444444, 98.62459167),
+        (8.11397222, 98.307),
     ]
     gdf = build_trajectory_gdf(
         waypoint_sequence=y8,
         eobt=_EOBT,
         callsign="FLT1",
         aircraft_type="B738",
-        adep="VTBS",
-        ades="VTSP",
+        adep="VYYY",
+        ades="VYMD",
         ground_speed_kt=450.0,
         rfl=330,
     )
@@ -195,21 +196,21 @@ def test_gdf_carries_terminal_procedures() -> None:
     gdf = build_trajectory_gdf(
         waypoint_sequence=_WAYPOINTS,
         eobt=_EOBT,
-        callsign="THA204",
+        callsign="UBA204",
         aircraft_type="B738",
-        adep="VTBS",
-        ades="VTSP",
-        sid="ALBO3C",
-        star="BUKI2A",
-        dep_rwy="RW21L",
-        arr_rwy="RW27",
+        adep="VYYY",
+        ades="VYMD",
+        sid="PARL1A",
+        star="OKIK1A",
+        dep_rwy="RW21",
+        arr_rwy="RW17",
     )
     for col in ("dep_rwy", "arr_rwy", "sid", "star"):
         assert col in gdf.columns
-    assert (gdf["sid"] == "ALBO3C").all()
-    assert (gdf["star"] == "BUKI2A").all()
-    assert (gdf["dep_rwy"] == "RW21L").all()
-    assert (gdf["arr_rwy"] == "RW27").all()
+    assert (gdf["sid"] == "PARL1A").all()
+    assert (gdf["star"] == "OKIK1A").all()
+    assert (gdf["dep_rwy"] == "RW21").all()
+    assert (gdf["arr_rwy"] == "RW17").all()
 
 
 def test_gdf_terminal_cols_blank_by_default() -> None:
@@ -243,13 +244,13 @@ def _read_csv_data(path: Path) -> pd.DataFrame:
 def test_write_csv_has_metadata_header(tmp_path: Path) -> None:
     gdf = _build_default_gdf()
     out = tmp_path / "test_output.csv"
-    write_csv(gdf, out, route_str="BKK Y8 PUT", rfl=330)
+    write_csv(gdf, out, route_str="BGO W13 MIA", rfl=330)
     assert out.exists()
 
     text = out.read_text()
-    assert "ROUTE: BKK Y8 PUT" in text
-    assert "DEP: VTBS" in text
-    assert "DEST: VTSP" in text
+    assert "ROUTE: BGO W13 MIA" in text
+    assert "DEP: VYYY" in text
+    assert "DEST: VYMD" in text
     assert "ACTYPE: B738" in text
     assert "FL: F330" in text
     assert "ATD: 2026-01-03 08:15:00" in text
@@ -268,34 +269,34 @@ def test_write_csv_terminal_header_values(tmp_path: Path) -> None:
     gdf = build_trajectory_gdf(
         waypoint_sequence=_WAYPOINTS,
         eobt=_EOBT,
-        callsign="THA204",
+        callsign="UBA204",
         aircraft_type="B738",
-        adep="VTBS",
-        ades="VTSP",
-        sid="ALBO3C",
-        star="BUKI2A",
-        dep_rwy="RW21L",
-        arr_rwy="RW27",
+        adep="VYYY",
+        ades="VYMD",
+        sid="PARL1A",
+        star="OKIK1A",
+        dep_rwy="RW21",
+        arr_rwy="RW17",
     )
     out = tmp_path / "term.csv"
-    write_csv(gdf, out, route_str="BKK Y8 PUT", rfl=330)
+    write_csv(gdf, out, route_str="BGO W13 MIA", rfl=330)
     text = out.read_text()
-    assert "DEP RWY: RW21L" in text
-    assert "ARR RWY: RW27" in text
-    assert "SID: ALBO3C" in text
-    assert "STAR: BUKI2A" in text
+    assert "DEP RWY: RW21" in text
+    assert "ARR RWY: RW17" in text
+    assert "SID: PARL1A" in text
+    assert "STAR: OKIK1A" in text
 
 
 def test_write_csv_data_rows_match_gdf(tmp_path: Path) -> None:
     gdf = _build_default_gdf()
     out = tmp_path / "test_output.csv"
-    write_csv(gdf, out, route_str="BKK Y8 PUT", rfl=330)
+    write_csv(gdf, out, route_str="BGO W13 MIA", rfl=330)
 
     df = _read_csv_data(out)
     assert len(df) == len(gdf)
     assert df["lat"].iloc[0] == pytest.approx(gdf.geometry.y.iloc[0], abs=1e-5)
     assert df["lon"].iloc[0] == pytest.approx(gdf.geometry.x.iloc[0], abs=1e-5)
-    assert (df["callsign"] == "THA204").all()
+    assert (df["callsign"] == "UBA204").all()
     # Timestamp is integer epoch seconds; UTC ends with the Z suffix.
     assert df["timestamp"].dtype.kind == "i"
     assert str(df["utc"].iloc[0]).endswith("Z")
@@ -310,17 +311,17 @@ def test_write_csv_sector_and_event_columns(tmp_path: Path) -> None:
     """Sector/Event columns round-trip, incl. CSV-quoting of a comma-joined
     Sector value (overlapping PDR areas)."""
     gdf = _build_default_gdf()
-    gdf["sector"] = ["8S/Bangkok CTR/VTR1,VTD16"] * len(gdf)
+    gdf["sector"] = ["R13,R47"] * len(gdf)
     events = [""] * len(gdf)
     events[1] = "TOC"
     events[-1] = "TOD"
     gdf["event"] = events
     out = tmp_path / "sector.csv"
-    write_csv(gdf, out, route_str="BKK Y8 PUT", rfl=330)
+    write_csv(gdf, out, route_str="BGO W13 MIA", rfl=330)
 
     df = _read_csv_data(out)
     assert len(df) == len(gdf)  # quoting keeps the comma inside one field
-    assert (df["sector"] == "8S/Bangkok CTR/VTR1,VTD16").all()
+    assert (df["sector"] == "R13,R47").all()
     assert df["event"].iloc[1] == "TOC"
     assert df["event"].iloc[len(df) - 1] == "TOD"
 
@@ -346,7 +347,7 @@ def test_write_csv_conflict_marks_unresolved_los(tmp_path: Path) -> None:
         "LOS TGW122" if start <= t <= end else "" for t in ts
     ]
     out = tmp_path / "conflict.csv"
-    write_csv(gdf, out, route_str="BKK Y8 PUT", rfl=330, conflicts=[span])
+    write_csv(gdf, out, route_str="BGO W13 MIA", rfl=330, conflicts=[span])
 
     text = out.read_text()
     assert "CONFLICT: LOSS OF SEPARATION vs TGW122" in text
@@ -366,7 +367,7 @@ def test_write_csv_no_conflict_lines_when_none(tmp_path: Path) -> None:
     no CONFLICT header — the file must not imply one."""
     gdf = _build_default_gdf()
     out = tmp_path / "clean.csv"
-    write_csv(gdf, out, route_str="BKK Y8 PUT", rfl=330, conflicts=[])
+    write_csv(gdf, out, route_str="BGO W13 MIA", rfl=330, conflicts=[])
     text = out.read_text()
     assert "CONFLICT:" not in text
     assert "Event,Waypoint,Conflict" in text

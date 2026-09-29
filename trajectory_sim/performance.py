@@ -806,9 +806,9 @@ def climb_distance_nm(
 # (see api.server._register_field_elevations); default 0 elsewhere. Values
 # are the published AIP elevations.
 _FIELD_ELEV_FT: dict[str, float] = {
-    "VTBS": 8.0,     # Bangkok Suvarnabhumi
-    "VTSP": 84.0,    # Phuket
-    "VTBD": 9.0,     # Bangkok Don Mueang
+    "VYYY": 110.0,   # Yangon Intl
+    "VYMD": 301.0,   # Mandalay Intl
+    "VYNT": 295.0,   # Naypyitaw Intl
 }
 
 
@@ -818,11 +818,11 @@ def field_elevation_ft(icao: str) -> float:
 
 
 def register_field_elevations(mapping: dict[str, float]) -> None:
-    """Merge externally-sourced field elevations (e.g. the CAAT AIP AD
+    """Merge externally-sourced field elevations (e.g. the VY AIP AD
     section) into the lookup used by :func:`field_elevation_ft`.
 
-    Lets the API inject real aerodrome elevations for every Thai airport
-    at startup without this pure-engine module reading any data files.
+    Lets the API inject real aerodrome elevations for every VY (Myanmar)
+    airport at startup without this pure-engine module reading any data files.
     Keys are upper-cased; existing entries are overwritten so the AIP is
     authoritative over the small hardcoded fallback set.
     """
@@ -832,10 +832,11 @@ def register_field_elevations(mapping: dict[str, float]) -> None:
 
 # Runway-threshold elevations (ft AMSL), keyed ``(ICAO, runway)`` where the
 # runway is the bare designator without the "RW" prefix — e.g.
-# ``("VTSP", "09") -> 22.0``, ``("VTBD", "21L") -> 6.4``. Sourced from the
-# Thai AIP AD 2 threshold table and injected by the API at startup (see
-# api.server._register_runway_elevations); empty otherwise, in which case
-# :func:`runway_threshold_elevation_ft` falls back to the field elevation.
+# ``("VYTL", "04") -> 1275.0``. Sourced from the AIXM export's per-runway
+# ``landing_threshold_elevation`` (runway_vy.csv) and injected by the API at
+# startup (see api.server._register_runway_elevations); empty otherwise, in
+# which case :func:`runway_threshold_elevation_ft` falls back to the field
+# elevation.
 _RUNWAY_ELEV_FT: dict[tuple[str, str], float] = {}
 
 
@@ -854,8 +855,10 @@ def register_runway_elevations(mapping: dict[tuple[str, str], float]) -> None:
     :func:`runway_threshold_elevation_ft`.
 
     Keys are ``(ICAO, runway)`` and are normalised (upper-cased ICAO, bare
-    runway designator). Lets the API inject the Thai AIP AD 2 threshold
-    table at startup without this pure-engine module reading data files.
+    runway designator). Lets the API inject the VY (Myanmar) per-runway
+    ``landing_threshold_elevation`` from ``runway_vy.csv`` (AIXM export,
+    matching eAIP AD 2.12 column 6 converted from metres to feet) at
+    startup without this pure-engine module reading data files.
     """
     for (icao, runway), elev_ft in mapping.items():
         _RUNWAY_ELEV_FT[(icao.upper(), _norm_runway(runway))] = float(elev_ft)

@@ -135,7 +135,7 @@ def build_trajectory_gdf(
         "star": (star or "").strip(),
         "approach": (approach or "").strip(),
         # The ATC clearance the arrival was flown under. An open STAR may not
-        # enter the approach without one (see the VTBS STAR chart note), so the
+        # enter the approach without one (the open-STAR chart note), so the
         # export records WHICH clearance produced this path — vectors, or a
         # direct to the IAF.
         "clearance": (clearance or "").strip(),
@@ -397,7 +397,7 @@ def write_csv(
     row, so Excel/pandas open the CSV with every value under the right
     header. Per row: ``Phase`` is climb/cruise/descent,
     ``Sector`` the airspace volume containing the aircraft at that timestamp
-    (altitude-aware, e.g. "8S/Bangkok CTR" — a plane above a TMA's ceiling is
+    (altitude-aware, e.g. "Mingaladon TMA" — a plane above a TMA's ceiling is
     not in it), ``Event`` marks the TOC / TOD samples (blank otherwise), and
     ``Conflict`` marks the samples at which this flight is below separation
     minima against another one ("LOS <acid>"; blank otherwise).
@@ -408,7 +408,7 @@ def write_csv(
         gdf: GeoDataFrame as built by build_trajectory_gdf.
         path: Output .csv filesystem path.
         route_str: Raw Item-15 route string written into the ROUTE
-            header (e.g. ``"BKK Y8 PUT"``). Optional; empty by default.
+            header (e.g. ``"BGO W13 MIA"``). Optional; empty by default.
         rfl: Requested Flight Level (hundreds of feet) written into the
             FL header as ``"F<rfl>"``. Optional; the FL line is omitted
             when None.
@@ -493,8 +493,8 @@ def write_csv(
             )
             f.write(f"SURVEILLANCE: {cs}s\n")
         # Plain-ASCII separator — em-dashes mojibake in Excel/Notepad
-        # when the file is opened under cp1252/cp874 (Thai Windows
-        # default), making "———" render as 'â€"â€"â€"'.
+        # when the file is opened under a legacy Windows code page
+        # (cp1252 and the like), making "———" render as 'â€"â€"â€"'.
         f.write("\n---\n\n")
         # `Waypoint` and `Conflict` are appended LAST so the leading columns
         # keep their fixed positions (the re-importer reads Lat/Lon/… by index).

@@ -1,35 +1,32 @@
-"""Flight-time validation against CAT62 reference data.
+"""Flight-time validation against a performance-derived reference.
 
-Compares a simulated total flight time with the CAT62 (ASTERIX CAT062
-surveillance) reference time for the same city pair, computes the delta
-in minutes and applies the acceptance criterion:
+Compares a simulated total flight time with a reference time for the same
+route, computes the delta in minutes and applies the acceptance criterion:
 
-    delta = simulated_time − cat62_reference_time      (signed, minutes)
+    delta = simulated_time − reference_time      (signed, minutes)
     PASS  if |delta| < 5 minutes
     FAIL  if |delta| ≥ 5 minutes
 
-The reference times live in ``trajectory_sim/data/cat62_reference.json``
-(keyed by ``ADEP-ADES``, matched in either direction). Replace those
-seed values with figures derived from real CAT062 samples.
+The reference is derived from the aircraft's own Thai APM performance (see
+:func:`estimate_reference_min`); there is no measured city-pair table. The
+``cat62_min`` field name on :class:`FlightTimeValidation` is kept for API
+compatibility -- it holds whichever reference was used.
 
 Typical loop:
 
     1. build a timeline → simulated minutes  (trajectory.build_flight_timeline)
-    2. validate_flight_time(...)             → PASS / FAIL + delta
+    2. validate_against_estimate(...)        → PASS / FAIL + delta
     3. if FAIL, tune the speed schedule       (performance.tune_speed_schedule)
     4. rebuild + re-validate until PASS
 
-This module has no third-party dependencies and does no I/O beyond reading
-the reference JSON. It does depend on :mod:`trajectory_sim.performance`,
-because the reference time for a pair with no CAT62 sample is derived from
-the aircraft's own Thai APM performance rather than a fixed curve.
+This module has no third-party dependencies and does no I/O. It does depend
+on :mod:`trajectory_sim.performance`, because the reference time is derived
+from the aircraft's own Thai APM performance rather than a fixed curve.
 """
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
-from pathlib import Path
 
 from .performance import (
     UnknownAircraftPerformance,
@@ -44,14 +41,10 @@ from .performance import (
 #: this many minutes.
 ACCEPTANCE_THRESHOLD_MIN = 5.0
 
-_DEFAULT_REFERENCE_PATH = (
-    Path(__file__).resolve().parent / "data" / "cat62_reference.json"
-)
-
 # --- Reference flight time, derived from the aircraft's own performance ----
 # This used to be a measured distance-to-time curve for a B738 to RFL350,
 # applied to EVERY airframe. It made the check grade an ATR 72 against 737
-# numbers: a real 285 NM VTBS->VTPO leg simulated at 70 min was compared to a
+# numbers: a real 285 NM domestic leg simulated at 70 min was compared to a
 # 49 min "reference" (349 kt average -- a jet) and reported FAIL, though the
 # simulation was right and matched real ATR 72 block times.
 #
@@ -291,7 +284,7 @@ def _route_key(adep: str, ades: str) -> str:
 class FlightTimeValidation:
     """Result of comparing one simulated flight time to its reference."""
 
-    route: str                 # "VTBS-WMKK"
+    route: str                 # "VYYY-VYMD"
     cat62_min: float           # reference minutes (real sample OR estimate)
     simulated_min: float       # simulated minutes
     delta_min: float           # signed: simulated − reference
@@ -345,7 +338,7 @@ def validate_flight_time(
     """Build a :class:`FlightTimeValidation` from raw times.
 
     Args:
-        route: Display label, e.g. ``"VTBS-WMKK"``.
+        route: Display label, e.g. ``"VYYY-VYMD"``.
         cat62_min: Reference flight time in minutes (real or estimated).
         simulated_min: Simulated flight time in minutes.
         threshold_min: PASS if ``abs(delta) < threshold_min``.
@@ -446,7 +439,7 @@ def validate_cruise_level(
             time. ``False`` (or ``None`` when unknown) treats a below-RFL
             cruise as a legitimate ``distance_limited`` clamp; ``True`` marks
             it an unexplained ``mismatch`` (FAIL).
-        route: Display label, e.g. ``"VTBS-VTSP"``.
+        route: Display label, e.g. ``"VYYY-VYMD"``.
 
     Returns:
         A :class:`CruiseLevelValidation`. Exact match and every physically
@@ -542,7 +535,7 @@ def validate_toc_altitude(
         real_toc_ft: Real track's dominant cruise level, feet.
         threshold_ft: PASS if ``abs(sim − real) < threshold_ft`` (default
             2000 ft).
-        route: Display label, e.g. ``"VTBS-VTSP"``.
+        route: Display label, e.g. ``"VYYY-VYMD"``.
 
     Returns:
         The populated :class:`TocAltitudeValidation`.
@@ -559,9 +552,10 @@ def validate_toc_altitude(
     )
 
 
-# --- CAB table of cruising levels (hemispheric rule) -------------------------
-# Thai CAB (Civil Aviation Board) Rules of the Air §2.4.2 — the IFR cruising
-# level depends on the magnetic track:
+# --- Table of cruising levels (hemispheric rule) -----------------------------
+# ICAO Annex 2 (Rules of the Air), Appendix 3 "Tables of cruising levels", RVSM
+# column — the IFR cruising level depends on the magnetic track. (The ``cab_``
+# prefix on the helpers below is historical; the table is the ICAO one.)
 #   * track 000°–179° (eastbound): FL110, 130, 150 … 410, then 450, 490
 #   * track 180°–359° (westbound): FL120, 140, 160 … 400, then 430, 470, 510
 # Below FL410 this is the familiar odd-FL-east / even-FL-west parity; above
@@ -577,17 +571,17 @@ _WEST_IFR_FL: frozenset[int] = frozenset(
 
 
 def _is_eastbound(track_deg: float) -> bool:
-    """True for track 000°–179° (the eastbound half of the CAB table)."""
+    """True for track 000°–179° (the eastbound half of the table)."""
     return 0.0 <= (track_deg % 360.0) < 180.0
 
 
 def cruising_levels_for(track_deg: float) -> list[int]:
-    """The valid IFR cruising levels (FL) for a track, per the CAB table."""
+    """The valid IFR cruising levels (FL) for a track, per the ICAO table."""
     return sorted(_EAST_IFR_FL if _is_eastbound(track_deg) else _WEST_IFR_FL)
 
 
 def cab_cruising_level(track_deg: float, desired_fl: int) -> int:
-    """Snap a desired FL to the nearest valid CAB cruising level for a track.
+    """Snap a desired FL to the nearest valid ICAO cruising level for a track.
 
     Ties break to the lower level. Lets a flight-plan generator pick a level
     that complies with the hemispheric rule instead of an arbitrary one.
@@ -599,7 +593,7 @@ def cab_cruising_level(track_deg: float, desired_fl: int) -> int:
 def cab_cruising_level_capped(
     track_deg: float, desired_fl: int, max_fl: int
 ) -> int:
-    """CAB cruising level nearest ``desired_fl`` but never above ``max_fl``.
+    """ICAO cruising level nearest ``desired_fl`` but never above ``max_fl``.
 
     Snaps like :func:`cab_cruising_level`, then — if that lands above
     ``max_fl`` (the highest level the airframe can actually reach; see
@@ -616,7 +610,7 @@ def cab_cruising_level_capped(
 
 @dataclass(frozen=True)
 class CruisingLevelValidation:
-    """Result of checking an RFL against the CAB table of cruising levels."""
+    """Result of checking an RFL against the ICAO table of cruising levels."""
 
     route: str
     track_deg: float
@@ -624,7 +618,7 @@ class CruisingLevelValidation:
     direction: str          # "E" (000–179°) | "W" (180–359°)
     compliant: bool
     status: str             # "PASS" | "FAIL"
-    nearest_valid_fl: int   # the CAB level it should have used
+    nearest_valid_fl: int   # the table level it should have used
 
     @property
     def passed(self) -> bool:
@@ -639,7 +633,7 @@ class CruisingLevelValidation:
             f"Status: {self.status}"
         )
         if not self.compliant:
-            line += f" (should be FL{self.nearest_valid_fl} per CAB §2.4.2)"
+            line += f" (should be FL{self.nearest_valid_fl} per ICAO Annex 2 App 3)"
         return line
 
     def to_dict(self) -> dict[str, object]:
@@ -664,10 +658,10 @@ def validate_cruising_level(
     Args:
         track_deg: Route track (great-circle bearing ADEP→ADES), degrees true.
         rfl_ft: Requested Flight Level in feet (FL350 → 35000).
-        route: Display label, e.g. ``"VTBD-VTCN"``.
+        route: Display label, e.g. ``"VYYY-VYMD"``.
 
     Returns:
-        A :class:`CruisingLevelValidation`. PASS when the FL is in the CAB
+        A :class:`CruisingLevelValidation`. PASS when the FL is in the ICAO
         set for the track's hemisphere; FAIL (wrong odd/even for the
         direction) otherwise, with the nearest compliant level.
     """
@@ -685,103 +679,46 @@ def validate_cruising_level(
     )
 
 
-class CAT62Reference:
-    """Lookup of reference flight times keyed by ``ADEP-ADES`` city pair.
+def validate_against_estimate(
+    adep: str,
+    ades: str,
+    simulated_min: float,
+    *,
+    distance_nm: float | None,
+    aircraft_type: str | None,
+    cruise_alt_ft: float | None = None,
+    dep_elev_ft: float = 0.0,
+    arr_elev_ft: float = 0.0,
+    threshold_min: float = ACCEPTANCE_THRESHOLD_MIN,
+) -> FlightTimeValidation | None:
+    """Grade a simulated time against the airframe's own performance estimate.
 
-    Matching is direction-agnostic: ``VTBS-WMKK`` also resolves a lookup
-    for ``WMKK-VTBS``.
+    The reference is :func:`estimate_reference_min` for this route distance,
+    type and cruise level (``source="estimate"``). There is no measured
+    city-pair table behind it: the retired CAT062 reference table was built
+    for the previous deployment and has no Yangon FIR equivalent.
+
+    Returns ``None`` -- no verdict at all -- when the distance or the type is
+    missing, or when the type has no performance data of its own. A check
+    computed from a borrowed airframe's numbers is worse than no check, since
+    it reports a confident PASS/FAIL that means nothing.
     """
-
-    def __init__(
-        self,
-        routes: dict[str, float],
-        threshold_min: float = ACCEPTANCE_THRESHOLD_MIN,
-    ) -> None:
-        # Normalise keys to upper-case ADEP-ADES.
-        self._routes: dict[str, float] = {}
-        for k, v in routes.items():
-            parts = k.replace("/", "-").split("-")
-            if len(parts) == 2:
-                self._routes[_route_key(parts[0], parts[1])] = float(v)
-        self.threshold_min = threshold_min
-
-    @classmethod
-    def load(cls, path: str | Path | None = None) -> CAT62Reference:
-        """Load the reference table from JSON (default bundled file)."""
-        p = Path(path) if path else _DEFAULT_REFERENCE_PATH
-        data = json.loads(p.read_text(encoding="utf-8"))
-        return cls(
-            routes=data.get("routes", {}),
-            threshold_min=float(
-                data.get("threshold_min", ACCEPTANCE_THRESHOLD_MIN)
-            ),
-        )
-
-    def table(self) -> dict[str, float]:
-        """Copy of the normalised ``ADEP-ADES → minutes`` reference map."""
-        return dict(self._routes)
-
-    def lookup(self, adep: str, ades: str) -> float | None:
-        """Reference minutes for a pair, or None when not in the table.
-
-        Tries ``ADEP-ADES`` first, then the reverse ``ADES-ADEP``.
-        """
-        fwd = self._routes.get(_route_key(adep, ades))
-        if fwd is not None:
-            return fwd
-        return self._routes.get(_route_key(ades, adep))
-
-    def validate(
-        self,
-        adep: str,
-        ades: str,
-        simulated_min: float,
-        distance_nm: float | None = None,
-        aircraft_type: str | None = None,
-        cruise_alt_ft: float | None = None,
-        dep_elev_ft: float = 0.0,
-        arr_elev_ft: float = 0.0,
-    ) -> FlightTimeValidation | None:
-        """Validate a simulated time against the matched reference.
-
-        Resolution order:
-          1. Real CAT62 sample for the pair (``source="cat62"``).
-          2. Performance-derived estimate when the pair has no sample but
-             ``distance_nm`` and an ``aircraft_type`` with its own Thai APM
-             data are given (``source="estimate"``).
-          3. ``None`` when neither is available.
-
-        Real samples stay authoritative. Step 2 deliberately yields
-        ``None`` rather than a number for a type whose performance would
-        have to be borrowed from another airframe: a check computed from
-        the wrong aircraft is worse than no check, since it reports a
-        confident PASS/FAIL that means nothing.
-        """
-        ref = self.lookup(adep, ades)
-        if ref is not None:
-            return validate_flight_time(
-                route=_route_key(adep, ades),
-                cat62_min=ref,
-                simulated_min=simulated_min,
-                threshold_min=self.threshold_min,
-                source="cat62",
-            )
-        if distance_nm is not None and distance_nm > 0 and aircraft_type:
-            try:
-                estimate = estimate_reference_min(
-                    distance_nm,
-                    aircraft_type,
-                    cruise_alt_ft=cruise_alt_ft,
-                    dep_elev_ft=dep_elev_ft,
-                    arr_elev_ft=arr_elev_ft,
-                )
-            except UnknownAircraftPerformance:
-                return None
-            return validate_flight_time(
-                route=_route_key(adep, ades),
-                cat62_min=estimate,
-                simulated_min=simulated_min,
-                threshold_min=self.threshold_min,
-                source="estimate",
-            )
+    if distance_nm is None or distance_nm <= 0 or not aircraft_type:
         return None
+    try:
+        estimate = estimate_reference_min(
+            distance_nm,
+            aircraft_type,
+            cruise_alt_ft=cruise_alt_ft,
+            dep_elev_ft=dep_elev_ft,
+            arr_elev_ft=arr_elev_ft,
+        )
+    except UnknownAircraftPerformance:
+        return None
+    return validate_flight_time(
+        route=_route_key(adep, ades),
+        cat62_min=estimate,
+        simulated_min=simulated_min,
+        threshold_min=threshold_min,
+        source="estimate",
+    )

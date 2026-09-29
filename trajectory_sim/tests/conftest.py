@@ -2,7 +2,7 @@
 
 Isolates module-level mutable performance state so one test (or an
 import side-effect) can't leak into another. ``api.server`` registers the
-CAAT AIP field elevations into ``performance._FIELD_ELEV_FT`` at import
+VY AIP field elevations into ``performance._FIELD_ELEV_FT`` at import
 time; without this, importing it in any test (e.g. the SID/STAR splice
 wiring tests) would silently change the elevations ``test_performance``
 asserts against. Conftest is imported before any test module — and thus

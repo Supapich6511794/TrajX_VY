@@ -54,8 +54,11 @@ from trajectory_sim.navdata import (
     ProcedureNotFoundError,
     ProcedureType,
     RouteWaypoint,
+    RUNWAY_HEURISTIC_SOURCE,
     RunwayEnd,
     SpeedConstraintType,
+    expand_runway_arrival_heuristic,
+    expand_runway_departure_heuristic,
     expand_sid_departure,
     register_runways,
     runway_end,
@@ -71,7 +74,6 @@ from trajectory_sim.output import (
 from trajectory_sim.performance import (
     PERFORMANCE_SOURCE,
     aircraft_speeds,
-    estimator_types,
     cas_to_tas_kt,
     climb_distance_nm,
     crossover_altitude_ft,
@@ -98,8 +100,8 @@ from trajectory_sim.turns import (
 )
 from trajectory_sim.validation import (
     REFERENCE_MARGIN_MIN,
-    CAT62Reference,
     estimate_sim_min,
+    validate_against_estimate,
 )
 from trajectory_sim.performance import UnknownAircraftPerformance
 
@@ -108,7 +110,7 @@ _ROOT = Path(__file__).resolve().parent.parent
 _DATA = _ROOT / "web" / "public" / "data"
 # VY (Myanmar) navdata, built once per AIRAC cycle from the AIXM 5.1.1
 # export by scripts/ingest_aixm_waypoints.py (waypoints + airways +
-# airports, same shape as the retired Thai aip_VT.json this replaces — see
+# airports) — see
 # that script's docstring for why the coordinates couldn't come from
 # anywhere else already in the pipeline).
 _AIP_PATH = _DATA / "aip_VY.json"
@@ -159,20 +161,20 @@ else:
 class GenerateRequest(BaseModel):
     """Inputs from the web GeneratorPanel."""
 
-    source: str = Field("csv", description='"csv" or "fpl"')
-    # CSV mode: True => VTSP->VTBS (reverse of the file's seqno order).
-    vtsp_to_vtbs: bool = True
-    # Departure / destination ICAO. These now actually drive direction
-    # and the written meta (previously hardcoded for fpl mode).
-    adep: str = "VTBS"
-    ades: str = "VTSP"
+    # Route source. Only "fpl" (an Item-15 route string) is supported; the
+    # field stays for request compatibility and anything else is refused.
+    source: str = Field("fpl", description='Route source; only "fpl" is supported')
+    # Departure / destination ICAO. These drive direction and the written meta.
+    adep: str = "VYYY"
+    ades: str = "VYMD"
     # ICAO aircraft type designator (e.g. "B738", "A333"). Drives the BADA
     # climb/descent rate table, speed schedule, service ceiling and
     # crossover altitude. Unknown types fall back to the B738 model inside
     # trajectory_sim.performance, so any value is accepted.
     actype: str = "B738"
     # FPL mode: raw Item-15 route string.
-    route: str = "DCT MOTNA DCT SABIS DCT VANKO DCT"
+    # Default: Yangon -> Mandalay along W13 (BGO NPT MIA).
+    route: str = "BGO W13 MIA"
     callsign: str = "SIM738"
     # ISO 8601; naive values are treated as UTC (project-wide rule).
     eobt: str = "2026-01-03T08:15:00"
@@ -323,13 +325,6 @@ def _drop_files(flight_key: str) -> None:
             except OSError:
                 pass  # best-effort; _materialise rewrites gpkg defensively too
 
-# CAT62 reference times, loaded once. Falls back to an empty table if the
-# bundled file is somehow missing, so the endpoint never hard-fails.
-try:
-    _CAT62_REF = CAT62Reference.load()
-except Exception:  # noqa: BLE001
-    _CAT62_REF = CAT62Reference({})
-
 # Default airframe when a request omits the type. The actual type flown is
 # read per-request from GenerateRequest.actype; speed-tuning snapshots
 # target whatever type the flight uses.
@@ -338,15 +333,20 @@ _DEFAULT_ACTYPE = "B738"
 
 @lru_cache(maxsize=1)
 def _aip() -> dict[str, object]:
-    """Load the CAAT eAIP navdata cache (built by scripts/ingest_aip.py).
+    """Load the VY AIP navdata cache (aip_VY.json).
+
+    Built from the Myanmar AIXM 5.1.1 export by
+    scripts/ingest_aixm_waypoints.py, scripts/ingest_aixm_airways.py and
+    scripts/ingest_aixm_airports.py.
 
     Cached for the process lifetime — the file only changes per AIRAC
     cycle, which means a redeploy/restart anyway.
     """
     if not _AIP_PATH.is_file():
         raise RuntimeError(
-            f"AIP navdata cache missing at {_AIP_PATH}. "
-            "Run: python scripts/ingest_aip.py --airac <YYYY-MM-DD>"
+            f"AIP navdata cache missing at {_AIP_PATH}. Rebuild it from the "
+            "VY AIXM export with scripts/ingest_aixm_waypoints.py, "
+            "scripts/ingest_aixm_airways.py and scripts/ingest_aixm_airports.py."
         )
     return json.loads(_AIP_PATH.read_text(encoding="utf-8"))
 
@@ -389,8 +389,8 @@ def _airport_ll(icao: str) -> tuple[float, float] | None:
 
 def _register_field_elevations() -> None:
     """Push AIP aerodrome elevations into the performance model so the
-    climb/descent profile uses real field elevations for every Thai
-    airport, not just the three hardcoded in performance.py."""
+    climb/descent profile uses real field elevations for every VY
+    (Myanmar) airport, not just the three hardcoded in performance.py."""
     elevs = {
         icao: float(a["elev_ft"])  # type: ignore[arg-type]
         for icao, a in _airports().items()
@@ -400,28 +400,29 @@ def _register_field_elevations() -> None:
         register_field_elevations(elevs)
 
 
-# Thai AIP AD 2 runway-threshold elevation table. Repo-root file (where it
-# is maintained); trajectory_sim/data is a shipped fallback for deployment.
-_RWY_ELEV_PATHS = (
-    _ROOT / "thai_aip_ad2_thr_elevations.csv",
-    _ROOT / "trajectory_sim" / "data" / "thai_aip_ad2_thr_elevations.csv",
-)
-
-
 def _register_runway_elevations() -> None:
     """Push AIP runway-threshold elevations into the performance model so a
     flight's climb starts / descent ends at the actual departure/arrival
-    runway threshold (e.g. VTSP RW09 = 22 ft, VTBD RW21L = 6.4 ft) rather
-    than the aerodrome's single field elevation."""
-    path = next((p for p in _RWY_ELEV_PATHS if p.exists()), None)
-    if path is None:
+    runway threshold (e.g. VYTL RW04 = 1275 ft) rather than the aerodrome's
+    single field elevation.
+
+    Sourced from the same ``runway_vy.csv`` the runway threshold GEOMETRY
+    comes from (see ``_register_runways`` below, same file, same per-runway
+    rows) — its ``landing_threshold_elevation`` column is the AIXM export's
+    ``RunwayCentrelinePoint`` (``role=THR``) elevation, one row per runway
+    end across all 48 VY aerodromes. (It used to read a separate AD 2
+    threshold table that this repo does not carry, so the lookup silently
+    no-opped and every flight fell back to the aerodrome's single field
+    elevation regardless of which runway it actually used.)
+    """
+    if not _RUNWAY_SOURCE.exists():
         return
     elevs: dict[tuple[str, str], float] = {}
-    with path.open(encoding="utf-8-sig", newline="") as fh:
+    with _RUNWAY_SOURCE.open(encoding="utf-8-sig", newline="") as fh:
         for row in csv.DictReader(fh):
-            icao = (row.get("ICAO") or "").strip()
-            rwy = (row.get("RWY_NR") or "").strip()
-            raw = (row.get("THR_elev_ft") or "").strip()
+            icao = (row.get("airport_identifier") or "").strip()
+            rwy = (row.get("runway_identifier") or "").strip()
+            raw = (row.get("landing_threshold_elevation") or "").strip()
             if not icao or not rwy or not raw:
                 continue  # NIL/blank threshold — no elevation on record
             try:
@@ -432,13 +433,14 @@ def _register_runway_elevations() -> None:
         register_runway_elevations(elevs)
 
 
-# ARINC 424 runway table: threshold coordinates + magnetic/true bearing.
-_RUNWAY_SOURCE = _DATA / "airports" / "runway.csv"
+# ARINC 424 runway table: threshold coordinates, magnetic/true bearing, and
+# (read by _register_runway_elevations above) landing threshold elevation.
+_RUNWAY_SOURCE = _DATA / "airports" / "runway_vy.csv"
 
 
 def _register_runways() -> None:
     """Push runway threshold geometry into the nav-data model so a departure
-    rolls down the runway centreline (VTBD RW21L = 13.9246N 100.6155E, 208.6°T)
+    rolls down the runway centreline (VYYY RW21 = 16.9237N 96.1445E, 213°T)
     and its SID's course-to-altitude legs can be placed on that track — see
     :func:`trajectory_sim.navdata.expand_sid_departure`."""
     if not _RUNWAY_SOURCE.exists():
@@ -484,14 +486,15 @@ except Exception:  # noqa: BLE001 — departures just aren't runway-anchored
     pass
 
 
-# VOR/DME navaids, for spotting a route that ends on a terminal VOR. The bundled
-# airway_vor.geojson is a global set; only the Thai-area idents matter here.
-_VOR_SOURCE = _DATA / "airways" / "airway_vor.geojson"
+# VOR/DME navaids, for spotting a route that ends on a terminal VOR. Built from
+# the VY AIXM export (scripts/ingest_aixm_airways.py); the bounding-box check
+# below keeps only navaids in and around the Yangon FIR.
+_VOR_SOURCE = _DATA / "aixm_vy" / "airway_vor_vy.geojson"
 
 
 @lru_cache(maxsize=1)
 def _vor_idents() -> frozenset[str]:
-    """Idents of VOR/DME navaids inside the Thai FIR (from airway_vor.geojson).
+    """Idents of VOR/DME navaids inside the Yangon FIR (airway_vor_vy.geojson).
 
     Used only to recognise a route that has been filed to a VOR; a miss just
     means no trim happens, so a parse failure degrades to 'not a VOR'.
@@ -511,7 +514,7 @@ def _vor_idents() -> frozenset[str]:
         if len(coords) < 2:
             continue
         lon, lat = coords[0], coords[1]
-        if 5.0 < lat < 21.0 and 96.0 < lon < 106.0:  # Thai FIR bbox
+        if 9.5 < lat < 28.5 and 92.0 < lon < 101.5:  # Yangon FIR bbox
             ident = (f.get("properties") or {}).get("waypoint_identifier")
             if ident:
                 idents.add(ident.upper())
@@ -520,7 +523,7 @@ def _vor_idents() -> frozenset[str]:
 
 #: A VOR nearer than this to the destination (NM) is that field's terminal
 #: navaid — the one a route is filed to as shorthand for "the airport". A VOR
-#: farther out (e.g. VTUD routed via KKN, 55 NM away) is just a fix on the way,
+#: farther out (e.g. VYYY's HGU, ~12 NM away) is just a fix on the way,
 #: not a terminal overshoot, so it is left alone.
 _FIELD_VOR_NM = 10.0
 
@@ -530,7 +533,7 @@ _FIELD_VOR_NM = 10.0
 #: fly the aircraft over the field and back — the doubling-back
 #: :func:`_connect_route_to_terminal` exists to remove. 90° = the arrival
 #: hemisphere, which keeps every same-side IAF in play and drops the opposite
-#: ones (VTSF RW01 reached on 060°: TAWIT 025° stays, CHARY 165° goes).
+#: ones (an IAF 035° off a 060° arrival stays, one 165° off it goes).
 _ENTRY_ARRIVAL_SIDE_DEG = 90.0
 
 
@@ -540,7 +543,7 @@ def _ends_at_field_vor(
     """True when the route's last fix is the destination's own terminal VOR.
 
     That is the overshoot pattern this module trims: an Item-15 route filed to
-    the field VOR (RAN, NKS, LPN, BKK), which sits past the STAR/approach entry
+    the field VOR (MIA at VYMD, NPT at VYNT), which sits past the STAR/approach entry
     so flying to it doubles the aircraft back. A route ending on an ordinary
     fix, or on a VOR far from the field, is not touched.
     """
@@ -554,28 +557,6 @@ def _ends_at_field_vor(
         ades_ll is not None
         and haversine_distance(lat, lon, ades_ll[0], ades_ll[1]) < _FIELD_VOR_NM
     )
-
-
-def _airway_sequence(designator: str) -> list[str]:
-    """Ordered fix sequence for an airway (e.g. 'Y8'), or [] if unknown."""
-    return _airways().get(designator, [])
-
-
-def _airway_route_points(
-    designator: str, reverse: bool
-) -> list[tuple[str, float, float]]:
-    """Resolve an airway to (ident, lat, lon) points, optionally reversed.
-
-    Used by CSV-mode generation: the published Y8 sequence is BKK→PUT, so
-    ``reverse=True`` (VTSP→VTBS) flips it.
-    """
-    index = _airway_waypoint_index()
-    pts = [
-        (ident, *index[ident])
-        for ident in _airway_sequence(designator)
-        if ident in index
-    ]
-    return list(reversed(pts)) if reverse else pts
 
 
 _FIX_TOKEN_RE = re.compile(r"^[A-Z]{2,5}$")
@@ -634,23 +615,6 @@ def health() -> dict[str, object]:
     return info
 
 
-@app.get("/api/cat62_reference")
-def cat62_reference() -> dict[str, object]:
-    """Flight-time reference table + acceptance threshold for the web.
-
-    Lets the route picker pre-screen candidate routes (PASS/FAIL within
-    the threshold) without round-tripping each one through /api/generate.
-    """
-    return {
-        "threshold_min": _CAT62_REF.threshold_min,
-        "routes": _CAT62_REF.table(),
-        # Types the flight-time estimate can be derived for. Anything else
-        # gets no estimate rather than another airframe's numbers.
-        "estimator_types": sorted(estimator_types()),
-        "performance_source": PERFORMANCE_SOURCE,
-    }
-
-
 #: Distances (NM) the client-side flight-time curve is sampled at. Denser
 #: where the profile bends (short hops that never reach cruise), sparse in
 #: the linear cruise-dominated range.
@@ -701,8 +665,7 @@ def flight_time_curve(
 # Coded terminal procedures come from the AIXM 5.1.1 export (AIRAC 2609, VY —
 # Myanmar), converted to the DFD GeoJSON schema by
 # scripts/ingest_aixm_procedures.py. NavData reads + indexes them on first
-# use. (The VT/Thai equivalents still sit under aixm/ — see that folder if
-# this deployment ever needs to switch back.)
+# use.
 _SID_SOURCE = _DATA / "aixm_vy" / "sid_waypoint.geojson"
 _STAR_SOURCE = _DATA / "aixm_vy" / "star_waypoint.geojson"
 _APPROACH_SOURCE = _DATA / "aixm_vy" / "pbn_waypoint.geojson"
@@ -740,7 +703,7 @@ def _route_ctx(
     """Build the route context for picking ``proc_type``'s transition.
 
     For an approach the ``route_pts`` should already include the STAR's fixes,
-    so its last fix (the STAR's terminal fix, e.g. KALIM) is the connecting
+    so its last fix (the STAR's terminal fix, e.g. PAKSU) is the connecting
     point the approach's IAF transition is scored against.
     """
     if not route_pts:
@@ -761,7 +724,7 @@ def _score_transition(
 ) -> "tuple[str | None, bool]":
     """Pick the transition the route actually flies, scoring (highest wins):
 
-      P1  the transition name is itself a fix on the route (e.g. BLAFF)
+      P1  the transition name is itself a fix on the route (e.g. NPT)
       P2  the transition's connecting fix == the route's endpoint fix
       P3  any of the transition's fixes appear on the route
       P4  shortest great-circle hop from the route endpoint to that fix
@@ -828,8 +791,8 @@ def _resolve_procedure_auto(
     propagates.
 
     ``route_ctx`` biases a TRANSITION ambiguity towards the candidate the route
-    actually flies (e.g. STAR NAKO1B entered on BLAFF for ``… DUBEN Y28 BLAFF
-    DCT NAKON``, not the alphabetically-first ALBOS) via :func:`_score_transition`.
+    actually flies (e.g. STAR OROM1A entered on NPT for ``… MIA W13 NPT DCT
+    OROMO``, not the alphabetically-first HHO) via :func:`_score_transition`.
     A route-connected transition is the correct one, so it is NOT recorded as an
     assumption; a pure-geographic pick or a plain first-candidate guess is.
     """
@@ -888,8 +851,8 @@ def _suggest_procedure(
 
       0. connecting fix == the route's first (SID) / last (STAR) en-route fix
       1. connecting fix lies ON the route (any expanded route fix) — the SID
-         delivers you straight onto the filed path (e.g. VTSF GIFB1A exits at
-         UPNEP, an A464 fix the route "NKS W94 GUPMO A464 GUTSO" flies through)
+         delivers you straight onto the filed path (e.g. VYYY PARL1A exits at
+         PARLA, the first fix of the route "PARLA DCT NPT W13 MIA")
       2. connecting fix shares an airway with the endpoint en-route fix
       3. shortest great-circle distance to that en-route fix
       4. least turn from the procedure's leg onto the joining track
@@ -1084,8 +1047,8 @@ def _glide_to_threshold(
     The Thai APM descent RATE is shallower near the ground than a 3° approach
     glideslope, and the MAPt carries an "AT" crossing altitude ~50 ft above the
     threshold (its threshold-crossing height), so a flown approach otherwise
-    LEVELS OFF and ends ~50 ft above the runway instead of landing (e.g. VTCC
-    R18 stops at 1086 ft, its 1036 ft threshold + 50). From the final approach
+    LEVELS OFF and ends ~50 ft above the runway instead of landing (e.g. an
+    R18 that stops at 1086 ft, its 1036 ft threshold + 50). From the final approach
     fix to the last sample we replace altitude with a straight line down to
     ``des_elev_ft`` (spread by along-track distance), so the trajectory lands on
     the threshold — the elevation the AIP AD 2 table publishes and the profile
@@ -1141,8 +1104,8 @@ def _level_on_the_assigned_heading(
 ) -> float:
     """In place: fly the assigned-heading leg LEVEL, then descend from the turn.
 
-    The VTBS STAR chart's note is a heading instruction and nothing else —
-    "After ESGEN, ATKIN maintain heading 015 or as directed by ATC" — and Doc
+    An open STAR's chart note is a heading instruction and nothing else —
+    "After <fix> maintain heading <hdg> or as directed by ATC" — and Doc
     4444 §8.9.4.2 has the aircraft hold its last assigned level until it is
     established. An aircraft on an open-ended radar heading has no descent
     clearance: it maintains what it was given until ATC turns it onto base and
@@ -1205,9 +1168,10 @@ def _level_on_the_assigned_heading(
 def _proc_runway(proc: "Procedure | None") -> str | None:
     """The runway a resolved SID/STAR serves — for the trajectory export.
 
-    Prefers ``proc.runway``, but the Thai DFD SID/STAR carry every leg under
-    route_type 5 ("common"), so the runway (stored in each leg's
-    ``transition_identifier``, e.g. RW03L) never surfaces as ``proc.runway``.
+    Prefers ``proc.runway``, but a DFD SID/STAR can carry every leg under
+    route_type 5 ("common") — the VY SIDs do — so the runway (stored in each
+    leg's ``transition_identifier``, e.g. RW21) never surfaces as
+    ``proc.runway``.
     Fall back to the first RW* transition found among the legs.
     """
     if proc is None:
@@ -1225,6 +1189,21 @@ def _proc_runway(proc: "Procedure | None") -> str | None:
 #: mid-terminal-area, where the 250 kt limit still caps the speed anyway, so the
 #: radius it implies is barely sensitive to the guess.
 _DEFAULT_TURN_ALT_FT = 5000.0
+
+#: Altitude assumed for the runway heuristic's turn (see
+#: ``expand_runway_departure_heuristic`` / ``expand_runway_arrival_heuristic``
+#: in ``trajectory_sim.navdata``) — low enough that the 250 kt/below-FL100 ATC
+#: restriction and the aircraft's own climb/descent CAS both apply, giving a
+#: tight, near-runway radius rather than a wide cruise-speed one. There is no
+#: coded restriction to read for an uncoded departure/arrival, so this is a
+#: nominal circuit-height guess, same role _DEFAULT_TURN_ALT_FT plays for an
+#: ordinary unrestricted fix.
+_RUNWAY_HEURISTIC_ALT_FT = 1500.0
+
+
+def _runway_heuristic_speed_kt(actype: str, phase: str) -> float:
+    """TAS for the runway heuristic's turn — see ``_turn_speed_kt``."""
+    return target_tas_kt(actype, _RUNWAY_HEURISTIC_ALT_FT, phase)  # type: ignore[arg-type]
 
 
 def _turn_speed_kt(
@@ -1522,11 +1501,12 @@ def _aerodrome_anchors(
     An FPL trajectory is gate-to-gate, so it must DEPART ADEP and ARRIVE ADES
     whatever fixes the Item-15 route happens to list. Either anchor is skipped
     when the route already begins/ends on the field (a SID starts on the runway
-    threshold; PUT sits on VTSP), which would only add a zero-length leg.
+    threshold; a route may end on the aerodrome itself), which would only add
+    a zero-length leg.
 
     The arrival anchor is the landing RUNWAY THRESHOLD when the runway is known.
     An aerodrome reference point is not where an aircraft touches down — at a
-    two-runway field like VTBS it sits between the two, so closing an approach to
+    two-runway field it sits between the two, so closing an approach to
     it ends the flight in the middle of the airport, abeam the runway the
     aircraft just flew a glideslope onto.
     """
@@ -1571,14 +1551,14 @@ def _expand_departure(
 
     Wires the request's aircraft type and the departure threshold's elevation
     into :func:`~trajectory_sim.navdata.expand_sid_departure`, which prepends
-    the threshold and turns the SID's course-to-altitude legs (e.g. VTBD
-    OLVU3C's "209° to 1 500 ft, MAX IAS 200 KT") into fixes on the runway
+    the threshold and turns the SID's course-to-altitude legs (e.g. VYYY
+    PARL1A's RW21 "CA to 610 ft") into fixes on the runway
     track. Without it the aircraft starts at the runway END and turns straight
     for the first fix, cutting back across the runway. Returned unchanged when
     no departure threshold can be identified.
 
     The runway to anchor to is the one the SID's *legs* are coded for, not the
-    one requested: a Thai SID name serves a single runway (ALBO3C is RW21L
+    one requested: a SID name serves a single runway (VYYY PARL1A is RW21
     only), so a request for the opposite end — which the runway-filtered SID
     dropdown never offers — must not start the aircraft on a threshold its legs
     don't leave from. Only an ARINC "both" group (RW21B, one leg set for 21L and
@@ -1606,7 +1586,7 @@ def _terminal_runways_only(req: "GenerateRequest") -> "dict[str, str | None]":
 
     Used when no SID/STAR/approach is flown (a direct route) so the vertical
     profile still anchors its climb start / descent end to the departure /
-    arrival runway *threshold* elevation (Thai AIP AD 2) rather than the
+    arrival runway *threshold* elevation (AIP AD 2) rather than the
     aerodrome's single field elevation. The runways ride in on
     ``sid_runway``/``star_runway`` (the same fields a SID/STAR would use).
     """
@@ -1637,15 +1617,139 @@ def _finish(
     built), and measuring before the turns would place every restriction at a
     distance the aircraft never flies.
     """
+    actype = req.actype.strip().upper() or _DEFAULT_ACTYPE
+    adep_ll = _airport_ll(adep)
+    ades_ll = _airport_ll(ades)
+
+    # Decide BOTH heuristics before `_smooth_turns` ever runs — not just
+    # whether each applies, but exactly which LEADING/TRAILING slice of
+    # `route_pts` each one takes over. `_smooth_turns` builds its own corner
+    # for whatever fix sits at the aerodrome-coincident end (using the cruise
+    # turn radius — the only one it knows), and if that fix is then replaced
+    # by a heuristic built at a much tighter low-altitude radius, the two
+    # don't join: the aircraft would roll out on the heuristic's turn, jump
+    # BACK to the leftover end of the old one, then turn again. Feeding
+    # `_smooth_turns` only the CORE route each heuristic leaves behind avoids
+    # building that corner in the first place, rather than trying to find and
+    # cut it out afterwards.
+    dep_source = "PUBLISHED_SID" if sid_proc is not None else "DCT"
+    dep_extra: "list[tuple[str, float, float]] | None" = None
+    dep_cut = 0  # route_pts[:dep_cut] is the heuristic's — dropped from the core
+    if sid_proc is None and route_pts:
+        dep_rwy = runway_end(adep, terminal.get("dep_rwy"))
+        # The turn has to aim at a fix that actually says which way the route
+        # goes — a route filed "ADEP DCT ADES"-style repeats the departure
+        # airport itself as route_pts[0], which is no direction to turn
+        # towards at all. Skip any leading point that IS the departure
+        # aerodrome.
+        dep_target_idx = next(
+            (
+                i
+                for i, p in enumerate(route_pts)
+                if adep_ll is None or _sq_dist(p[1:], adep_ll) > _COINCIDENT_SQ
+            ),
+            None,
+        )
+        if dep_rwy is not None and dep_target_idx is not None:
+            candidate = expand_runway_departure_heuristic(
+                dep_rwy,
+                route_pts[dep_target_idx][1:],
+                _runway_heuristic_speed_kt(actype, "climb"),
+            )
+            if candidate is not None:
+                dep_extra, dep_cut = candidate, dep_target_idx
+                dep_source = RUNWAY_HEURISTIC_SOURCE
+
+    arr_source = (
+        "PUBLISHED_APPROACH" if approach_proc is not None else
+        "PUBLISHED_STAR" if star_proc is not None else
+        "DCT"
+    )
+    arr_extra: "list[tuple[str, float, float]] | None" = None
+    arr_rwy: "RunwayEnd | None" = None
+    arr_keep = len(route_pts)  # route_pts[arr_keep:] is the heuristic's
+    if star_proc is None and approach_proc is None and len(route_pts) >= 2:
+        arr_rwy = runway_end(ades, terminal.get("arr_rwy"))
+        # Same idea as the departure side, mirrored: drop any trailing point
+        # that IS the destination aerodrome (the common "... DCT ADES"
+        # filing) and turn from the last one that isn't.
+        arr_idx = [
+            i
+            for i, p in enumerate(route_pts)
+            if ades_ll is None or _sq_dist(p[1:], ades_ll) > _COINCIDENT_SQ
+        ]
+        arr_prev = arr_last = arr_last_idx = None
+        if len(arr_idx) >= 2:
+            arr_prev = route_pts[arr_idx[-2]][1:]
+            arr_last_idx = arr_idx[-1]
+            arr_last = route_pts[arr_last_idx][1:]
+        elif len(arr_idx) == 1:
+            # Only one fix in the whole route isn't the destination itself.
+            # Use the point right before it as the "before" anchor; when it
+            # IS the route's very first fix (a plain "<fix> DCT ADES" filing
+            # with no departure-end fix of its own), fall back to the
+            # departure aerodrome itself — the aircraft was flying from there
+            # regardless of whether it is a named point on the route.
+            prior_idx = arr_idx[-1] - 1
+            arr_prev = route_pts[prior_idx][1:] if prior_idx >= 0 else adep_ll
+            arr_last_idx = arr_idx[-1]
+            arr_last = route_pts[arr_last_idx][1:]
+        if arr_prev is None or (
+            arr_last is not None and _sq_dist(arr_prev, arr_last) <= _COINCIDENT_SQ
+        ):
+            # No "before" point at all, or it's the departure aerodrome
+            # falling back onto itself (ADEP == ADES's one surviving fix) —
+            # either way there is no real inbound track to turn from.
+            arr_last = None
+        if arr_rwy is not None and arr_last is not None:
+            candidate = expand_runway_arrival_heuristic(
+                arr_rwy,
+                arr_prev,
+                arr_last,
+                _runway_heuristic_speed_kt(actype, "descent"),
+            )
+            if candidate is not None:
+                arr_extra, arr_keep = candidate, arr_last_idx + 1
+                arr_source = RUNWAY_HEURISTIC_SOURCE
+
+    if dep_cut >= arr_keep:
+        # Degenerate overlap (a route short enough that both heuristics would
+        # claim the same fix) — give way to neither rather than smooth an
+        # empty or inverted core route.
+        dep_extra = arr_extra = None
+        dep_cut, arr_keep = 0, len(route_pts)
+        dep_source = "PUBLISHED_SID" if sid_proc is not None else "DCT"
+        arr_source = (
+            "PUBLISHED_APPROACH" if approach_proc is not None else
+            "PUBLISHED_STAR" if star_proc is not None else
+            "DCT"
+        )
+
+    # Anchors from the FULL route — unchanged from before this feature —
+    # since they also carry the "route doesn't reach ADES" warning check,
+    # which must still compare against the route as actually filed, not the
+    # slice a heuristic is about to take over.
     head, tail = _aerodrome_anchors(adep, ades, route_pts, terminal, warnings)
+    core_route = route_pts[dep_cut:arr_keep]
+    core_head = None if dep_extra is not None else head
+    core_tail = None if arr_extra is not None else tail
     path_pts, fix_distance_nm = _smooth_turns(
-        route_pts,
-        req.actype.strip().upper() or _DEFAULT_ACTYPE,
+        core_route,
+        actype,
         float(req.rfl) * 100.0,
         [(sid_proc, "climb"), (star_proc, "descent"), (approach_proc, "descent")],
-        head=head,
-        tail=tail,
+        head=core_head,
+        tail=core_tail,
     )
+    if dep_extra is not None:
+        path_pts = [*dep_extra, *path_pts]
+    if arr_extra is not None:
+        assert arr_rwy is not None
+        path_pts = [*path_pts, *arr_extra, ("", arr_rwy.lat, arr_rwy.lon)]
+
+    terminal["dep_trajectory_source"] = dep_source
+    terminal["arr_trajectory_source"] = arr_source
+
     return (
         route_pts,
         _route_constraints(fix_distance_nm, sid_proc, star_proc, approach_proc),
@@ -1738,20 +1842,20 @@ def _connect_route_to_terminal(
     so flying to it and then out to the entry doubles the aircraft back. This
     finds the join the AIP intends:
 
-    * **a route fix that IS a procedure entry** — e.g. SAKUB, which airway W34
-      passes through on the way to the RAN VOR: end the route there (the last
-      one, if several); otherwise
+    * **a route fix that IS a procedure entry** — e.g. THAZI (VYMD THAZ1W),
+      which airway V12 passes through on the way to the MIA VOR: end the
+      route there (the last one, if several); otherwise
     * **no route fix is an entry** — among the entries lying on the ARRIVAL side
       of the field, pick the one nearest the field, then end the route at the
       route fix nearest THAT entry, so the last enroute fix is the one that best
-      leads in (e.g. Y94's DOXAS → TAWIT).
+      leads in (e.g. W14's BITAL → MAHAR for VYBG R36).
 
     The arrival-side filter matters: an entry on the far side of the aerodrome
     sends the aircraft past the field and back — the very doubling-back this
-    trim exists to remove. VTSF RW01 reached on 060° used to pick CHARY (165°
-    out, south of the field) purely because it sat nearest the VOR, flying the
-    aircraft over the field and round; TAWIT (025°, the same side the route
-    arrives from) is the join the AIP intends. Both runways now resolve to it.
+    trim exists to remove. VYSW R29 reached from the east on W22 would pick
+    WADIE (~100° off the arrival bearing, round the far side of the field)
+    purely because it sits nearest the STW VOR; AKYAB (on the side the route
+    arrives from) is the join the AIP intends.
 
     Exception: if the terminal VOR is itself a fly-over waypoint of the
     procedure, it must be crossed — leave the route as is.
@@ -1765,7 +1869,8 @@ def _connect_route_to_terminal(
     kind = "STAR" if proc_type is ProcedureType.STAR else "approach"
     entry_idents = {e[1] for e in entries}
     vor = route_pts[-1]
-    # The VOR IS the procedure's entry (e.g. VTCC's CMA) — enter there, no trim.
+    # The VOR IS the procedure's entry (e.g. STW for VYSW D11) — enter there,
+    # no trim.
     if vor[0].upper() in entry_idents:
         return route_pts, next(e[0] for e in entries if e[1] == vor[0].upper())
     if _is_overfly_in_procedure(nav, ades, name, proc_type, runway, vor[0]):
@@ -1850,8 +1955,8 @@ def _splice_terminal_procedures(
     nav = _navdata()
     # The route's own fixes pick the right terminal-procedure transition when
     # several exist (a SID leaves on the route's first fix, a STAR is entered
-    # on its last) — so NAKO1B on "… BLAFF DCT NAKON" uses the BLAFF transition
-    # instead of the alphabetically-first ALBOS.
+    # on its last) — so OROM1A on "… W13 NPT DCT OROMO" uses the NPT transition
+    # instead of the alphabetically-first HHO.
     sid_proc = (
         _resolve_proc_for_splice(
             nav, adep, sid_name, ProcedureType.SID,
@@ -1861,7 +1966,7 @@ def _splice_terminal_procedures(
         if sid_name
         else None
     )
-    # A route filed to the destination's terminal VOR (RAN, NKS, LPN, BKK) ends
+    # A route filed to the destination's terminal VOR (MIA, NPT, STW, …) ends
     # PAST the first terminal procedure's entry, so flying to it doubles the
     # aircraft back. Trim it to the fix that leads in and lock that entry's
     # transition — for the STAR if one is flown (it bridges the enroute route to
@@ -1893,7 +1998,7 @@ def _splice_terminal_procedures(
         if star_name
         else None
     )
-    # The approach's IAF connects to the STAR's terminal fix (e.g. KALIM), so
+    # The approach's IAF connects to the STAR's terminal fix (e.g. PAKSU), so
     # score its transition against a context ending at the STAR's last fix;
     # fall back to the enroute end when there's no STAR.
     approach_ctx_pts = list(route_pts)
@@ -1922,13 +2027,13 @@ def _splice_terminal_procedures(
 
     enroute = [RouteWaypoint(ident=i, lat=la, lon=lo) for i, la, lo in route_pts]
 
-    # An arrival off an OPEN STAR (last leg a VM — "fly heading 015, expect
+    # An arrival off an OPEN STAR (last leg a VM — "fly heading <hdg>, expect
     # vectors") can be flown two ways, and WHICH ONE is a controller decision,
     # not a property of the procedure:
     #
     #   no conflict  ->  stay on the published path: the STAR runs to its last
-    #                    fix, then the approach from its IAF (ATKIN, LETMA,
-    #                    LAVOG, LOTMU, FAF, MAPt). This is the default.
+    #                    fix, then the approach from its IAF (IAF, IF, FAF,
+    #                    MAPt). This is the default.
     #   conflict     ->  leave the procedure at the STAR's end, hold the
     #                    published heading until the spacing is there, then turn
     #                    to intercept the extended centreline (TURN, INTC, …).
@@ -2014,9 +2119,9 @@ def _splice_terminal_procedures(
         "star_open": bool(star_proc is not None and star_proc.is_open),
         "vector_heading_deg": _vector_heading_true(ades, star_proc, arr_rwy),
         # ...and the same heading AS THE CHART PRINTS IT. The geometry is
-        # solved in true, but "maintain heading 015" is what a controller
+        # solved in true, but "maintain heading 034" is what a controller
         # transmits and what the AIP note says; quoting the true course back at
-        # them (014 here, after 0°42'W variation) is simply the wrong number
+        # them (033 at VYYY, after 1°W variation) is simply the wrong number
         # for an instruction.
         "vector_heading_mag_deg": _vector_heading_magnetic(star_proc),
         "vectored": vector_join is not None,
@@ -2040,17 +2145,20 @@ def _arrival_clearance(
 ) -> str | None:
     """The ATC clearance this arrival is flown under, as phraseology.
 
-    The VTBS STAR charts print, against the vector hand-over fixes:
+    An open-STAR chart prints, against its vector hand-over fixes:
 
-        "After ESGEN, ATKIN maintain heading 015 or as directed by ATC.
+        "After <fix> maintain heading <hdg> or as directed by ATC.
          Do not proceed Instrument Approach Procedure without ATC clearance."
 
     So an open STAR NEVER continues into the approach on its own. Both flows
     are therefore clearances and both are recorded — the difference is which
     one was issued:
 
-        vectored   AFTER ATKIN MAINTAIN HEADING 015, VECTORS R19
-        published  DIRECT LETMA, CLEARED R19 APPROACH
+        vectored   AFTER YS501 MAINTAIN HEADING 034, VECTORS R21-V
+        published  DIRECT YS720, CLEARED R21-V APPROACH
+
+    (fixes from the synthetic open-STAR test fixture — every published VY
+    STAR is closed).
 
     A closed STAR connects to the IAF by design, so it carries the approach
     clearance alone. ``None`` when there is no approach to be cleared for.
@@ -2196,8 +2304,8 @@ def get_procedure(
     Set ``auto=false`` to get a 409 listing the choices instead.
 
     ``route`` (the enroute Item-15 string) lets the resolver pick the
-    transition the flight actually flies — STAR NAKO1B with ``… BLAFF DCT
-    NAKON`` resolves to the BLAFF transition, not the first-listed ALBOS — so
+    transition the flight actually flies — STAR OROM1A with ``… W13 NPT DCT
+    OROMO`` resolves to the NPT transition, not the first-listed HHO — so
     the map preview matches what generation will splice.
     """
     response.headers["Cache-Control"] = _STATIC_CACHE
@@ -2305,10 +2413,10 @@ def approach_entries(
     """Entry fixes (IAF transitions) of a PBN approach, and which of them the
     given route + STAR actually flies through.
 
-    A PBN approach can be joined at any of its IAF transitions — e.g. VTSP
-    ``R27-Y`` at BARON, PACUS or STONE. When an arriving STAR passes more than
-    one of those entry fixes (SUSI1D flies ``… STONE, CIDER, BARON, CI27``, so
-    both STONE and BARON are options), the generator lets the pilot pick where
+    A PBN approach can be joined at any of its IAF transitions — e.g. VYYY
+    ``R21`` at BAGOO, DANSO or GONAS. When an arriving STAR passes more than
+    one of those entry fixes (a STAR flying ``… BAGOO, PAKSU`` passes the BAGOO
+    entry and then PAKSU on it), the generator lets the pilot pick where
     to join instead of auto-scoring. This tells it which entries lie on the
     route, in the approach's own order, so the dropdown offers only real
     choices.
@@ -2368,7 +2476,7 @@ def _generate_one(req: GenerateRequest) -> dict[str, object]:
     /api/generate endpoint and the bulk /api/generate_batch loop."""
     warnings: list[str] = []
 
-    # --- Validate the city pair (any Thai aerodrome pair is allowed) ---
+    # --- Validate the city pair (any aerodrome pair is allowed) ---
     adep = req.adep.strip().upper()
     ades = req.ades.strip().upper()
     actype = req.actype.strip().upper() or _DEFAULT_ACTYPE
@@ -2401,55 +2509,45 @@ def _generate_one(req: GenerateRequest) -> dict[str, object]:
             400, f"ADEP and ADES must differ (both {adep})."
         )
 
-    if req.source == "csv":
-        # Legacy shortcut: "follow the full published Y8 airway" from the
-        # AIP cache. Only meaningful for the VTBS<->VTSP corridor; any
-        # other pair should use FPL mode (type the route explicitly).
-        if {adep, ades} != {"VTBS", "VTSP"}:
-            raise HTTPException(
-                400,
-                "CSV (full-Y8) mode only covers VTBS <-> VTSP. "
-                "Use route mode to type an Item-15 route for other pairs.",
-            )
-        route_pts = _airway_route_points("Y8", reverse=adep == "VTSP")
-    elif req.source == "fpl":
-        # Expand `<fix> <airway> <fix>` spans before parsing so the
-        # trajectory follows the airway. Works for ALL 134 AIP airways.
-        idents = parse_route(_expand_airways(req.route))
-        if not idents:
-            raise HTTPException(400, "No waypoints parsed from route string.")
-        index = _airway_waypoint_index()
-        route_pts = []
-        missing = []
-        for ident in idents:
-            if ident in index:
-                lat, lon = index[ident]
-                route_pts.append((ident, lat, lon))
-            elif (ad_ll := _airport_ll(ident)) is not None:
-                # An aerodrome named IN the route ("VYMD DCT VYTL" — a short
-                # domestic hop filed with no en-route fix at all). It is not a
-                # significant point, so the fix index has never held it, but the
-                # AIP knows where it is; dropping it left such a route with
-                # nothing to fly.
-                route_pts.append((ident, ad_ll[0], ad_ll[1]))
-            else:
-                missing.append(ident)
-        if missing:
-            warnings.append(
-                f"Not found in AIP navdata (skipped): {', '.join(missing)}"
-            )
-        # Orient the route by ADEP so the file/animation follow the city
-        # pair: the path must start at the fix nearest ADEP. Only possible
-        # when the departure aerodrome's coordinates are in the AIP; if
-        # not (unknown/foreign field), keep the route as typed.
-        adep_ll = _airport_ll(adep)
-        if adep_ll is not None and len(route_pts) >= 2:
-            d0 = _sq_dist(route_pts[0][1:], adep_ll)
-            dN = _sq_dist(route_pts[-1][1:], adep_ll)
-            if dN < d0:
-                route_pts.reverse()
-    else:
-        raise HTTPException(400, f"Unknown source {req.source!r}")
+    if req.source != "fpl":
+        raise HTTPException(
+            400, f"Unknown source {req.source!r}: only \"fpl\" is supported."
+        )
+    # Expand `<fix> <airway> <fix>` spans before parsing so the
+    # trajectory follows the airway. Works for every AIP airway.
+    idents = parse_route(_expand_airways(req.route))
+    if not idents:
+        raise HTTPException(400, "No waypoints parsed from route string.")
+    index = _airway_waypoint_index()
+    route_pts = []
+    missing = []
+    for ident in idents:
+        if ident in index:
+            lat, lon = index[ident]
+            route_pts.append((ident, lat, lon))
+        elif (ad_ll := _airport_ll(ident)) is not None:
+            # An aerodrome named IN the route ("VYMD DCT VYTL" — a short
+            # domestic hop filed with no en-route fix at all). It is not a
+            # significant point, so the fix index has never held it, but the
+            # AIP knows where it is; dropping it left such a route with
+            # nothing to fly.
+            route_pts.append((ident, ad_ll[0], ad_ll[1]))
+        else:
+            missing.append(ident)
+    if missing:
+        warnings.append(
+            f"Not found in AIP navdata (skipped): {', '.join(missing)}"
+        )
+    # Orient the route by ADEP so the file/animation follow the city
+    # pair: the path must start at the fix nearest ADEP. Only possible
+    # when the departure aerodrome's coordinates are in the AIP; if
+    # not (unknown/foreign field), keep the route as typed.
+    adep_ll = _airport_ll(adep)
+    if adep_ll is not None and len(route_pts) >= 2:
+        d0 = _sq_dist(route_pts[0][1:], adep_ll)
+        dN = _sq_dist(route_pts[-1][1:], adep_ll)
+        if dN < d0:
+            route_pts.reverse()
 
     # Phase 4: splice the SID (at ADEP) and STAR (at ADES) around the now
     # ADEP-oriented enroute fixes, before the < 2 check — a thin route can
@@ -2468,12 +2566,9 @@ def _generate_one(req: GenerateRequest) -> dict[str, object]:
 
     # Construct the canonical FlightPlan dataclass — Phase 2 spec says
     # RFL must be read from FlightPlan, not threaded as a bare int. The
-    # ``route`` field captures the raw Item-15 string (or a synthetic one
-    # in CSV mode) so the FPL is round-trippable.
-    if req.source == "csv":
-        fpl_route_str = "DCT " + " ".join(p[0] for p in route_pts) + " DCT"
-    else:
-        fpl_route_str = req.route
+    # ``route`` field captures the raw Item-15 string so the FPL is
+    # round-trippable.
+    fpl_route_str = req.route
     try:
         fpl = FlightPlan(
             callsign=req.callsign or "FLT",
@@ -2656,19 +2751,19 @@ def _generate_one(req: GenerateRequest) -> dict[str, object]:
         gdf["epoch_ts"].iloc[-1] - gdf["epoch_ts"].iloc[0]
     ).total_seconds() / 60.0
 
-    # Flight-time validation — real CAT62 sample where we have one, else an
-    # estimate derived from THIS airframe's Thai APM performance. The
+    # Flight-time validation — graded against an estimate derived from THIS
+    # airframe's Thai APM performance (there is no measured city-pair table). The
     # estimate needs the aircraft type and the level actually cruised: it
     # used to be a distance-only curve measured on a B738 to RFL350, which
     # graded every type against a 737 and failed turboprops that were
     # simulated correctly. A type with no Thai APM data of its own yields no
-    # estimate at all (validate() returns None) rather than borrowing the
+    # estimate at all (the check returns None) rather than borrowing the
     # B738's numbers.
     _peak_alt_ft = max(
         (a for a in gdf["altitude_ft"].tolist() if a is not None),
         default=None,
     )
-    _val = _CAT62_REF.validate(
+    _val = validate_against_estimate(
         adep,
         ades,
         elapsed_min,
@@ -2785,16 +2880,8 @@ def _generate_one(req: GenerateRequest) -> dict[str, object]:
         },
     }
 
-    # ROUTE header carries the raw Item-15 string for fpl/build mode; in
-    # CSV mode the route is the full Y8, so render it as "BKK Y8 PUT"
-    # (or its reverse) for consistency with the live preview.
-    if req.source == "csv":
-        seq = _airway_sequence("Y8")
-        route_for_header = (
-            f"{seq[-1]} Y8 {seq[0]}" if adep == "VTSP" else f"{seq[0]} Y8 {seq[-1]}"
-        )
-    else:
-        route_for_header = req.route
+    # ROUTE header carries the raw Item-15 string.
+    route_for_header = req.route
 
     # Route LineString prepended to the GeoJSON so it SHOWS the selected
     # route (not only the sampled points) and re-imports as an editable plan:
@@ -2864,6 +2951,17 @@ def _generate_one(req: GenerateRequest) -> dict[str, object]:
             # vectored, which gates the "maintain heading" resolution.
             "sid": terminal.get("sid"),
             "dep_rwy": terminal.get("dep_rwy"),
+            # How the departure/arrival ground track was actually built:
+            # PUBLISHED_SID/PUBLISHED_STAR/PUBLISHED_APPROACH (a real coded
+            # procedure was flown), RUNWAY_HEURISTIC (no procedure, but a
+            # known runway — a synthetic plausible turn, see
+            # trajectory_sim.navdata.expand_runway_departure_heuristic /
+            # expand_runway_arrival_heuristic), or DCT (no runway either —
+            # a straight line, same as before this existed). Never confused
+            # with `sid`/`star`/`approach` above, which stay unset for a
+            # heuristic track — it is not a published procedure.
+            "dep_trajectory_source": terminal.get("dep_trajectory_source"),
+            "arr_trajectory_source": terminal.get("arr_trajectory_source"),
             "star": terminal.get("star"),
             "star_entry": terminal.get("star_entry"),
             "approach": terminal.get("approach"),
@@ -3695,7 +3793,7 @@ def _combined_csv_from_files(flight_keys: list[str]) -> bytes:
         if path is None:
             continue
         # Plain-ASCII divider — em-dashes mojibake in Excel/Notepad under
-        # the cp874 Thai-Windows default (same reason write_csv avoids them).
+        # legacy Windows code pages (same reason write_csv avoids them).
         header = (
             "=" * 64
             + f"\nFLIGHT {n} of {total}  -  {fk}\n"

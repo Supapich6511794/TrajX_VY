@@ -5,8 +5,8 @@ aircraft is ALREADY at the hand-over fix, at whatever altitude and speed it
 reached there; the instruction can only change what happens next. Regenerating
 the flight from EOBT with a longer route gets this wrong in a way that matters:
 
-    extend = 0    ATKIN at 6 630 ft
-    extend = 12   ATKIN at 9 632 ft     <- the same fix, 3 000 ft higher
+    extend = 0    hand-over fix at 6 630 ft
+    extend = 12   hand-over fix at 9 632 ft     <- the same fix, 3 000 ft higher
 
 The re-plan pushes top-of-descent back, so the extra track ends up flown in the
 CRUISE band at ~450 kt instead of in the terminal area at ~200 kt — and the
@@ -98,7 +98,7 @@ def splice_tactical_extension(
             vertical profile are discarded, because they were re-planned from
             EOBT and so disagree with where the aircraft actually is.
         handover_lat, handover_lon: The fix the vectoring starts at (the STAR's
-            last fix — ESGEN, ATKIN, …).
+            last fix).
 
     Returns:
         A new sample list: the baseline up to the hand-over, then the extended

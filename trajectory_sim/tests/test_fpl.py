@@ -57,8 +57,8 @@ def _valid_kwargs(**overrides: object) -> dict[str, object]:
     base: dict[str, object] = dict(
         callsign="THA204",
         aircraft_type="B738",
-        adep="VTBS",
-        ades="VTSP",
+        adep="VYYY",
+        ades="VYMD",
         eobt=datetime(2026, 1, 3, 8, 15, tzinfo=timezone.utc),
         rfl=330,
         route="DCT KARBI DCT VIBUN DCT",
@@ -79,10 +79,10 @@ def test_flightplan_rejects_naive_eobt() -> None:
 
 
 def test_flightplan_rejects_non_utc_eobt() -> None:
-    bangkok = timezone(timedelta(hours=7))
+    yangon = timezone(timedelta(hours=6, minutes=30))
     with pytest.raises(ValueError, match="UTC"):
         FlightPlan(
-            **_valid_kwargs(eobt=datetime(2026, 1, 3, 15, 15, tzinfo=bangkok))  # type: ignore[arg-type]
+            **_valid_kwargs(eobt=datetime(2026, 1, 3, 15, 15, tzinfo=yangon))  # type: ignore[arg-type]
         )
 
 

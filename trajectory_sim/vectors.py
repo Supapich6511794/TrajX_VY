@@ -2,14 +2,16 @@
 
 A closed arrival is fully coded: the STAR delivers the aircraft to the
 approach's IAF and the approach flies it to the runway. An **open** STAR stops
-short. Its last leg is a VM ("fly heading 015, expect vectors"), and from there
-the controller — not the chart — puts the aircraft on final. Every open STAR in
-the Thai data is at VTBS (see :attr:`navdata.Procedure.vector_termination`).
+short. Its last leg is a VM ("fly heading 034, expect vectors"), and from there
+the controller — not the chart — puts the aircraft on final. Every published
+VY STAR is closed, so this is dormant on the current data (see
+:attr:`navdata.Procedure.vector_termination`); it runs whenever an open STAR
+is loaded.
 
 This module builds that missing piece: the downwind the aircraft holds, the
 turn onto base, and the point where it joins the extended runway centreline.
 
-    STAR ends (ESGEN, "fly heading 015")
+    STAR ends (hand-over fix, "fly heading 034")
         │
         │  downwind — the "maintain heading" leg. Lengthening it is how
         │  spacing is bought: 1 NM more downwind also moves the intercept
@@ -155,9 +157,9 @@ def approach_from(
     A vectored arrival does not fly the approach's IAF entry — Doc 4444
     §8.9.4.1 has vectoring terminate when the aircraft turns onto the final
     approach track. But it does not follow that everything before the FAF is
-    skipped: a straight-in procedure like VTBS R19 lays LETMA, LAVOG, LOTMU and
-    the FAF along one centreline, so an aircraft joining at 12 NM physically
-    overflies LOTMU at 10 NM. Dropping it would drop its published crossing
+    skipped: a straight-in procedure can lay its IAF (20 NM), two step-down
+    fixes (15 and 10 NM) and the FAF along one centreline, so an aircraft
+    joining at 12 NM physically overflies the 10 NM fix. Dropping it would drop its published crossing
     minimum (2 000 ft, there for obstacle clearance) from a leg still being
     flown.
 

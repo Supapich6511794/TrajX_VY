@@ -17,9 +17,9 @@ from trajectory_sim.performance import (
 )
 
 _WAYPOINTS = [
-    (13.6811, 100.7470),  # near VTBS
-    (11.0, 100.0),
-    (8.1132, 98.3170),    # near VTSP
+    (16.9073, 96.1332),   # near VYYY
+    (19.3, 96.1),
+    (21.7011, 95.9775),   # near VYMD
 ]
 _EOBT = datetime(2026, 1, 3, 8, 15, tzinfo=timezone.utc)
 
@@ -31,41 +31,42 @@ def test_roc_rod_within_brief_envelope() -> None:
 
 
 def test_field_elevation_known_and_default() -> None:
-    assert field_elevation_ft("VTBS") == 8.0    # published AIP elevation
-    assert field_elevation_ft("vtsp") == 84.0   # case-insensitive
+    assert field_elevation_ft("VYYY") == 110.0  # published AIP elevation
+    assert field_elevation_ft("vymd") == 301.0  # case-insensitive
     assert field_elevation_ft("ZZZZ") == 0.0
 
 
 def test_runway_threshold_elevation_known_and_fallback() -> None:
     # AIP AD 2 threshold elevations, keyed (ICAO, runway).
-    register_runway_elevations({("VTSP", "09"): 22.0, ("VTBD", "RW21L"): 6.4})
+    register_runway_elevations({("VYYY", "21"): 43.0, ("VYMD", "RW17L"): 286.4})
     # "RW" prefix stripped, case-insensitive on both ICAO and side.
-    assert runway_threshold_elevation_ft("VTSP", "RW09") == 22.0
-    assert runway_threshold_elevation_ft("vtbd", "21l") == 6.4
+    assert runway_threshold_elevation_ft("VYYY", "RW21") == 43.0
+    assert runway_threshold_elevation_ft("vymd", "17l") == 286.4
     # Auto (no runway) or an unrecorded runway falls back to field elevation.
-    assert runway_threshold_elevation_ft("VTSP", None) == field_elevation_ft("VTSP")
-    assert runway_threshold_elevation_ft("VTSP", "RW99") == field_elevation_ft("VTSP")
+    assert runway_threshold_elevation_ft("VYYY", None) == field_elevation_ft("VYYY")
+    assert runway_threshold_elevation_ft("VYYY", "RW99") == field_elevation_ft("VYYY")
 
 
 def test_profile_anchored_to_runway_thresholds() -> None:
     # Phase 2: the altitude profile must start at the departure runway
     # threshold and end at the arrival runway threshold (AIP AD 2) — e.g.
-    # VTSP RW09 (22 ft) → VTBD RW21L (6.4 ft).
-    register_runway_elevations({("VTSP", "09"): 22.0, ("VTBD", "21L"): 6.4})
+    # VYYY RW21 (43 ft) → VYMD RW17L (286.4 ft; a made-up suffix so the
+    # value cannot collide with anything registered from the real data).
+    register_runway_elevations({("VYYY", "21"): 43.0, ("VYMD", "17L"): 286.4})
     gdf = build_trajectory_gdf(
         waypoint_sequence=_WAYPOINTS,
         eobt=_EOBT,
-        callsign="THA9",
+        callsign="UBA9",
         aircraft_type="B738",
-        adep="VTSP",
-        ades="VTBD",
+        adep="VYYY",
+        ades="VYMD",
         rfl=330,
-        dep_rwy="RW09",
-        arr_rwy="RW21L",
+        dep_rwy="RW21",
+        arr_rwy="RW17L",
     )
     alts = gdf["altitude_ft"].tolist()
-    assert alts[0] == 22.0    # climb starts at the RW09 threshold
-    assert alts[-1] == 6.4    # descent ends at the RW21L threshold
+    assert alts[0] == 43.0     # climb starts at the RW21 threshold
+    assert alts[-1] == 286.4   # descent ends at the RW17L threshold
 
 
 def test_profile_phases_and_continuity() -> None:
@@ -104,10 +105,10 @@ def test_build_with_rfl_populates_altitude_and_phases() -> None:
     gdf = build_trajectory_gdf(
         waypoint_sequence=_WAYPOINTS,
         eobt=_EOBT,
-        callsign="THA204",
+        callsign="UBA204",
         aircraft_type="B738",
-        adep="VTBS",
-        ades="VTSP",
+        adep="VYYY",
+        ades="VYMD",
         rfl=330,
     )
     assert gdf["altitude_ft"].notna().all()
@@ -160,10 +161,10 @@ def test_merged_3d_profile_continuous_and_monotonic() -> None:
     gdf = build_trajectory_gdf(
         waypoint_sequence=_WAYPOINTS,
         eobt=_EOBT,
-        callsign="THA204",
+        callsign="UBA204",
         aircraft_type="B738",
-        adep="VTBS",
-        ades="VTSP",
+        adep="VYYY",
+        ades="VYMD",
         rfl=350,
     )
 
@@ -215,8 +216,8 @@ def test_merged_3d_profile_continuous_and_monotonic() -> None:
     assert altitudes[tod_i] - altitudes[tod_i + 1] <= max_step_ft + 1e-6
 
     # 8. Endpoints are sane (close to field elevation).
-    assert altitudes[0] <= 12.0 + 1e-6        # near VTBS (8 ft)
-    assert altitudes[-1] <= 88.0 + 1e-6       # near VTSP (84 ft)
+    assert altitudes[0] <= 114.0 + 1e-6       # near VYYY (110 ft)
+    assert altitudes[-1] <= 305.0 + 1e-6      # near VYMD (301 ft)
 
 
 def test_aircraft_speeds_known_and_fallback() -> None:
@@ -244,7 +245,7 @@ def test_rfl_clamped_to_reachable_ceiling() -> None:
     # An RFL above what the airframe can actually reach is clipped instead
     # of producing a fantasy cruise altitude. With the Thai APM dataset the
     # binding ceiling is the top of the OBSERVED climb table (B738 tops at
-    # FL380 in Bangkok ops), which sits at or below the FL410 service
+    # FL380 in the Thai APM data), which sits at or below the FL410 service
     # ceiling — the "cap at observed top" project decision.
     p = VerticalProfile.build(
         total_time_s=4 * 3600.0,
@@ -287,10 +288,10 @@ def test_cruise_fl_exactly_matches_fpl_request() -> None:
     from datetime import datetime, timezone
 
     fpl = FlightPlan(
-        callsign="THA204",
+        callsign="UBA204",
         aircraft_type="B738",
-        adep="VTBS",
-        ades="VTSP",
+        adep="VYYY",
+        ades="VYMD",
         eobt=datetime(2026, 1, 3, 8, 15, tzinfo=timezone.utc),
         rfl=350,  # FL350 is well below the B738 ceiling
         route="DCT VANKO DCT",

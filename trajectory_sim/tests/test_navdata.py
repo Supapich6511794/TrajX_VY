@@ -15,7 +15,7 @@ from trajectory_sim.navdata import NavData, WaypointNotFoundError
 
 @pytest.fixture
 def fake_waypoints_gdf() -> gpd.GeoDataFrame:
-    """Tiny in-memory waypoints layer (3 fixes near Thailand)."""
+    """Tiny in-memory waypoints layer (3 synthetic fixes)."""
     rows = [
         # shapely Point takes (x, y) = (lon, lat)
         {"ident": "KARBI", "name": "KARBI", "type": "ENRT",

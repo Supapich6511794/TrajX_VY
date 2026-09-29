@@ -6,7 +6,7 @@ user's locale, so 13:05 is shown as "01:05 PM". The value that travels is the
 and the PDR crossing times in the browser — has to read it as UTC.
 
 A single local-time interpretation anywhere shifts every emitted timestamp by
-the machine's offset (+07:00 in Thailand), which makes an early-morning EOBT
+the machine's offset (+06:30 in Myanmar), which makes an early-morning EOBT
 behave like the previous evening. These pin both ends:
 
   * ``parse_eobt`` reads the string as UTC, naive or with a trailing Z;

@@ -6,7 +6,7 @@ dest, ias_dap``) and reduces each flight to the two figures the acceptance
 criteria compare against:
 
   * **airborne time** — span of the track (last − first ``time_of_track``).
-    ``time_of_track`` is Thai local (UTC+7), but the offset cancels in the
+    ``time_of_track`` is Myanmar local (UTC+6:30), but the offset cancels in the
     difference, so no timezone conversion is needed.
   * **cruise / top-of-climb altitude** — the dominant cruise level, taken as
     the modal flight level of the upper part of the track. Real climbs step
@@ -38,8 +38,9 @@ _TIME_FMT = "%Y-%m-%d %H:%M:%S"
 _CRUISE_BAND_FRAC = 0.6
 #: Bin width (feet) for the cruise-level mode — 500 ft absorbs Mode-C noise.
 _CRUISE_BIN_FT = 500.0
-#: CAT062 `time_of_track` is Thai local (UTC+7); subtract this to get UTC.
-_THAI_UTC_OFFSET_H = 7
+#: CAT062 `time_of_track` is Myanmar local time (MMT, UTC+6:30); subtract this
+#: to get UTC.
+_LOCAL_UTC_OFFSET = dt.timedelta(hours=6, minutes=30)
 
 
 @dataclass(frozen=True)
@@ -102,7 +103,7 @@ def load_track_points(
 
     Returns:
         ``{flight_key: RawFlight}`` with points sorted by time. Times are
-        converted from Thai local (UTC+7) to UTC.
+        converted from Myanmar local (UTC+6:30) to UTC.
     """
     want = (
         {frozenset((a.upper(), b.upper())) for a, b in pairs}
@@ -131,7 +132,7 @@ def load_track_points(
             except (ValueError, KeyError, TypeError):
                 ias_kt = None
             epoch_utc = (
-                local - dt.timedelta(hours=_THAI_UTC_OFFSET_H)
+                local - _LOCAL_UTC_OFFSET
             ).replace(tzinfo=dt.timezone.utc)
             f = flights.get(fk)
             if f is None:

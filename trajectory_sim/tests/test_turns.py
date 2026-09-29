@@ -27,10 +27,10 @@ from trajectory_sim.turns import (
     turn_radius_nm,
 )
 
-# A corner near Bangkok: fly north, turn 90° right at the fix, fly east.
-_PREV = (13.70, 100.60)
-_FIX = (13.90, 100.60)
-_NEXT = (13.90, 100.90)
+# A corner near Yangon: fly north, turn 90° right at the fix, fly east.
+_PREV = (16.90, 96.00)
+_FIX = (17.10, 96.00)
+_NEXT = (17.10, 96.30)
 
 
 def _track(a: tuple[float, float], b: tuple[float, float]) -> float:
@@ -241,8 +241,8 @@ def test_capture_tightens_rather_than_giving_up_on_a_close_target() -> None:
     """A fix nearer than the turn radius falls inside the circle the aircraft
     would fly: no tangent to it exists, so the turn could never roll out onto it.
     Tighten the turn until it can (an FMS banks harder) — giving up would leave
-    exactly the sharp corner the arc is here to remove. VTSP's ANPU1D turns 94°
-    at BARON onto a fix 1.7 NM away, and used to do it as an instant pivot."""
+    exactly the sharp corner the arc is here to remove. A STAR turning 94° at a
+    fix onto another 1.7 NM away used to do it as an instant pivot."""
     inbound = _track(_PREV, _FIX)
     close = project_point(*_FIX, 90.0, 0.5)  # 0.5 NM away, radius asked for 5 NM
     arc = turn_arc(*_FIX, inbound, *close, "R", radius_nm=5.0)

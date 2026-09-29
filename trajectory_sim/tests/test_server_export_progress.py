@@ -38,22 +38,22 @@ def seeded():
     """Two cached exports standing in for generated flights."""
     for key in _KEYS:
         gdf = build_trajectory_gdf(
-            waypoint_sequence=[(13.68, 100.75), (11.0, 100.0), (8.11, 98.32)],
+            waypoint_sequence=[(16.91, 96.13), (19.3, 96.1), (21.70, 95.98)],
             eobt=_EOBT,
             callsign=key[-1],
             aircraft_type="B738",
-            adep="VTBS",
-            ades="VTSP",
+            adep="VYYY",
+            ades="VYMD",
         )
         route_feature = {
             "type": "Feature",
-            "properties": {"feature_type": "route", "route": "BKK Y8 PUT"},
+            "properties": {"feature_type": "route", "route": "BGO W13 MIA"},
             "geometry": {
                 "type": "LineString",
-                "coordinates": [[100.75, 13.68], [98.32, 8.11]],
+                "coordinates": [[96.13, 16.91], [95.98, 21.70]],
             },
         }
-        srv._cache_export(key, gdf, "BKK Y8 PUT", 330.0, route_feature)
+        srv._cache_export(key, gdf, "BGO W13 MIA", 330.0, route_feature)
     yield
     for key in _KEYS:
         srv._EXPORT_CACHE.pop(key, None)

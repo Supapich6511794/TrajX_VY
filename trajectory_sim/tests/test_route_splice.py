@@ -40,14 +40,14 @@ from trajectory_sim.tests.test_navdata_procedures import (
 def navdata(monkeypatch: pytest.MonkeyPatch) -> NavData:
     """NavData backed by the shared in-memory SID/STAR fixtures.
 
-    SID BIDA2A (VTBS) exits enroute at DAGAB/TONUS; STAR SARI1A (VTBS)
-    enters enroute at LADAR. We reuse VTBS for both ends purely so the one
+    SID BIDA2A (VYYY) exits enroute at DAGAB/TONUS; STAR SARI1A (VYYY)
+    enters enroute at LADAR. We reuse VYYY for both ends purely so the one
     fixture serves the departure-SID and arrival-STAR roles in these tests.
     """
     import trajectory_sim.navdata as navdata_mod
 
-    sids = _proc_df(_SID_ROWS, "VTBS", "BIDA2A")
-    stars = _proc_df(_STAR_ROWS, "VTBS", "SARI1A")
+    sids = _proc_df(_SID_ROWS, "VYYY", "BIDA2A")
+    stars = _proc_df(_STAR_ROWS, "VYYY", "SARI1A")
 
     def fake_read_file(path: object, layer: str) -> pd.DataFrame:
         if layer == "waypoints":
@@ -68,13 +68,13 @@ def _wp(ident: str, lat: float = 0.0, lon: float = 0.0) -> RouteWaypoint:
 
 def _sid(navdata: NavData) -> Procedure:
     return navdata.lookup_procedure(
-        "VTBS", "BIDA2A", runway="RW19L", transition="DAGAB"
+        "VYYY", "BIDA2A", runway="RW19L", transition="DAGAB"
     )
 
 
 def _star(navdata: NavData) -> Procedure:
     return navdata.lookup_procedure(
-        "VTBS", "SARI1A", runway="RW01L", transition="LADAR"
+        "VYYY", "SARI1A", runway="RW01L", transition="LADAR"
     )
 
 
@@ -107,13 +107,13 @@ def test_known_city_pair_full_splice(navdata: NavData) -> None:
 
 def test_splice_preserves_procedure_coordinates(navdata: NavData) -> None:
     """The kept boundary fix carries the SID/enroute coordinates, in order."""
-    enroute = [_wp("DAGAB", 15.0, 101.8), _wp("LADAR", 15.5, 101.0)]
+    enroute = [_wp("DAGAB", 18.3, 97.2), _wp("LADAR", 18.8, 96.4)]
     spliced = splice_procedures(
         enroute, sid=_sid(navdata), star=_star(navdata)
     )
     by_ident = {w.ident: w for w in spliced}
     # SID's SAVUS keeps its procedure-leg coordinates.
-    assert (by_ident["SAVUS"].lat, by_ident["SAVUS"].lon) == (13.60, 100.70)
+    assert (by_ident["SAVUS"].lat, by_ident["SAVUS"].lon) == (16.90, 96.10)
     # Monotonic, no duplicate idents.
     idents = [w.ident for w in spliced]
     assert len(idents) == len(set(idents))
@@ -165,8 +165,9 @@ def test_star_multi_fix_overlap_collapses_no_backtrack(navdata: NavData) -> None
     """A route whose TAIL re-lists more than the STAR's single entry fix joins
     the STAR at the fix reached — no fly-out-and-back. Enroute ends LADAR, RECID
     and STAR SARI1A begins LADAR, RECID, FINAL; the shared LADAR, RECID run must
-    appear once, not twice (regression for VTSP→VTBD … HOTEL, SABAI, HOTEL,
-    SABAI, ARMUS with STAR SABA1B — a consecutive-dup collapse can't fix it)."""
+    appear once, not twice (regression for a route ending … HOTEL, SABAI,
+    HOTEL, SABAI, ARMUS into a STAR entered at SABAI — a consecutive-dup
+    collapse can't fix it)."""
     enroute = [_wp("MOTNA"), _wp("LADAR"), _wp("RECID")]
     spliced = splice_procedures(enroute, star=_star(navdata))
     idents = [w.ident for w in spliced]
@@ -237,20 +238,20 @@ def test_fixless_sid_legs_excluded_from_splice(navdata: NavData) -> None:
 def test_star_first_fix_collapses_even_with_hand_built_procedure() -> None:
     """Splice works on any Procedure, not only loader-produced ones."""
     star = Procedure(
-        airport="VTSP",
+        airport="VYSW",
         name="DCT1A",
         proc_type=ProcedureType.STAR,
-        runway="RW09",
+        runway="RW29",
         transition="ENTRY",
         legs=(
             ProcedureLeg(
                 seqno=10, path_terminator="IF", ident="ENTRY",
-                lat=8.0, lon=98.0,
+                lat=20.0, lon=93.0,
                 altitude=AltitudeConstraint(), speed=SpeedConstraint(),
             ),
             ProcedureLeg(
                 seqno=20, path_terminator="TF", ident="THRES",
-                lat=8.1, lon=98.1,
+                lat=20.1, lon=92.9,
                 altitude=AltitudeConstraint(), speed=SpeedConstraint(),
             ),
         ),

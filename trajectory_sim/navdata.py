@@ -18,7 +18,15 @@ from typing import Callable
 import geopandas as gpd
 import pandas as pd
 
-from .geodesy import haversine_distance, project_point
+from .geodesy import compute_bearing, haversine_distance, project_point
+from .turns import (
+    MIN_TURN_DEG,
+    bank_angle_deg,
+    signed_turn_deg,
+    turn_arc,
+    turn_radius_nm,
+    turn_to_heading,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +69,7 @@ class NavData:
                 accessor (the procedure legs carry their own coordinates).
             sid_source / star_source / approach_source: Explicit path to a
                 SID / STAR / PBN-approach source that GeoPandas can read (e.g.
-                the DFD ``sid_waypoint_thai.geojson`` / ``star_waypoint.geojson``
+                the DFD ``sid_waypoint.geojson`` / ``star_waypoint.geojson``
                 / ``pbn_waypoint.geojson``). When given, these override the
                 GeoPackage layers. When omitted, procedures are read from the
                 GeoPackage's ``sids``/``stars``/``approaches`` layers if a
@@ -93,7 +101,7 @@ class NavData:
         self._star_source = Path(star_source) if star_source else None
         self._approach_source = Path(approach_source) if approach_source else None
         # ILS / conventional approaches — merged INTO the approach layer as a
-        # fallback so aerodromes with no published PBN approach (e.g. VTUN) are
+        # fallback so aerodromes with no published PBN approach (e.g. VYKP) are
         # still landable. Same DFD waypoint schema as the PBN source.
         self._ils_source = Path(ils_source) if ils_source else None
         self._proc_loaded = False
@@ -191,8 +199,8 @@ class NavData:
         """Resolve a SID/STAR to ordered legs carrying alt/speed constraints.
 
         Args:
-            airport: Aerodrome ICAO, e.g. "VTBS".
-            name: Procedure identifier, e.g. "BIDA2A".
+            airport: Aerodrome ICAO, e.g. "VYYY".
+            name: Procedure identifier, e.g. "PARL1A".
             proc_type: Restrict to SID or STAR. If omitted and the name
                 exists as both, :class:`AmbiguousProcedureError` is raised.
             runway: Runway designator for the runway-transition legs, e.g.
@@ -259,7 +267,7 @@ class NavData:
                 # every PBN approach as-is and add only ILS procedures that PBN
                 # doesn't already publish (the ILS file also carries RNAV-named
                 # approaches, so a blind concat would duplicate/clash them). PBN
-                # wins; ILS fills the gaps (e.g. VTUN, which has no PBN approach).
+                # wins; ILS fills the gaps (e.g. VYKP, which has no PBN approach).
                 if (
                     proc_type is ProcedureType.APPROACH
                     and self._ils_source is not None
@@ -498,7 +506,7 @@ class RouteWaypoint:
     """One ordered point on an already-resolved route.
 
     Attributes:
-        ident: ICAO waypoint identifier, e.g. "MOTNA".
+        ident: ICAO waypoint identifier, e.g. "PARLA".
         lat: Latitude in decimal degrees, WGS-84.
         lon: Longitude in decimal degrees, WGS-84.
     """
@@ -540,8 +548,8 @@ def load_route_csv(
     Args:
         csv_path: Path to the airway-segment CSV.
         reverse: If True, return the route in reverse leg order. The CSV's
-            natural ``seqno`` order runs Bangkok -> Phuket; pass
-            ``reverse=True`` to fly the VTSP -> VTBS direction.
+            natural ``seqno`` order is the airway's published order; pass
+            ``reverse=True`` to fly it the other way.
 
     Returns:
         Ordered list of :class:`RouteWaypoint`. For N legs this yields the
@@ -566,7 +574,7 @@ def load_route_csv(
         raise ValueError(f"Route CSV {path} contains no rows")
 
     # Order the legs. seqno is the airway sequence number; sorting on it
-    # gives the canonical (Bangkok -> Phuket) leg order.
+    # gives the canonical (published) leg order.
     df = df.sort_values("seqno").reset_index(drop=True)
 
     route: list[RouteWaypoint] = []
@@ -615,9 +623,9 @@ def load_route_csv(
 # SID/STAR terminal procedures (ARINC 424 "DFD" schema)
 # ===========================================================================
 #
-# SUBTASK 5 — source schema. Coded terminal procedures are NOT in the CAAT
-# eAIP (it publishes them only as charts), so they come from the ARINC 424
-# navdata GeoPackage. We target the Navigraph "DFD" layout — the schema the
+# SUBTASK 5 — source schema. Coded terminal procedures are NOT in the
+# airways/waypoints AIP cache, so they come from ARINC 424 "DFD" layers
+# (for VY: converted from the AIXM 5.1.1 export). We target the Navigraph "DFD" layout — the schema the
 # repo's existing column names (waypoint_identifier / waypoint_latitude /
 # seqno) already follow — but every layer and column name is overridable via
 # :class:`SidStarSchema`, so pointing this at a differently-named GeoPackage
@@ -761,7 +769,7 @@ class ProcedureLeg:
         An "open" STAR ends its runway transition with a VM ("heading to a
         manual termination") — the arrival is handed to radar vectors there —
         and the DFD export codes that leg with the AERODROME as its waypoint
-        (VTBS LEBI1D: ``ENKAA -> VM VTBS``). Taken at face value the aircraft
+        (e.g. ``<fix> -> VM <aerodrome>``). Taken at face value the aircraft
         flies over the middle of the airport, then back out to the approach's
         IAF and round again. It is not a fix; it is the absence of one.
         """
@@ -796,11 +804,12 @@ class Procedure:
         Doc 4444 §8.9.3.5 calls that leg the start of the vectored initial and
         intermediate approach phases.
 
-        All 20 open STAR/runway groups in the Thai data are at VTBS: the
-        EAST/LEBI/NORT/TUMG/WILA arrivals, ending at ESGEN/ENKAA/ATKIN/BOGAS on
-        a published heading of 015° (landing south on 19/20) or 195° (landing
-        north on 01/02) — the downwind the aircraft holds until turned onto
-        final. Returns ``None`` for a closed procedure.
+        Every published VY (Myanmar) STAR is closed; the open case is kept
+        for data that has it (and is exercised by a synthetic VYYY fixture in
+        the tests: arrivals handed over on a published heading of 034° when
+        landing on 21, 214° when landing on 03 — the downwind the aircraft
+        holds until turned onto final). Returns ``None`` for a closed
+        procedure.
         """
         if not self.legs:
             return None
@@ -815,7 +824,7 @@ class Procedure:
 
     def last_fix(self) -> "RouteWaypoint | None":
         """The final flyable fix — where an open procedure's vector leg begins
-        (ESGEN, ENKAA, …), and the last fix of a closed one."""
+        (the hand-over fix), and the last fix of a closed one."""
         pts = self.waypoints()
         return pts[-1] if pts else None
 
@@ -918,8 +927,8 @@ def expand_sid_departure(
 ) -> "Procedure":
     """Give a SID's departure legs the ground track the AIP actually depicts.
 
-    The Thai DFD SID data codes the initial climb as a fixless CA leg — "fly
-    course 209° to 1 500 ft, MAX IAS 200 KT" — which :meth:`Procedure.waypoints`
+    DFD SID data codes the initial climb as a fixless CA leg — e.g. VYYY
+    PARL1A's RW21 "course to 610 ft" — which :meth:`Procedure.waypoints`
     drops because it has no coordinates. What's left is the runway-end fix
     (DE21L) followed straight by the first en-route fix, so the aircraft turns
     the moment it leaves the ground and cuts diagonally back across the runway.
@@ -1015,6 +1024,198 @@ def expand_sid_departure(
     return replace(sid, legs=tuple(legs))
 
 
+#: How far the aircraft flies straight on runway heading before the synthetic
+#: departure turn starts — long enough that the turn doesn't begin before the
+#: wheels are up, short enough to stay close to the field. Not derived from
+#: anything published (there is no procedure to publish it): a nominal
+#: wings-level segment, roughly 15-20s at the low-altitude turn speed this
+#: heuristic uses. The arrival heuristic has no equivalent parameter — it
+#: turns straight onto the runway's heading and the caller flies the ordinary
+#: straight leg from there to the threshold (see
+#: :func:`expand_runway_arrival_heuristic`).
+RUNWAY_HEURISTIC_INITIAL_LEG_NM = 1.0
+
+#: A synthetic-turn source that is NOT a published procedure. Every point
+#: :func:`expand_runway_departure_heuristic` / :func:`expand_runway_arrival_
+#: heuristic` invent carries an empty ident except the runway threshold
+#: itself (same convention as :func:`expand_sid_departure`'s prepended
+#: threshold) — callers that need to tell a heuristic track apart from a real
+#: SID/STAR/approach do it from whether these functions were even called, not
+#: from anything on the points themselves; see ``dep_trajectory_source`` /
+#: ``arr_trajectory_source`` in ``api/server.py``.
+RUNWAY_HEURISTIC_SOURCE = "RUNWAY_HEURISTIC"
+
+#: How far off the runway's true bearing the threshold is allowed to sit,
+#: measured FROM the arrival heuristic's roll-out point, before its geometry
+#: is rejected as broken rather than merely approximate (see
+#: :func:`expand_runway_arrival_heuristic`). turn_to_heading only solves for
+#: the roll-out DIRECTION, not its position relative to the runway, so the
+#: straight leg the caller flies from roll-out to the threshold generally
+#: needs a further course correction of its own — same as a real "turn to
+#: base, turn to final" being followed by a last correction onto the
+#: localiser, not one continuous arc. That correction is the accepted
+#: approximation this whole heuristic makes (there is no coded localiser to
+#: intercept); this only rejects the case that is not a correction at all —
+#: a last fix close enough to the field that the turn radius overshoots the
+#: threshold and rolls out on the WRONG SIDE of it, needing to fly away from
+#: the runway's heading rather than merely across it to reach the threshold.
+_MAX_ROLLOUT_MISALIGNMENT_DEG = 60.0
+
+
+def expand_runway_departure_heuristic(
+    runway: "RunwayEnd",
+    first_fix: "tuple[float, float]",
+    turn_speed_kt: float,
+    bank_deg: float | None = None,
+    initial_leg_nm: float = RUNWAY_HEURISTIC_INITIAL_LEG_NM,
+) -> "list[tuple[str, float, float]] | None":
+    """A plausible departure ground track off a runway with no coded SID.
+
+    Sparse Myanmar procedure coverage means most domestic departures have a
+    known runway but nothing published to fly off it, and without this the
+    aircraft starts at the aerodrome reference point and cuts straight for the
+    first en-route fix — a straight line through the runway rather than a
+    departure. This gives it the same SHAPE a coded SID would (runway
+    threshold, a short leg on runway heading, then a turn onto track) using
+    only the runway's own geometry — never a fabricated procedure: nothing
+    here is stored or reported as a SID (see ``RUNWAY_HEURISTIC_SOURCE``).
+
+    Built from :func:`~trajectory_sim.turns.turn_arc` — the same "cross a fix
+    on an inbound track, roll into a banked turn, hold it until established on
+    the target" primitive :mod:`trajectory_sim.turns` already uses for a
+    published DF leg — so a bad or degenerate geometry (the first fix falls
+    inside the turn circle, the turn would have to be a near-reversal) is
+    already handled: :func:`turn_arc` returns no points and this returns
+    ``None``, telling the caller to keep its existing straight-line fallback
+    rather than splice in broken geometry.
+
+    Args:
+        runway: Departure threshold geometry (:func:`runway_end`).
+        first_fix: ``(lat, lon)`` of the first fix the route actually files —
+            what the turn has to roll out established on.
+        turn_speed_kt: TAS to fly the turn at — sets its radius. The caller
+            derives this the same way as any other turn in the route (see
+            ``_turn_speed_kt`` in ``api/server.py``), so a heavy jet still
+            turns wider than a turboprop.
+        bank_deg: Maximum bank for the turn. Defaults to the same PANS-OPS
+            SID/terminal figure (25°, see :func:`bank_angle_deg`) an actual
+            coded departure turn would be limited to — not a new number.
+        initial_leg_nm: Length of the wings-level segment flown on runway
+            heading before the turn starts.
+
+    Returns:
+        ``[(runway.ident, thr_lat, thr_lon), ("", lat, lon), ...]`` — the
+        runway threshold, the point ``initial_leg_nm`` down the runway
+        heading, and (when a turn is needed) the arc from there to established
+        on ``first_fix``. The caller still flies the final straight leg from
+        the last of these points to ``first_fix`` itself. ``None`` when no
+        safe turn geometry exists — fall back to the existing DCT behaviour.
+    """
+    if bank_deg is None:
+        bank_deg = bank_angle_deg("sid")
+
+    initial_lat, initial_lon = project_point(
+        runway.lat, runway.lon, runway.true_bearing, initial_leg_nm
+    )
+    points: list[tuple[str, float, float]] = [
+        (runway.ident, runway.lat, runway.lon),
+        ("", initial_lat, initial_lon),
+    ]
+
+    bearing_to_fix = compute_bearing(initial_lat, initial_lon, *first_fix)
+    turn_deg = signed_turn_deg(runway.true_bearing, bearing_to_fix)
+    if abs(turn_deg) < MIN_TURN_DEG:
+        # Already tracking toward the fix on runway heading — nothing to turn.
+        return points
+
+    direction = "R" if turn_deg > 0 else "L"
+    radius_nm = turn_radius_nm(turn_speed_kt, bank_deg=bank_deg)
+    arc = turn_arc(
+        initial_lat, initial_lon, runway.true_bearing,
+        first_fix[0], first_fix[1],
+        direction, radius_nm,
+    )
+    if not arc:
+        return None
+    points.extend(("", lat, lon) for lat, lon in arc)
+    return points
+
+
+def expand_runway_arrival_heuristic(
+    runway: "RunwayEnd",
+    prev_fix: "tuple[float, float]",
+    last_fix: "tuple[float, float]",
+    turn_speed_kt: float,
+    bank_deg: float | None = None,
+) -> "list[tuple[str, float, float]] | None":
+    """A plausible final turn onto a runway with no coded STAR/approach.
+
+    The mirror image of :func:`expand_runway_departure_heuristic`: the
+    aircraft crosses the route's last fix on whatever track it is already
+    flying and turns until established on the runway's OWN true bearing — a
+    synthetic final turn, never a fabricated STAR or approach (see
+    ``RUNWAY_HEURISTIC_SOURCE``).
+
+    Built from :func:`~trajectory_sim.turns.turn_to_heading` rather than
+    :func:`~trajectory_sim.turns.turn_arc`: this needs the aircraft established
+    on the runway's COURSE, not pointed at some nearby fix, and aiming a
+    ``turn_arc`` at a point near the threshold only approximates the runway's
+    true bearing — worse the farther the last fix is from the field.
+    ``turn_to_heading`` solves for the heading directly, so the roll-out track
+    is the runway's true bearing exactly.
+
+    Args:
+        runway: Arrival threshold geometry (:func:`runway_end`).
+        prev_fix: ``(lat, lon)`` of the fix before the route's last one — sets
+            the inbound track the aircraft crosses the last fix on.
+        last_fix: ``(lat, lon)`` of the route's last filed fix.
+        turn_speed_kt: TAS to fly the turn at — sets its radius.
+        bank_deg: Maximum bank for the turn. Defaults to the PANS-OPS final-
+            approach figure (15°, see :func:`bank_angle_deg`) — a low, late
+            turn onto the runway is flown gently, same as a real one.
+
+    Returns:
+        Arc points (empty ident) from the last fix to established on the
+        runway's true bearing. The caller appends the runway threshold itself
+        after these — the final straight leg is the ordinary great-circle
+        interpolation onto it. Flying it on the established heading, from
+        somewhere near the field, lands close to the centreline; it is not
+        guaranteed to be exact (there is no coded localiser to intercept), the
+        same approximation any single-turn-plus-straight-in model makes.
+        ``None`` when the aircraft is already tracking on the runway's
+        heading (no turn needed) or no safe turn geometry exists; either way
+        the caller keeps its existing behaviour.
+    """
+    if bank_deg is None:
+        bank_deg = bank_angle_deg("final_approach")
+
+    inbound_deg = compute_bearing(prev_fix[0], prev_fix[1], last_fix[0], last_fix[1])
+    radius_nm = turn_radius_nm(turn_speed_kt, bank_deg=bank_deg)
+    arc = turn_to_heading(
+        last_fix[0], last_fix[1], inbound_deg, runway.true_bearing, radius_nm
+    )
+    if not arc:
+        return None
+
+    # turn_to_heading only controls the roll-out DIRECTION, not where it ends
+    # up — it has no notion of the runway's position, only its bearing. When
+    # the last fix is already close to the field (this heuristic's ONLY input
+    # for "how far out" — there is no STAR to say otherwise) the turn radius
+    # can be wider than that distance, swinging the roll-out point round to
+    # the FAR side of the threshold: established on the right heading, but
+    # with the runway now behind it rather than ahead. Flying the reported
+    # heading from there would go the wrong way — worse than the straight
+    # line this is meant to improve on. Reject it rather than hand back
+    # geometry that looks fine locally and is backwards overall.
+    rollout_lat, rollout_lon = arc[-1]
+    bearing_to_threshold = compute_bearing(
+        rollout_lat, rollout_lon, runway.lat, runway.lon
+    )
+    if abs(signed_turn_deg(runway.true_bearing, bearing_to_threshold)) > _MAX_ROLLOUT_MISALIGNMENT_DEG:
+        return None
+    return [("", lat, lon) for lat, lon in arc]
+
+
 def _collapse_consecutive_idents(
     waypoints: "list[RouteWaypoint]",
 ) -> list[RouteWaypoint]:
@@ -1069,7 +1270,7 @@ def _join_collapsing_overlap(
 
     ``max_overshoot`` handles the mirror case, where ``base`` runs *past* the
     shared fix. A STAR can end a fix or two beyond the IAF the approach
-    re-enters at — e.g. VTSP RW27's STAR ends ``… BARON, CI27`` (CI27 a runway-
+    re-enters at — e.g. a STAR that ends ``… BARON, CI27`` (CI27 a runway-
     centreline fix) while the approach begins ``BARON, HK580, …``. Anchoring on
     ``base[-1]`` (CI27, absent from the approach) would append the whole
     approach and re-fly BARON: ``… BARON, CI27, BARON, HK580`` — a loop. When
@@ -1135,7 +1336,7 @@ def splice_procedures(
             STAR applies (direct arrival).
         approach: PBN instrument-approach for ADES, resolved to the landing
             runway + IAF transition and already truncated at the MAPt. Its IAF
-            typically coincides with the STAR's last fix (e.g. KALIM), so the
+            typically coincides with the STAR's last fix (e.g. PAKSU), so the
             boundary collapses. ``None`` when no approach applies.
 
     Returns:
@@ -1158,7 +1359,7 @@ def splice_procedures(
     if approach is not None:
         # Join the approach where its IAF entry fix sits on the arrival, trimming
         # the STAR back to that fix. The STAR can run SEVERAL fixes past the
-        # entry the approach re-enters at — VTSP RW27's SUSI1D flies
+        # entry the approach re-enters at — e.g. a STAR that flies
         # STONE, CIDER, BARON, CI27 while an approach entered at STONE begins
         # STONE, MALIN, …; without the trim the splice loops back
         # (STONE, CIDER, BARON, CI27, STONE, MALIN). Bound the look-back to the
@@ -1366,11 +1567,11 @@ def _segment_of(proc_type: ProcedureType, raw: _RawLeg) -> str:
         elif rt in _STAR_COMMON_TYPES:
             seg = "common"
     # A "common" leg that names a RUNWAY in its transition_identifier is not
-    # common at all. The Thai DFD export codes each runway-specific SID/STAR
-    # variant as a single route_type 5 group and states the runway only in
-    # transition_identifier — so the procedure ends up with no runway group,
-    # and a requested runway has nothing to be checked against: VTBD KASN1B is
-    # coded RW03L, yet resolved happily for RW21L, and the runway-filtered
+    # common at all. A DFD export (the VY one included) can code each
+    # runway-specific SID/STAR variant as a single route_type 5 group and
+    # state the runway only in transition_identifier — so the procedure ends
+    # up with no runway group, and a requested runway has nothing to be
+    # checked against: a SID coded RW03 resolved happily for RW21, and the runway-filtered
     # picker and the suggestion endpoint both answered with a SID the aircraft
     # cannot fly off that runway. The transition_identifier is what the source
     # actually states about this leg; trust it over the route_type bucket.

@@ -1,4 +1,4 @@
-"""Tests for the CAT62 flight-time validation module + speed tuning."""
+"""Tests for the flight-time validation module + speed tuning."""
 
 from __future__ import annotations
 
@@ -11,17 +11,17 @@ from trajectory_sim.performance import (
     tune_speed_schedule,
 )
 from trajectory_sim.validation import (
-    CAT62Reference,
     FlightTimeValidation,
     cab_cruising_level,
     validate_cruise_level,
     validate_cruising_level,
+    validate_against_estimate,
     validate_flight_time,
 )
 
 
 def test_delta_and_pass_within_threshold() -> None:
-    v = validate_flight_time("VTBS-WMKK", cat62_min=128, simulated_min=131)
+    v = validate_flight_time("VYYY-VYMD", cat62_min=128, simulated_min=131)
     assert v.delta_min == 3
     assert v.status == "PASS"
     assert v.passed is True
@@ -38,9 +38,9 @@ def test_fail_at_or_beyond_threshold() -> None:
 
 
 def test_report_matches_spec_example() -> None:
-    v = validate_flight_time("VTBS-WMKK", 128, 131)
+    v = validate_flight_time("VYYY-VYMD", 128, 131)
     assert v.report() == (
-        "Route: VTBS-WMKK\n"
+        "Route: VYYY-VYMD\n"
         "CAT62 Time: 128 min\n"
         "Simulated Time: 131 min\n"
         "Delta: +3 min\n"
@@ -49,30 +49,29 @@ def test_report_matches_spec_example() -> None:
 
 
 def test_report_negative_delta_sign() -> None:
-    v = validate_flight_time("VTBS-VTSP", cat62_min=70, simulated_min=66)
+    v = validate_flight_time("VYYY-VYMD", cat62_min=70, simulated_min=66)
     assert "Delta: -4 min" in v.report()
     assert v.passed is True
 
 
-def test_reference_lookup_is_direction_agnostic() -> None:
-    ref = CAT62Reference({"VTBS-WMKK": 128})
-    assert ref.lookup("VTBS", "WMKK") == 128
-    assert ref.lookup("WMKK", "VTBS") == 128  # reverse matches
-    assert ref.lookup("VTBS", "VTCC") is None
-
-
-def test_reference_validate_returns_none_for_unknown_pair() -> None:
-    ref = CAT62Reference({"VTBS-VTSP": 70})
-    assert ref.validate("VTCC", "VTUU", 90.0) is None
-
-
-def test_reference_loads_bundled_file() -> None:
-    ref = CAT62Reference.load()
-    # The seed file ships the spec's example pair.
-    assert ref.lookup("VTBS", "WMKK") == 128
-    v = ref.validate("VTBS", "WMKK", 131.0)
+def test_estimate_validation_grades_a_supported_type() -> None:
+    """With no measured reference table, the check is graded against the
+    airframe's own performance estimate (source "estimate")."""
+    v = validate_against_estimate(
+        "VYYY", "VYMD", 60.0, distance_nm=320.0, aircraft_type="B738"
+    )
     assert isinstance(v, FlightTimeValidation)
-    assert v.status == "PASS"
+    assert v.source == "estimate"
+    assert v.route == "VYYY-VYMD"
+
+
+def test_estimate_validation_needs_a_distance_and_a_type() -> None:
+    assert validate_against_estimate(
+        "VYYY", "VYMD", 60.0, distance_nm=None, aircraft_type="B738"
+    ) is None
+    assert validate_against_estimate(
+        "VYYY", "VYMD", 60.0, distance_nm=320.0, aircraft_type=None
+    ) is None
 
 
 def test_tune_speed_schedule_partial_override() -> None:
@@ -109,7 +108,7 @@ def test_set_speed_restriction_roundtrip() -> None:
 
 
 def test_cruise_level_exact_match_passes() -> None:
-    v = validate_cruise_level(35000.0, 35000.0, route="VTBS-VTSP")
+    v = validate_cruise_level(35000.0, 35000.0, route="VYYY-VYMD")
     assert v.reason == "exact"
     assert v.passed is True
     assert v.delta_ft == 0.0
@@ -170,9 +169,9 @@ def test_cruise_level_overshoot_fails() -> None:
 
 
 def test_cruise_level_report_format() -> None:
-    v = validate_cruise_level(35000.0, 35000.0, route="VTBS-VTSP")
+    v = validate_cruise_level(35000.0, 35000.0, route="VYYY-VYMD")
     assert v.report() == (
-        "Route: VTBS-VTSP\n"
+        "Route: VYYY-VYMD\n"
         "Requested Level: FL350\n"
         "Simulated Cruise: FL350\n"
         "Delta: +0 ft\n"

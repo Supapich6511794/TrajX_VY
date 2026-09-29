@@ -1,23 +1,26 @@
 """Airspace sector membership for exports — Python twin of web/lib/airspace.ts.
 
-Tags each trajectory sample with the airspace volumes that contain it, so the
+Tags each trajectory sample with the airspace volume that contains it, so the
 download formats (CSV / GeoPackage / GeoJSON) can carry a per-timestamp
 "sector" column that matches what the web UI shows on the map and the
-altitude-profile chart. Reads the SAME GeoJSON sector files the web app
-renders (web/public/data/sectors/): BACC sectors + subsectors, Control Zones
-(CTR), Terminal Areas (TMA) and Prohibited/Danger/Restricted areas (PDR).
+altitude-profile chart. Reads the SAME Myanmar (Yangon FIR) AIXM GeoJSON the
+web app renders (web/public/data/aixm_vy/):
+
+  * ``airspace_boundaries.geojson`` — split by its ``type`` property into
+    Control Zones (CTR), Terminal Areas (TMA), Control Areas (CTA) and the FIR;
+  * ``restricted_areas.geojson`` — Prohibited/Danger/Restricted areas (PDR,
+    ``type`` P/D/R).
 
 Membership is ALTITUDE-AWARE: a point belongs only to volumes whose vertical
 band contains its altitude ("which sector is the aircraft IN") — a plane at
-FL350 is not in a TMA that tops at 11 000 ft. The corrected vertical limits
-(sectors_corrected/, fixed against AIP Thailand) are therefore what decides
-each label.
+FL350 is not in a TMA that tops at FL170.
 
-The vertical-limit formats differ per layer exactly as on the web: numeric FL
-on bacc, numeric feet on tma, and strings like "GND"/"ALT 2000"/"FL 120"/
-"UNL" on ctr/pdr. Labels are rendered with the web's compact format, e.g.
-``"8S/Bangkok CTR/VTR1"``, and layer hits follow the web's rule: first
-feature in file order wins (PDR areas overlap, so they are all listed).
+Every feature carries AIP-style ``lower``/``upper`` strings: ``"GND SFC"``,
+``"130 STD"`` (a flight level), ``"1500 MSL"`` / ``"2000 SFC"`` (feet) and
+``"UNL STD"`` — see :func:`parse_vy_alt_ft`. Labels come from ``name`` (and,
+for a PDR area, ``type`` + ``designator``, e.g. ``"R13 SHANTE"``). Layer hits
+follow the web's rule: first feature in file order wins (PDR areas overlap, so
+they are all listed).
 """
 
 from __future__ import annotations
@@ -33,23 +36,25 @@ import numpy as np
 import shapely
 from shapely.geometry import shape
 
-# Sector GeoJSONs live with the web app's static data so both sides of the
-# stack read the one dataset. `sectors_corrected` has the vertical limits fixed
-# against AIP Thailand ENR 2.1 / 5.1 (AIRAC 2026-07-09) — see its CORRECTIONS.md.
-# Layer order = display order in the compact label.
-_SECTORS_DIR = (
+# Airspace GeoJSONs live with the web app's static data so both sides of the
+# stack read the one dataset (built from the VY AIXM 5.1.1 export).
+_AIXM_DIR = (
     Path(__file__).resolve().parents[1]
     / "web"
     / "public"
     / "data"
-    / "sectors_corrected"
+    / "aixm_vy"
 )
-_LAYERS: list[tuple[str, str]] = [
-    ("bacc", "bacc_geo"),
-    ("subsector", "bacc_subsector"),
-    ("ctr", "ctr"),
-    ("tma", "tma"),
-    ("pdr", "pdr"),
+_BOUNDARIES_FILE = "airspace_boundaries.geojson"
+_RESTRICTED_FILE = "restricted_areas.geojson"
+
+#: layer key -> (source file, feature ``type`` values that belong to it).
+_LAYERS: list[tuple[str, str, frozenset[str]]] = [
+    ("pdr", _RESTRICTED_FILE, frozenset({"P", "R", "D"})),
+    ("ctr", _BOUNDARIES_FILE, frozenset({"CTR"})),
+    ("tma", _BOUNDARIES_FILE, frozenset({"TMA"})),
+    ("cta", _BOUNDARIES_FILE, frozenset({"CTA"})),
+    ("fir", _BOUNDARIES_FILE, frozenset({"FIR"})),
 ]
 
 # Abbreviations kept upper-case when title-casing a zone name for display.
@@ -57,28 +62,25 @@ _ZONE_ABBR = {"CTR", "TMA", "FIR", "ACC", "CTA", "ATZ", "TCA", "MTMA", "APP"}
 
 #: Airspace hierarchy — an aircraft is in exactly ONE airspace at a time, so a
 #: point inside several overlapping volumes resolves to one (highest priority
-#: first), per the BACC ops structure:
+#: first):
 #:
-#:   1. ``pdr``       — prohibited/danger/restricted. Not an ATS unit, but being
-#:                      inside one is the fact that matters, so it overrides.
-#:   2. ``ctr``       — Control Zone, worked by Aerodrome Control (Tower).
-#:   3. ``tma``       — Terminal Control Area, worked by Approach Control.
-#:                      (A CTA would sit here too — none in the Thai dataset.)
-#:   4. ``bacc``      — Area Control (ACC). The reporting unit; it carries the
-#:                      vertical limits (2S FL270-460, 3S/6S below).
-#:   5. ``subsector`` — the horizontal controller-split, INSIDE its sector, so
-#:                      with the sector above it a target normally reports the
-#:                      sector; the subsector shows only where no sector exists.
+#:   1. ``pdr`` — prohibited/danger/restricted. Not an ATS unit, but being
+#:                inside one is the fact that matters, so it overrides.
+#:   2. ``ctr`` — Control Zone, worked by Aerodrome Control (Tower).
+#:   3. ``tma`` — Terminal Control Area, worked by Approach Control.
+#:   4. ``cta`` — Control Area, worked by Area Control.
+#:   5. ``fir`` — the Yangon FIR itself, the catch-all outside every
+#:                controlled volume above.
 #:
 #: Annex 11 airspace / ATS-unit structure, applied AFTER the lateral and
 #: vertical tests, so an aircraft above a CTR's ceiling has already dropped out
-#: of it and falls through to the TMA/ACC below.
+#: of it and falls through to the TMA/CTA below.
 #: Must stay in step with HIERARCHY in web/lib/airspace.ts.
-_HIERARCHY = ("pdr", "ctr", "tma", "bacc", "subsector")
+_HIERARCHY = ("pdr", "ctr", "tma", "cta", "fir")
 
 
 def parse_alt_ft(v: object, is_fl: bool = False) -> float:
-    """Feet from a vertical-limit value (mirror of the web's parseAltFt).
+    """Feet from a generic vertical-limit value (mirror of the web's parseAltFt).
 
     ``is_fl`` treats a bare number as a flight level. Strings: GND/SFC/MSL ->
     0, UNL -> +inf, "FL 120" -> 12000, "ALT 2000"/bare digits -> feet.
@@ -92,7 +94,7 @@ def parse_alt_ft(v: object, is_fl: bool = False) -> float:
     s = str(v).strip().upper()
     if not s:
         return math.nan
-    if s in ("GND", "SFC", "MSL"):
+    if s in ("GND", "SFC", "MSL", "SURFACE"):
         return 0.0
     if s.startswith("UNL"):
         return math.inf
@@ -103,39 +105,61 @@ def parse_alt_ft(v: object, is_fl: bool = False) -> float:
     return float(n.group(1)) if n else math.nan
 
 
-def _band(props: dict, layer: str) -> tuple[float, float]:
-    """(lo, hi) feet for a feature — each layer codes its limits differently."""
-    if layer == "bacc":
-        return parse_alt_ft(props.get("lower"), True), parse_alt_ft(
-            props.get("upper"), True
-        )
-    if layer == "subsector":  # no coded band — horizontal only
-        return 0.0, math.inf
-    if layer == "tma":
-        return parse_alt_ft(props.get("lower")), parse_alt_ft(props.get("upper"))
-    if layer == "ctr":
-        return (
-            parse_alt_ft(props.get("lower_1", props.get("lowerlimit"))),
-            parse_alt_ft(props.get("upper_1", props.get("upperlimit"))),
-        )
-    # pdr
-    return parse_alt_ft(props.get("lowerlimit")), parse_alt_ft(
-        props.get("upperlimit")
-    )
+_VY_FL_RE = re.compile(r"^FL\s*(\d+)")
+_VY_NUM_RE = re.compile(r"^(\d+)\s*(STD|MSL|SFC)?")
+
+
+def parse_vy_alt_ft(v: object) -> float:
+    """Feet from a Myanmar AIP-style limit (mirror of the web's parseVyAltFt).
+
+    ``"GND SFC"``/``"SFC"`` -> 0, ``"UNL STD"`` -> +inf, ``"<n> STD"`` or
+    ``"FL <n>"`` -> that flight level in feet (n * 100), ``"<n> MSL"`` /
+    ``"<n> SFC"`` / a bare number -> n feet. NaN when unparseable.
+    """
+    if v is None:
+        return math.nan
+    if isinstance(v, (int, float)):
+        return math.nan if isinstance(v, float) and math.isnan(v) else float(v)
+    s = str(v).strip().upper()
+    if not s:
+        return math.nan
+    if s.startswith("GND") or s.startswith("SFC"):
+        return 0.0
+    if s.startswith("UNL"):
+        return math.inf
+    fl = _VY_FL_RE.match(s)
+    if fl:
+        return float(fl.group(1)) * 100.0
+    m = _VY_NUM_RE.match(s)
+    if not m:
+        return math.nan
+    n = float(m.group(1))
+    return n * 100.0 if m.group(2) == "STD" else n
+
+
+def _band(props: dict) -> tuple[float, float]:
+    """(lo, hi) feet for a feature — every aixm_vy layer shares one format."""
+    return parse_vy_alt_ft(props.get("lower")), parse_vy_alt_ft(props.get("upper"))
 
 
 def _label(props: dict, layer: str) -> str:
     if layer == "pdr":
-        ident = str(props.get("ident") or "").strip()
+        # restricted_areas.geojson has no combined ident: "R" + "13" + "SHANTE".
+        ident = (
+            str(props.get("type") or "").strip()
+            + str(props.get("designator") or "").strip()
+        ).strip()
         name = str(props.get("name") or "").strip()
         return " ".join(p for p in (ident, name) if p) or "PDR"
-    return str(props.get("name") or props.get("ident") or "").strip() or (
-        layer.upper()
-    )
+    name = str(props.get("name") or props.get("designator") or "").strip()
+    # The FIR feature is named just "YANGON" — say what it is.
+    if layer == "fir" and name and not re.search(r"\bFIR\b", name, re.I):
+        return f"{name} FIR"
+    return name or layer.upper()
 
 
 def _title_zone(name: str) -> str:
-    """"BANGKOK TMA" -> "Bangkok TMA"; idents with digits (VTD16) kept as-is."""
+    """"MINGALADON TMA" -> "Mingaladon TMA"; idents with digits (R13) kept."""
     out = []
     for w in name.split():
         if any(ch.isdigit() for ch in w):
@@ -178,14 +202,14 @@ class AirspaceIndex:
     ) -> list[str]:
         """Altitude-aware compact sector label for every point of a flight — the
         volume that actually CONTAINS the aircraft at its altitude (a plane at
-        FL350 is not in a TMA that tops at 11 000 ft)."""
+        FL350 is not in a TMA that tops at FL170)."""
         n = len(lons)
         pts = shapely.points(
             np.asarray(lons, dtype=float), np.asarray(lats, dtype=float)
         )
         # hits[layer][point] -> labels the point is inside, in file order.
         hits: dict[str, list[list[str]]] = {}
-        for layer, _ in _LAYERS:
+        for layer, _, _ in _LAYERS:
             per: list[list[str]] = [[] for _ in range(n)]
             tree = self.trees.get(layer)
             entries = self.entries.get(layer, [])
@@ -197,11 +221,7 @@ class AirspaceIndex:
                     p = int(pt_i[k])
                     e = entries[int(ft_i[k])]
                     alt = alts_ft[p]
-                    in_band = (
-                        alt is None
-                        or layer == "subsector"  # no coded band, horizontal only
-                        or (e.lo <= alt <= e.hi)
-                    )
+                    in_band = alt is None or (e.lo <= alt <= e.hi)
                     if in_band and (layer == "pdr" or not per[p]):
                         per[p].append(e.label)
             hits[layer] = per
@@ -214,12 +234,7 @@ class AirspaceIndex:
                     continue
                 if layer == "pdr":
                     return ",".join(s.split(" ")[0] for s in got)
-                if layer in ("ctr", "tma"):
-                    return _title_zone(got[0])
-                # 3S/6S are modelled as two altitude slabs (3S_lower/3S_upper);
-                # a target is called just "3S"/"6S" (per BACC ops) — the
-                # altitude test already picked the right slab. Drop the suffix.
-                return re.sub(r"_(lower|upper)$", "", got[0], flags=re.I)
+                return _title_zone(got[0])
             return ""
 
         return [compact(p) for p in range(n)]
@@ -238,9 +253,12 @@ def _load_index() -> AirspaceIndex | None:
     entries: dict[str, list[_Entry]] = {}
     trees: dict[str, shapely.STRtree | None] = {}
     try:
-        for layer, fname in _LAYERS:
-            path = _SECTORS_DIR / f"{fname}.geojson"
-            fc = json.loads(path.read_text(encoding="utf-8"))
+        files: dict[str, dict] = {}
+        for layer, fname, types in _LAYERS:
+            if fname not in files:
+                path = _AIXM_DIR / fname
+                files[fname] = json.loads(path.read_text(encoding="utf-8"))
+            fc = files[fname]
             es: list[_Entry] = []
             geoms = []
             for f in fc.get("features", []):
@@ -251,7 +269,9 @@ def _load_index() -> AirspaceIndex | None:
                 ):
                     continue
                 props = f.get("properties") or {}
-                lo, hi = _band(props, layer)
+                if str(props.get("type") or "").strip().upper() not in types:
+                    continue
+                lo, hi = _band(props)
                 es.append(
                     _Entry(
                         label=_label(props, layer),
@@ -276,7 +296,7 @@ def sector_columns(
 ) -> list[str]:
     """Per-point altitude-aware sector label for a whole flight — one compact
     string per input point ("" when the point is outside every volume at its
-    altitude, or when the sector data isn't available)."""
+    altitude, or when the airspace data isn't available)."""
     lons = list(lons)
     lats = list(lats)
     alts = list(alts_ft)

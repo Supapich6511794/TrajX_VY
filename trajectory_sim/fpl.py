@@ -28,7 +28,7 @@ def parse_eobt(raw: str) -> datetime:
     return dt.astimezone(timezone.utc)
 
 # 2–5 uppercase letters: enroute fixes, VORs, NDBs, terminal waypoints
-# (e.g. KARBI, VTBS, DMK). DCT/SID/STAR also match this shape and are
+# (e.g. PARLA, VYYY, MIA). DCT/SID/STAR also match this shape and are
 # filtered out explicitly before this regex is consulted.
 _WAYPOINT_LETTER_RE = re.compile(r"^[A-Z]{2,5}$")
 
@@ -47,8 +47,8 @@ class FlightPlan:
     Attributes:
         callsign: ATC callsign, e.g. "THA204".
         aircraft_type: ICAO aircraft type designator, e.g. "B738".
-        adep: ICAO departure airport, e.g. "VTBS".
-        ades: ICAO destination airport, e.g. "VTSP".
+        adep: ICAO departure airport, e.g. "VYYY".
+        ades: ICAO destination airport, e.g. "VYMD".
         eobt: Estimated Off-Block Time. Must be timezone-aware UTC.
         rfl: Requested Flight Level in hundreds of feet, e.g. 330 → FL330.
         route: Raw Item 15 route string, e.g. "DCT KARBI A1 VIBUN DCT".

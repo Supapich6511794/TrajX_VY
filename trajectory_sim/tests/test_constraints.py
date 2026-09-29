@@ -13,14 +13,14 @@ from trajectory_sim.geodesy import haversine_distance
 from trajectory_sim.trajectory import RouteConstraint, build_flight_timeline
 
 _EOBT = datetime(2026, 6, 20, tzinfo=timezone.utc)
-# ~200 NM leg, north -> Bangkok, so the flight climbs, cruises and descends.
-_ROUTE = [(18.0, 99.0), (15.0, 100.6)]
+# ~200 NM southbound leg, so the flight climbs, cruises and descends.
+_ROUTE = [(18.0, 95.6), (15.0, 97.2)]
 _TOTAL_NM = haversine_distance(_ROUTE[0][0], _ROUTE[0][1], _ROUTE[1][0], _ROUTE[1][1])
 
 
 def _build(constraints=None):
     return build_flight_timeline(
-        _ROUTE, "B738", "VTCC", "VTBD", 35000.0, _EOBT, constraints=constraints
+        _ROUTE, "B738", "ZZZA", "ZZZB", 35000.0, _EOBT, constraints=constraints
     )
 
 
@@ -127,7 +127,7 @@ def test_speed_cap_applies() -> None:
 
 # A long route so the flight reaches cruise and top-of-descent lands well inside
 # it — that's where the descent-ceiling envelope used to step down.
-_LONG_ROUTE = [(20.0, 99.0), (13.8, 100.6)]
+_LONG_ROUTE = [(20.0, 95.6), (13.8, 97.2)]
 _LONG_NM = haversine_distance(
     _LONG_ROUTE[0][0], _LONG_ROUTE[0][1], _LONG_ROUTE[1][0], _LONG_ROUTE[1][1]
 )
@@ -152,13 +152,13 @@ def test_descent_ceiling_has_no_vertical_step() -> None:
     """
     base_step = _max_step_ft(
         build_flight_timeline(
-            _LONG_ROUTE, "B738", "VTCC", "VTSP", 35000.0, _EOBT,
+            _LONG_ROUTE, "B738", "ZZZA", "ZZZC", 35000.0, _EOBT,
             constraints=[], output_every_s=10.0,
         )
     )
     con = [RouteConstraint(_LONG_NM - 60.0, "descent", alt_ceil_ft=11000.0)]
     shaped = build_flight_timeline(
-        _LONG_ROUTE, "B738", "VTCC", "VTSP", 35000.0, _EOBT,
+        _LONG_ROUTE, "B738", "ZZZA", "ZZZC", 35000.0, _EOBT,
         constraints=con, output_every_s=10.0,
     )
     # The constrained profile should be no more "steppy" than the unconstrained
@@ -171,7 +171,7 @@ def test_climb_ceiling_release_is_continuous() -> None:
     resume *from* the held altitude (no upward teleport to the BADA curve)."""
     con = [RouteConstraint(20.0, "climb", alt_ceil_ft=6000.0)]
     shaped = build_flight_timeline(
-        _LONG_ROUTE, "B738", "VTCC", "VTSP", 35000.0, _EOBT,
+        _LONG_ROUTE, "B738", "ZZZA", "ZZZC", 35000.0, _EOBT,
         constraints=con, output_every_s=10.0,
     )
     assert _max_step_ft(shaped) < 1500.0

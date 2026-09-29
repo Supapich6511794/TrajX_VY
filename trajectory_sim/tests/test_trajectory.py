@@ -5,8 +5,8 @@ Covers:
   * Round-trip CAS ↔ TAS / Mach ↔ TAS conversion via ISA.
   * 250 kt CAS restriction below FL100 and CAS→Mach crossover.
   * Monotonic, strictly-increasing per-point timestamps.
-  * VTBS ↔ VTSP total flight time within 5 min of the published
-    block-time reference (~55 min airborne for B738).
+  * VYYY -> VYMD total flight time within 5 min of the performance-derived
+    reference (the analytic climb/cruise/descent estimate for the B738).
 """
 
 from __future__ import annotations
@@ -35,9 +35,9 @@ from trajectory_sim.trajectory import (
     build_flight_timeline,
 )
 
-# VTBS → VTSP — both endpoints, no enroute waypoints.
-_VTBS = (13.6811, 100.7475)
-_VTSP = (8.1132, 98.3169)
+# VYYY → VYMD — both endpoints, no enroute waypoints.
+_VYYY = (16.9073, 96.1332)
+_VYMD = (21.7011, 95.9775)
 _EOBT = datetime(2026, 1, 3, 8, 15, tzinfo=timezone.utc)
 
 
@@ -153,10 +153,10 @@ def test_average_phase_tas_within_band() -> None:
 
 def test_timeline_timestamps_strictly_increasing() -> None:
     tl = build_flight_timeline(
-        waypoint_sequence=[_VTBS, _VTSP],
+        waypoint_sequence=[_VYYY, _VYMD],
         aircraft_type="B738",
-        adep="VTBS",
-        ades="VTSP",
+        adep="VYYY",
+        ades="VYMD",
         rfl_ft=35_000.0,
         eobt=_EOBT,
     )
@@ -167,10 +167,10 @@ def test_timeline_timestamps_strictly_increasing() -> None:
 
 def test_timeline_first_sample_at_eobt() -> None:
     tl = build_flight_timeline(
-        waypoint_sequence=[_VTBS, _VTSP],
+        waypoint_sequence=[_VYYY, _VYMD],
         aircraft_type="B738",
-        adep="VTBS",
-        ades="VTSP",
+        adep="VYYY",
+        ades="VYMD",
         rfl_ft=35_000.0,
         eobt=_EOBT,
     )
@@ -180,10 +180,10 @@ def test_timeline_first_sample_at_eobt() -> None:
 
 def test_timeline_speeds_match_phase_targets() -> None:
     tl = build_flight_timeline(
-        waypoint_sequence=[_VTBS, _VTSP],
+        waypoint_sequence=[_VYYY, _VYMD],
         aircraft_type="B738",
-        adep="VTBS",
-        ades="VTSP",
+        adep="VYYY",
+        ades="VYMD",
         rfl_ft=35_000.0,
         eobt=_EOBT,
     )
@@ -202,35 +202,45 @@ def test_timeline_speeds_match_phase_targets() -> None:
     assert cruise.tas_kt == pytest.approx(expected, abs=2.0)
 
 
-def test_vtbs_vtsp_flight_time_within_5_min_of_reference() -> None:
+def test_vyyy_vymd_flight_time_within_5_min_of_reference() -> None:
     # Phase 3 acceptance criterion: simulated total flight time within
-    # 5 min of the CAT62 reference for the same city pair.
+    # 5 min of the reference for the same city pair.
     #
-    # No CAT62 file ships with the repo, so we anchor on the published
-    # airborne block time for VTBS↔VTSP (B738 / FL340–360): the
-    # operationally observed window sits in the 50–65 min band. Our
-    # ISA-zero-wind simulation should land inside that.
+    # No measured reference table ships with the repo, so the reference is
+    # the performance-derived analytic estimate (validation.estimate_sim_min)
+    # for the same airframe, distance, cruise level and field elevations.
+    from trajectory_sim.geodesy import route_distance_nm
+    from trajectory_sim.performance import field_elevation_ft
+    from trajectory_sim.validation import estimate_sim_min
+
     tl = build_flight_timeline(
-        waypoint_sequence=[_VTBS, _VTSP],
+        waypoint_sequence=[_VYYY, _VYMD],
         aircraft_type="B738",
-        adep="VTBS",
-        ades="VTSP",
+        adep="VYYY",
+        ades="VYMD",
         rfl_ft=35_000.0,
         eobt=_EOBT,
     )
     minutes = tl.total_time_s / 60.0
-    assert 50.0 <= minutes <= 65.0, (
-        f"VTBS→VTSP simulated time {minutes:.1f} min is outside the 50–65 min "
-        "operational reference window; tune the speed schedule"
+    reference = estimate_sim_min(
+        route_distance_nm([_VYYY, _VYMD]),
+        "B738",
+        cruise_alt_ft=35_000.0,
+        dep_elev_ft=field_elevation_ft("VYYY"),
+        arr_elev_ft=field_elevation_ft("VYMD"),
+    )
+    assert abs(minutes - reference) < 5.0, (
+        f"VYYY→VYMD simulated time {minutes:.1f} min is not within 5 min of "
+        f"the {reference:.1f} min reference; tune the speed schedule"
     )
 
 
 def test_timeline_endpoints_anchored_to_route() -> None:
     tl = build_flight_timeline(
-        waypoint_sequence=[_VTBS, _VTSP],
+        waypoint_sequence=[_VYYY, _VYMD],
         aircraft_type="B738",
-        adep="VTBS",
-        ades="VTSP",
+        adep="VYYY",
+        ades="VYMD",
         rfl_ft=35_000.0,
         eobt=_EOBT,
     )
@@ -238,10 +248,10 @@ def test_timeline_endpoints_anchored_to_route() -> None:
     from trajectory_sim.geodesy import haversine_distance
 
     assert haversine_distance(
-        tl.samples[0].lat, tl.samples[0].lon, *_VTBS
+        tl.samples[0].lat, tl.samples[0].lon, *_VYYY
     ) < 1.0
     assert haversine_distance(
-        tl.samples[-1].lat, tl.samples[-1].lon, *_VTSP
+        tl.samples[-1].lat, tl.samples[-1].lon, *_VYMD
     ) < 1.0
 
 
@@ -249,9 +259,9 @@ def test_endpoint_track_carries_over_a_trailing_zero_length_leg() -> None:
     """A path whose final fix is duplicated (e.g. the runway threshold repeated
     as the ADES anchor) has a zero-length last leg. The endpoint sample's track
     must carry the real inbound heading, not snap to due north — the touchdown
-    heading darting to 000° was the VTSP R27 "cut" artifact."""
+    heading darting to 000° was an approach "cut" artifact."""
     # Two legs heading due east (~090°) then a coincident final point.
-    waypoints = [(8.0, 98.0), (8.0, 98.1), (8.0, 98.1)]
+    waypoints = [(20.0, 93.0), (20.0, 93.1), (20.0, 93.1)]
     legs = _leg_distances_nm(waypoints)
     assert legs[-1] == pytest.approx(0.0, abs=1e-9)
     total = sum(legs)

@@ -5,16 +5,19 @@ flown two ways, and which one is a controller decision:
 
   NO CONFLICT  the aircraft stays on the published path — the STAR to its last
                fix, then the approach from its IAF:
-                   ... BS514 -> ATKIN -> LETMA -> LAVOG -> LOTMU -> FAF -> MAPt
+                   ... YS406 -> YS501 -> YS720 -> YS715 -> YS710 -> FAF -> MAPt
 
   CONFLICT     it leaves the procedure at the STAR's end, holds the published
                heading until the spacing is there, then turns to intercept the
                extended centreline:
-                   ... BS514 -> ATKIN -> TURN -> INTC -> LOTMU -> FAF -> MAPt
+                   ... YS406 -> YS501 -> TURN -> INTC -> YS710 -> FAF -> MAPt
 
 Flow 1 is the default; flow 2 is opt-in via ``vector_to_final`` (or implicitly
-by asking to extend the downwind). Exercised on real Thai data. The pure
-geometry is tested in ``test_vectors``.
+by asking to extend the downwind). Every published VY STAR is closed, so the
+open arrivals here are a SYNTHETIC in-memory fixture laid out around VYYY's
+real runway 03/21 (see ``_synthetic_open_star``); the real, closed VYYY STARs
+and approaches stay loaded alongside it. The pure geometry is tested in
+``test_vectors``.
 """
 
 from __future__ import annotations
@@ -27,26 +30,60 @@ import pytest
 pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
 
+import api.server as server  # noqa: E402
+import trajectory_sim.navdata as navdata_mod  # noqa: E402
 from api.server import app  # noqa: E402
 from trajectory_sim.geodesy import haversine_distance  # noqa: E402
+from trajectory_sim.tests._synthetic_open_star import (  # noqa: E402
+    RW03_THRESHOLD,
+    build_navdata,
+)
 
 BASE = {
     "source": "fpl",
-    "callsign": "THA100",
+    "callsign": "UBA100",
     "actype": "A320",
-    "adep": "VTCC",
-    "ades": "VTBS",
-    "route": "PANTA Y7 BLAFF",
+    "adep": "VYMD",
+    "ades": "VYYY",
+    "route": "DOGIP DCT MOXIS B463 IKUGI",
     "eobt": "2025-12-23T02:00",
     "rfl": 320,
-    "star": "EAST1C",
-    "star_transition": "UBLOD",
-    "star_runway": "RW19",
-    "approach": "R19",
+    "star": "OPNE1C",
+    "star_transition": "YS301",
+    "star_runway": "RW21",
+    "approach": "R21-V",
 }
-#: R19's published approach, outermost first, with each fix's distance from the
-#: threshold along the centreline.
-R19_ENTRY_NM = {"LETMA": 20.0, "LAVOG": 15.0, "LOTMU": 10.0}
+#: R21-V's published approach, outermost first, with each fix's distance from
+#: the threshold along the centreline.
+R21_ENTRY_NM = {"YS720": 20.0, "YS715": 15.0, "YS710": 10.0}
+#: OPNE1C's hand-over fix (the open STAR's last fix), and R21-V's FAF / MAPt.
+HANDOVER = "YS501"
+FAF_21, MAPT_21 = "YS705", "YS700"
+#: A genuinely CLOSED arrival from the real VY data: OROM1A entered at NPT,
+#: into the real R21 approach.
+CLOSED = {
+    "route": "DOGIP DCT NPT",
+    "star": "OROM1A",
+    "star_transition": "NPT",
+    "star_runway": "RW21",
+    "approach": "R21",
+}
+
+
+@pytest.fixture(scope="module")
+def client(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
+    """A TestClient whose navdata also carries the synthetic open arrivals."""
+    nav = build_navdata(
+        tmp_path_factory.mktemp("open_star"),
+        sid_source=server._SID_SOURCE,
+        star_source=server._STAR_SOURCE,
+        approach_source=server._APPROACH_SOURCE,
+        ils_source=server._ILS_SOURCE,
+    )
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(server, "_navdata", lambda: nav)
+        mp.setitem(navdata_mod._RUNWAY_ENDS, ("VYYY", "RW03"), RW03_THRESHOLD)
+        yield TestClient(app)
 
 
 class TestNoConflictFlowIsTheDefault:
@@ -58,9 +95,9 @@ class TestNoConflictFlowIsTheDefault:
         self, client: TestClient
     ) -> None:
         idents = _idents(_generate(client))
-        assert "ESGEN" in idents  # the STAR's last fix
-        tail = idents[idents.index("ESGEN") + 1 :]
-        assert tail == ["LETMA", "LAVOG", "LOTMU", "BS790", "BS791"]
+        assert HANDOVER in idents  # the STAR's last fix
+        tail = idents[idents.index(HANDOVER) + 1 :]
+        assert tail == ["YS720", "YS715", "YS710", FAF_21, MAPT_21]
 
     def test_no_vector_legs_are_invented(self, client: TestClient) -> None:
         idents = _idents(_generate(client))
@@ -72,20 +109,14 @@ class TestNoConflictFlowIsTheDefault:
     ) -> None:
         """There is no published heading to hold, so the request cannot be
         honoured — and must say so rather than being ignored in silence."""
-        # A VTSP arrival: its STARs are fix-terminated, so there is no VM leg.
-        payload = _generate(
-            client, adep="VTBS", ades="VTSP", route="VANKO Y8 SAVSA",
-            star=None, star_transition=None, star_runway="RW09",
-            approach="R09-Y", vector_to_final=True,
-        )
+        # A real VY arrival: every VY STAR is fix-terminated (no VM leg).
+        payload = _generate(client, **CLOSED, vector_to_final=True)
         idents = _idents(payload)
         assert "TURN" not in idents and "INTC" not in idents
         assert idents[-1] not in ("TURN", "INTC")
-
-
-@pytest.fixture(scope="module")
-def client() -> TestClient:
-    return TestClient(app)
+        assert any(
+            "does not end in radar vectors" in w for w in payload["warnings"]
+        )
 
 
 def _generate(client: TestClient, **overrides: object) -> dict:
@@ -113,25 +144,25 @@ class TestConflictFlowIsVectored:
     ) -> None:
         idents = _idents(_generate(client, vector_to_final=True))
         # The STAR's vector termination, then the two vector legs.
-        assert "ESGEN" in idents
-        i = idents.index("ESGEN")
+        assert HANDOVER in idents
+        i = idents.index(HANDOVER)
         assert idents[i + 1 : i + 3] == ["TURN", "INTC"]
 
     def test_it_cuts_the_approach_at_the_intercept_not_at_the_IAF(
         self, client: TestClient
     ) -> None:
         """Vectoring terminates when the aircraft turns onto final (§8.9.4.1),
-        so the IAF entry is never flown. But R19 is a straight-in procedure —
-        LETMA/LAVOG/LOTMU/FAF all sit on one centreline — so a fix INSIDE the
+        so the IAF entry is never flown. But R21-V is a straight-in procedure —
+        YS720/YS715/YS710/FAF all sit on one centreline — so a fix INSIDE the
         join is overflown and keeps its crossing minimum."""
         idents = _idents(_generate(client, vector_to_final=True))
-        assert "BS790" in idents  # the R19 FAF
+        assert FAF_21 in idents  # the R21-V FAF
         assert "INTC" in idents
-        # Joining ~12 NM out: LOTMU (10 NM) is flown, LAVOG (15) and LETMA (20)
+        # Joining ~12 NM out: YS710 (10 NM) is flown, YS715 (15) and YS720 (20)
         # belong to the entry that was replaced by vectors.
-        assert "LOTMU" in idents
-        assert idents.index("LOTMU") > idents.index("INTC")
-        for skipped in ("LETMA", "LAVOG"):
+        assert "YS710" in idents
+        assert idents.index("YS710") > idents.index("INTC")
+        for skipped in ("YS720", "YS715"):
             assert skipped not in idents
 
     def test_a_longer_downwind_keeps_MORE_of_the_approach(
@@ -140,15 +171,15 @@ class TestConflictFlowIsVectored:
         """Joining further out means overflying more published fixes, so the
         cut has to move with the intercept rather than being fixed at the FAF."""
         idents = _idents(_generate(client, extend_downwind_nm=12))
-        assert "LAVOG" in idents  # 15 NM out, now inside the ~18 NM join
-        assert "LOTMU" in idents
-        assert "LETMA" not in idents  # 20 NM, still outside
+        assert "YS715" in idents  # 15 NM out, now inside the ~18 NM join
+        assert "YS710" in idents
+        assert "YS720" not in idents  # 20 NM, still outside
 
     def test_the_arrival_still_ends_at_the_runway(
         self, client: TestClient
     ) -> None:
         idents = _idents(_generate(client, vector_to_final=True))
-        assert idents[-1] == "BS791"  # the MAPt, on the RW19 threshold
+        assert idents[-1] == MAPT_21  # the MAPt, on the RW21 threshold
 
     def test_no_warning_is_raised_when_the_join_succeeds(
         self, client: TestClient
@@ -197,35 +228,36 @@ class TestDownwindExtension:
 
         near = turn_point(0)
         far = turn_point(12)
-        # VTBS RW19 arrivals hold a 015° downwind, so a longer one turns
-        # further north.
+        # RW21 arrivals hold a 034° downwind, so a longer one turns further
+        # north (and east).
         assert far[0] > near[0]
+        assert far[1] > near[1]
 
 
 class TestOppositeRunwayDirection:
-    """The …1D arrivals land NORTHBOUND on RW01 and hold heading 195 — the
-    mirror of the RW19 case. Every sign in the intercept geometry flips, so a
-    solver that only ever ran one direction would look fine and be wrong."""
+    """The …1D arrivals land NORTH-EASTBOUND on RW03 and hold heading 214 —
+    the mirror of the RW21 case. Every sign in the intercept geometry flips, so
+    a solver that only ever ran one direction would look fine and be wrong."""
 
     NORTH = {
-        "adep": "VTUD",
-        "route": "ALBOS",
         "star_transition": None,
-        "star_runway": "RW01",
-        "approach": "R01",
+        "star_runway": "RW03",
+        "approach": "R03-V",
     }
+    #: R03-V's FAF and MAPt.
+    FAF, MAPT = "YS605", "YS600"
 
-    @pytest.mark.parametrize("star", ["NORT1D", "EAST1D"])
-    def test_no_conflict_flies_the_published_R01_approach(
+    @pytest.mark.parametrize("star", ["OPNN1D", "OPNE1D"])
+    def test_no_conflict_flies_the_published_R03_approach(
         self, client: TestClient, star: str
     ) -> None:
         idents = _idents(_generate(client, **self.NORTH, star=star))
         assert "TURN" not in idents and "INTC" not in idents
         # Reaches the runway via the published approach fixes.
-        assert idents[-1].startswith("BS")
+        assert idents[-3:] == [self.FAF, "YS603", self.MAPT]
 
     @pytest.mark.parametrize(
-        "star,handover", [("NORT1D", "BOGAS"), ("EAST1D", "ENKAA")]
+        "star,handover", [("OPNN1D", "YS503"), ("OPNE1D", "YS504")]
     )
     def test_the_conflict_flow_vectors_from_the_chart_named_fix(
         self, client: TestClient, star: str, handover: str
@@ -237,7 +269,7 @@ class TestOppositeRunwayDirection:
         i = idents.index(handover)
         assert idents[i + 1 : i + 3] == ["TURN", "INTC"]
 
-    @pytest.mark.parametrize("star", ["NORT1D", "EAST1D"])
+    @pytest.mark.parametrize("star", ["OPNN1D", "OPNE1D"])
     def test_the_intercept_is_outside_the_FAF_landing_north(
         self, client: TestClient, star: str
     ) -> None:
@@ -245,18 +277,17 @@ class TestOppositeRunwayDirection:
         approach track before the glide path."""
         payload = _generate(client, **self.NORTH, star=star, vector_to_final=True)
         route = {w["ident"]: (w["lat"], w["lon"]) for w in payload["route"]}
-        # RW01 threshold.
-        thr = (13.65669722, 100.75183056)
+        thr = (RW03_THRESHOLD.lat, RW03_THRESHOLD.lon)
         nm = lambda p: math.hypot(  # noqa: E731
             (p[0] - thr[0]) * 60,
             (p[1] - thr[1]) * 60 * math.cos(math.radians(thr[0])),
         )
         icpt = nm(route["INTC"])
-        faf = min(nm(v) for k, v in route.items() if k.startswith("BS") and nm(v) > 1)
+        faf = nm(route[self.FAF])
         assert icpt > faf, "intercept must sit outside the FAF"
         assert icpt - faf >= 1.9  # the established margin, allowing rounding
 
-    @pytest.mark.parametrize("star", ["NORT1D", "EAST1D"])
+    @pytest.mark.parametrize("star", ["OPNN1D", "OPNE1D"])
     def test_extending_the_downwind_works_landing_north_too(
         self, client: TestClient, star: str
     ) -> None:
@@ -270,7 +301,7 @@ class TestOppositeRunwayDirection:
 
 
 class TestArrivalClearanceIsRecorded:
-    """The VTBS STAR charts print, against the hand-over fixes:
+    """An open-STAR chart prints, against its hand-over fixes:
 
         "Do not proceed Instrument Approach Procedure without ATC clearance."
 
@@ -285,25 +316,25 @@ class TestArrivalClearanceIsRecorded:
     def test_the_no_conflict_flow_records_a_direct_to_the_IAF(
         self, client: TestClient
     ) -> None:
-        assert self._clearance(client) == "DIRECT LETMA, CLEARED R19 APPROACH"
+        assert self._clearance(client) == "DIRECT YS720, CLEARED R21-V APPROACH"
 
     def test_the_conflict_flow_records_the_heading_and_the_fix(
         self, client: TestClient
     ) -> None:
         got = self._clearance(client, vector_to_final=True)
-        assert got == "AFTER ESGEN MAINTAIN HEADING 015, VECTORS R19"
+        assert got == "AFTER YS501 MAINTAIN HEADING 034, VECTORS R21-V"
 
     def test_the_heading_is_MAGNETIC_as_the_chart_prints_it(
         self, client: TestClient
     ) -> None:
-        """The geometry is solved in TRUE (014.3 here); the clearance a
-        controller reads is the published magnetic course, 015."""
+        """The geometry is solved in TRUE (033 here, 1°W variation); the
+        clearance a controller reads is the published magnetic course, 034."""
         payload = _generate(client, vector_to_final=True)
-        assert "015" in payload["meta"]["clearance"]
-        assert payload["meta"]["vector_heading_deg"] == pytest.approx(14.3, abs=0.2)
+        assert "034" in payload["meta"]["clearance"]
+        assert payload["meta"]["vector_heading_deg"] == pytest.approx(33.0, abs=0.2)
 
     @pytest.mark.parametrize(
-        "star,fix", [("NORT1C", "ATKIN"), ("WILA1C", "ATKIN"), ("TUMG1C", "ESGEN")]
+        "star,fix", [("OPNN1C", "YS502"), ("OPNW1C", "YS502"), ("OPNS1C", "YS501")]
     )
     def test_the_clearance_names_that_STARs_own_handover_fix(
         self, client: TestClient, star: str, fix: str
@@ -311,17 +342,17 @@ class TestArrivalClearanceIsRecorded:
         got = self._clearance(
             client, star=star, star_transition=None, vector_to_final=True
         )
-        assert got == f"AFTER {fix} MAINTAIN HEADING 015, VECTORS R19"
+        assert got == f"AFTER {fix} MAINTAIN HEADING 034, VECTORS R21-V"
 
-    def test_landing_north_records_the_195_heading(
+    def test_landing_north_records_the_214_heading(
         self, client: TestClient
     ) -> None:
         got = self._clearance(
-            client, adep="VTUD", route="ALBOS", star="NORT1D",
-            star_transition=None, star_runway="RW01", approach="R01",
+            client, star="OPNN1D",
+            star_transition=None, star_runway="RW03", approach="R03-V",
             vector_to_final=True,
         )
-        assert got == "AFTER BOGAS MAINTAIN HEADING 195, VECTORS R01"
+        assert got == "AFTER YS503 MAINTAIN HEADING 214, VECTORS R03-V"
 
     def test_the_clearance_is_written_into_the_downloads(
         self, client: TestClient
@@ -330,13 +361,13 @@ class TestArrivalClearanceIsRecorded:
         that is what makes a generated bank auditable after the fact."""
         key = _generate(client, vector_to_final=True)["flight_key"]
         csv = client.get(f"/api/download/{key}.csv").text
-        assert "CLEARANCE: AFTER ESGEN MAINTAIN HEADING 015, VECTORS R19" in csv
+        assert "CLEARANCE: AFTER YS501 MAINTAIN HEADING 034, VECTORS R21-V" in csv
         gj = client.get(f"/api/download/{key}.geojson").json()
         route = next(
             f for f in gj["features"]
             if f["properties"].get("feature_type") == "route"
         )
-        assert route["properties"]["clearance"].startswith("AFTER ESGEN")
+        assert route["properties"]["clearance"].startswith("AFTER YS501")
 
 
 class TestTacticalExtension:
@@ -362,7 +393,7 @@ class TestTacticalExtension:
     ) -> None:
         plain = _generate(client, vector_to_final=True, tactical_extend=True)
         long = _generate(client, extend_downwind_nm=12, tactical_extend=True)
-        a, b = self._at(plain, "ESGEN"), self._at(long, "ESGEN")
+        a, b = self._at(plain, HANDOVER), self._at(long, HANDOVER)
         assert a["altitude_ft"] == pytest.approx(b["altitude_ft"], abs=1.0)
         assert a["epoch_ts"] == b["epoch_ts"]
         assert a["gs_kt"] == pytest.approx(b["gs_kt"], abs=0.5)
@@ -374,7 +405,7 @@ class TestTacticalExtension:
         difference is visible rather than folklore."""
         plain = _generate(client, vector_to_final=True)
         replanned = _generate(client, extend_downwind_nm=12)
-        a, b = self._at(plain, "ESGEN"), self._at(replanned, "ESGEN")
+        a, b = self._at(plain, HANDOVER), self._at(replanned, HANDOVER)
         assert abs(b["altitude_ft"] - a["altitude_ft"]) > 1000
 
     def test_the_extension_buys_the_delay_it_should(
@@ -393,7 +424,7 @@ class TestTacticalExtension:
 
     def test_it_still_lands_on_the_runway(self, client: TestClient) -> None:
         long = _generate(client, extend_downwind_nm=12, tactical_extend=True)
-        assert _idents(long)[-1] == "BS791"
+        assert _idents(long)[-1] == MAPT_21
         assert long["points"][-1]["altitude_ft"] < 200
 
     def test_the_clock_never_runs_backwards(self, client: TestClient) -> None:
@@ -405,9 +436,9 @@ class TestTacticalExtension:
 
     def test_it_says_what_it_did(self, client: TestClient) -> None:
         payload = _generate(client, extend_downwind_nm=12, tactical_extend=True)
-        assert payload["meta"]["tactical_handover"] == "ESGEN"
+        assert payload["meta"]["tactical_handover"] == HANDOVER
         assert payload["meta"]["tactical_extend_nm"] == pytest.approx(12)
-        assert any("tactically from ESGEN" in w for w in payload["warnings"])
+        assert any(f"tactically from {HANDOVER}" in w for w in payload["warnings"])
 
 
 class TestExtendEndpoint:
@@ -426,7 +457,7 @@ class TestExtendEndpoint:
         assert resp.status_code == 200, resp.text
         out = resp.json()
         assert out["meta"]["tactical_extend_nm"] == pytest.approx(6)
-        assert out["meta"]["tactical_handover"] == "ESGEN"
+        assert out["meta"]["tactical_handover"] == HANDOVER
         assert "TURN" in _idents(out) and "INTC" in _idents(out)
 
     def test_a_bigger_extension_flies_further(self, client: TestClient) -> None:
@@ -468,39 +499,31 @@ class TestExtendEndpoint:
         client.post(f"/api/extend/{key}", json={"extend_nm": 12})
         after_csv = client.get(f"/api/download/{key}.csv").text
         assert after_csv != plain_csv
-        assert "CLEARANCE: AFTER ESGEN MAINTAIN HEADING 015" in after_csv
+        assert "CLEARANCE: AFTER YS501 MAINTAIN HEADING 034" in after_csv
 
 
 class TestClosedStarUnaffected:
     def test_a_closed_STAR_still_flies_its_approach_from_the_IAF(
         self, client: TestClient
     ) -> None:
-        """NORT1D serves RW01 and is open too, so use a genuinely closed one:
-        the regression guard is that non-vectored arrivals are untouched."""
-        payload = _generate(
-            client,
-            star="NORT1C",
-            star_transition=None,
-            star_runway="RW19",
-            approach="R19",
-        )
-        idents = _idents(payload)
-        assert idents[-1] == "BS791"
-        # Whatever path it took, it reached the runway without a stray vector
-        # fix left over from another arrival.
-        assert idents.count("TURN") <= 1
-        assert idents.count("INTC") <= 1
+        """A real, closed VY arrival: the regression guard is that
+        non-vectored arrivals are untouched by the open-STAR machinery."""
+        idents = _idents(_generate(client, **CLOSED))
+        # The STAR delivers the aircraft to the approach (PAKSU, on R21's BAGOO
+        # transition) and the real R21 flies it to its MAPt on the threshold.
+        assert idents[-4:] == ["PAKSU", "HLEGU", "SULAP", "RW21"]
+        # No stray vector fix left over from another arrival.
+        assert "TURN" not in idents and "INTC" not in idents
 
     def test_extend_downwind_is_ignored_without_a_vector_leg(
         self, client: TestClient
     ) -> None:
         """A closed arrival has no downwind to stretch, so the parameter must
         be a no-op rather than silently distorting the path."""
-        closed = {"star": "NORT1D", "star_runway": "RW01", "approach": "R01"}
-        plain = _distance_nm(_generate(client, **closed, extend_downwind_nm=0))
-        asked = _distance_nm(_generate(client, **closed, extend_downwind_nm=15))
-        if "TURN" not in _idents(_generate(client, **closed)):
-            assert asked == pytest.approx(plain, abs=0.01)
+        plain = _distance_nm(_generate(client, **CLOSED, extend_downwind_nm=0))
+        asked = _distance_nm(_generate(client, **CLOSED, extend_downwind_nm=15))
+        assert "TURN" not in _idents(_generate(client, **CLOSED))
+        assert asked == pytest.approx(plain, abs=0.01)
 
 
 class TestTheResponseSaysWhichSidWasFlown:
@@ -517,19 +540,19 @@ class TestTheResponseSaysWhichSidWasFlown:
     def test_the_sid_and_its_runway_come_back_in_the_meta(
         self, client: TestClient
     ) -> None:
-        meta = _generate(client, sid="PANT2C")["meta"]
-        assert meta["sid"] == "PANT2C"
-        assert meta["dep_rwy"] == "RW36"
+        meta = _generate(client, sid="DOGI1S")["meta"]
+        assert meta["sid"] == "DOGI1S"
+        assert meta["dep_rwy"] == "RW17"
 
     def test_the_meta_matches_the_path_actually_flown(
         self, client: TestClient
     ) -> None:
-        payload = _generate(client, sid="PANT2C")
+        payload = _generate(client, sid="DOGI1S")
         idents = _idents(payload)
         # The route starts at the departure runway the meta names, then flies
         # the SID's own fixes — the label is not decoration.
         assert idents[0] == payload["meta"]["dep_rwy"]
-        assert "PANTA" in idents
+        assert idents[1:4] == ["MDS02", "ZIDAW", "DOGIP"]
 
     def test_no_sid_asked_for_means_no_sid_claimed(
         self, client: TestClient
@@ -550,8 +573,6 @@ def _alt_at(payload: dict, ident: str) -> float:
 
 
 def _nm(a: dict, b: dict) -> float:
-    import math
-
     return math.hypot(
         (a["lat"] - b["lat"]) * 60,
         (a["lon"] - b["lon"]) * 60 * math.cos(math.radians(a["lat"])),
@@ -561,8 +582,8 @@ def _nm(a: dict, b: dict) -> float:
 class TestTheAssignedHeadingIsFlownLEVEL:
     """A radar heading comes with no descent clearance.
 
-    The VTBS chart note is a heading and nothing else — "After ESGEN, ATKIN
-    maintain heading 015 or as directed by ATC" — and Doc 4444 §8.9.4.2 keeps
+    An open-STAR chart note is a heading and nothing else — "After YS501,
+    maintain heading 034 or as directed by ATC" — and Doc 4444 §8.9.4.2 keeps
     the aircraft at its last assigned level until it is established. Carrying
     the STAR's descent on down an open-ended downwind is the wrong shape, and
     it gets worse the further the downwind is extended for spacing: the delay
@@ -571,7 +592,7 @@ class TestTheAssignedHeadingIsFlownLEVEL:
 
     def test_the_downwind_is_flown_level(self, client: TestClient) -> None:
         p = _generate(client, vector_to_final=True)
-        assert _alt_at(p, "TURN") == pytest.approx(_alt_at(p, "ESGEN"), abs=1.0)
+        assert _alt_at(p, "TURN") == pytest.approx(_alt_at(p, HANDOVER), abs=1.0)
 
     def test_it_stays_level_however_far_the_downwind_is_extended(
         self, client: TestClient
@@ -580,16 +601,20 @@ class TestTheAssignedHeadingIsFlownLEVEL:
         # descent. Both extensions leave the aircraft at the SAME level.
         short = _generate(client, vector_to_final=True, extend_downwind_nm=4)
         long = _generate(client, vector_to_final=True, extend_downwind_nm=12)
-        assert _alt_at(short, "TURN") == pytest.approx(_alt_at(short, "ESGEN"), abs=1.0)
-        assert _alt_at(long, "TURN") == pytest.approx(_alt_at(long, "ESGEN"), abs=1.0)
+        assert _alt_at(short, "TURN") == pytest.approx(
+            _alt_at(short, HANDOVER), abs=1.0
+        )
+        assert _alt_at(long, "TURN") == pytest.approx(
+            _alt_at(long, HANDOVER), abs=1.0
+        )
 
     def test_it_is_still_above_the_handover_fix_s_published_minimum(
         self, client: TestClient
     ) -> None:
-        # EAST1C codes ESGEN at or above 5000 ft; levelling off must not be an
+        # OPNE1C codes YS501 at or above 5000 ft; levelling off must not be an
         # excuse to sit below the published constraint.
         p = _generate(client, vector_to_final=True)
-        assert _alt_at(p, "ESGEN") >= 5000.0
+        assert _alt_at(p, HANDOVER) >= 5000.0
         assert _alt_at(p, "TURN") >= 5000.0
 
     def test_the_altitude_comes_off_on_the_BASE_leg_at_a_flyable_gradient(
@@ -612,31 +637,28 @@ class TestTheAssignedHeadingIsFlownLEVEL:
     def test_the_published_flow_is_untouched(self, client: TestClient) -> None:
         # No vectors, no levelling — the STAR's own descent profile stands.
         p = _generate(client)
-        assert _alt_at(p, "ESGEN") > _alt_at(p, "LETMA") > _alt_at(p, "LAVOG")
+        assert _alt_at(p, HANDOVER) > _alt_at(p, "YS720") > _alt_at(p, "YS715")
 
 
 class TestTheHeadingIsQuotedAsTheChartPrintsIt:
     def test_the_meta_carries_BOTH_headings(self, client: TestClient) -> None:
         """The geometry needs true; an instruction needs magnetic. Publishing
-        only the true course made the arrival panel read out "heading 014" for
-        a chart that says 015."""
+        only the true course made the arrival panel read out "heading 033" for
+        a chart that says 034."""
         meta = _generate(client, vector_to_final=True)["meta"]
-        assert meta["vector_heading_mag_deg"] == pytest.approx(15.0, abs=0.1)
-        assert meta["vector_heading_deg"] == pytest.approx(14.3, abs=0.2)
+        assert meta["vector_heading_mag_deg"] == pytest.approx(34.0, abs=0.1)
+        assert meta["vector_heading_deg"] == pytest.approx(33.0, abs=0.2)
 
-    def test_landing_north_publishes_195_magnetic(self, client: TestClient) -> None:
+    def test_landing_north_publishes_214_magnetic(self, client: TestClient) -> None:
         meta = _generate(
-            client, adep="VTUD", route="ALBOS", star="NORT1D",
-            star_transition=None, star_runway="RW01", approach="R01",
+            client, star="OPNN1D",
+            star_transition=None, star_runway="RW03", approach="R03-V",
             vector_to_final=True,
         )["meta"]
-        assert meta["vector_heading_mag_deg"] == pytest.approx(195.0, abs=0.1)
+        assert meta["vector_heading_mag_deg"] == pytest.approx(214.0, abs=0.1)
 
     def test_a_closed_star_publishes_neither(self, client: TestClient) -> None:
-        meta = _generate(
-            client, adep="VTBS", ades="VTSP", route="VANKO Y8 SAVSA",
-            star=None, star_transition=None, star_runway="RW09", approach="R09-Y",
-        )["meta"]
+        meta = _generate(client, **CLOSED)["meta"]
         assert meta["vector_heading_mag_deg"] is None
         assert meta["vector_heading_deg"] is None
 
@@ -661,8 +683,8 @@ class TestVectorTurnIsFlyable:
     def _vector_samples(payload: dict, pad_nm: float = 8.0) -> list[dict]:
         """Just the samples flown around the vectoring pattern.
 
-        The rest of the flight has its own turns — the SID off VTCC is tighter
-        than anything here — and this is a test about the base turn.
+        The rest of the flight has its own turns — a SID can be tighter than
+        anything here — and this is a test about the base turn.
         """
         route = {w["ident"]: w for w in payload["route"]}
         turn = route["TURN"]
