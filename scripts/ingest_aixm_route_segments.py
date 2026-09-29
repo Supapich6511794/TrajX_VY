@@ -1,9 +1,9 @@
 """Extract the ATS route segments, their direction of travel and level band.
 
-An airway is not automatically two-way. AIP Thailand ENR 3 prints, per route,
-a "Route availability" line and a direction note — Y8 is a *uni-directional
-southbound route*, with the northbound leg between PUT and STN available only
-to flights departing VTSP for VTBS. Filing a route the wrong way up such an
+An airway is not automatically two-way. The AIP's ENR 3 prints, per route,
+a "Route availability" line and a direction note — a *uni-directional* route
+may be flown one way only, or the reverse leg may be reserved for flights
+between particular aerodromes. Filing a route the wrong way up such an
 airway is a real planning error that a fix-list check cannot see, because every
 fix on it is perfectly valid.
 
@@ -18,12 +18,12 @@ where the direction is relative to the segment's own ``start`` -> ``end``:
     FORWARD   start -> end only
     BACKWARD  end -> start only
 
-In the 2608 export 229 of 751 segments are one-way, so this is a third of the
-en-route network, not an edge case.
+One-way segments are a sizeable share of the en-route network, not an edge
+case (the script prints the count for the export it reads).
 
     python scripts/ingest_aixm_route_segments.py
 
-Output (under ``web/public/data/aixm/``):
+Output (under ``web/public/data/aixm_vy/``):
     route_segments.json  -- one entry per segment: route designator, the two
                             fixes, the permitted direction, and the level band
 """
@@ -38,8 +38,8 @@ from typing import Iterator
 from xml.etree import ElementTree as ET
 
 _ROOT = Path(__file__).resolve().parent.parent
-_DEFAULT_INPUT = _ROOT / "aixm_export_2608_VT_v5.1.1.xml"
-_DEFAULT_OUT = _ROOT / "web" / "public" / "data" / "aixm" / "route_segments.json"
+_DEFAULT_INPUT = _ROOT / "aixm_export_2609_VY_v5.1.1.xml"
+_DEFAULT_OUT = _ROOT / "web" / "public" / "data" / "aixm_vy" / "route_segments.json"
 
 _XLINK_HREF = "{http://www.w3.org/1999/xlink}href"
 

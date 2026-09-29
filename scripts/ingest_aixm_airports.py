@@ -1,11 +1,10 @@
 """Derive an airport + runway-threshold table from an AIXM 5.1.1 export.
 
-VT's ``Airport_with_AP_Main.csv`` / ``runway.csv`` come from a separate ARINC
-424 "DFD" navigation database that was never one of this repo's AIXM inputs,
-so they carry fields (``ifr_capability``, transition altitude/level, speed
-limits, runway surface) this AIXM export doesn't have at all. VY has no such
-DFD source, so this script builds the VY equivalents purely from what AIXM
-DOES carry:
+The output keeps the column layout of an ARINC 424 "DFD" airport/runway
+table, but fields that only a DFD source carries (``ifr_capability``,
+transition altitude/level, speed limits, runway surface) are absent from
+this AIXM export and stay blank. There is no DFD source for VY, so the table
+is built purely from what AIXM DOES carry:
 
     AirportHeliport               -- ICAO identifier, name, ARP position/elev
     Runway                        -- nominal length/width, parent airport
@@ -200,8 +199,8 @@ class Index:
                     self.thresholds[direction_uuid] = pt
 
 
-#: An aerodrome counts as "Main" the same way the VT table's DON MUEANG /
-#: SUVARNABHUMI rows do -- its AIP name is flagged INTL.
+#: An aerodrome counts as "Main" when its AIP name is flagged INTL
+#: (YANGON INTL, MANDALAY INTL, NAYPYITAW INTL).
 def _is_main(name: str) -> bool:
     return "INTL" in name.upper()
 

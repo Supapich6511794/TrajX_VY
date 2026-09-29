@@ -14,12 +14,12 @@ only the requested pair is streamed (see trajectory_sim.cat62_track).
 
 Examples::
 
-    # every VTBS-VTSP flight
-    python scripts/export_cat62_sample.py --adep VTBS --ades VTSP
+    # every VYYY-VYMD flight
+    python scripts/export_cat62_sample.py --adep VYYY --ades VYMD
 
     # just the 3 fastest (clean) flights, custom output path
-    python scripts/export_cat62_sample.py --adep VTBS --ades VTSP \
-        --limit 3 --out cat62_vtbs_vtsp.gpkg
+    python scripts/export_cat62_sample.py --adep VYYY --ades VYMD \
+        --limit 3 --out cat62_vyyy_vymd.gpkg
 """
 
 from __future__ import annotations
@@ -93,8 +93,8 @@ def main(argv: list[str] | None = None) -> int:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    ap.add_argument("--adep", required=True, help="Departure ICAO, e.g. VTBS")
-    ap.add_argument("--ades", required=True, help="Destination ICAO, e.g. VTSP")
+    ap.add_argument("--adep", required=True, help="Departure ICAO, e.g. VYYY")
+    ap.add_argument("--ades", required=True, help="Destination ICAO, e.g. VYMD")
     ap.add_argument(
         "--cat62",
         type=Path,

@@ -1,0 +1,997 @@
+{
+ "source": "AIP Myanmar ENR 5.1 (AIRAC AMDT 01/2025, 10 JUL 2025) + aixm_export_2609_VY_v5.1.1.xml",
+ "validFrom": "2026-09-03T00:00:00Z",
+ "validTo": "2026-10-01T00:00:00Z",
+ "areas": [
+  {
+   "designator": "13",
+   "type": "R",
+   "name": "SHANTE",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF Fixed-wing training area, H24. Subject to coordinate with Mandalay APP for Higher altitude."
+  },
+  {
+   "designator": "47",
+   "type": "R",
+   "name": "NAMSANG",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF flying training area."
+  },
+  {
+   "designator": "20",
+   "type": "R",
+   "name": "MYEIK",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF flying training area. Subject to coordinate with Myeik ATC for ATC clearance due to SID & STAR traffic."
+  },
+  {
+   "designator": "51C",
+   "type": "R",
+   "name": "NAMPONG",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF subsonic flying training area, H24. Subject to coordinate with Myitkyina ATC for commercial arrival and departure traffic and Nampong APP for Higher flight level."
+  },
+  {
+   "designator": "42",
+   "type": "R",
+   "name": "MAGWAY",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF flying training area, H24."
+  },
+  {
+   "designator": "1",
+   "type": "D",
+   "name": "NAVAL BASE",
+   "sheets": [],
+   "activityNote": "Notified by NOTAM",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, Air to Air firing, Effective dates and times will be notified in advance through NOTAM and Mingaladon Approach control as necessary."
+  },
+  {
+   "designator": "46A",
+   "type": "R",
+   "name": "NAYPYITAW",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF subsonic flying training area, H24."
+  },
+  {
+   "designator": "48",
+   "type": "R",
+   "name": "NAMSANG",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF subsonic flying training area, H24. Subject to Coordinate with adjacent ATC unit for higher flight level."
+  },
+  {
+   "designator": "51D",
+   "type": "R",
+   "name": "NAMPONG",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF subsonic flying training area, H24. Subject to coordinate with Myitkyina ATC for commercial arrival and departure traffic and Nampong APP for Higher flight level."
+  },
+  {
+   "designator": "29",
+   "type": "R",
+   "name": "PATHEIN EAST SECTORS",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF flying training area, H24."
+  },
+  {
+   "designator": "9",
+   "type": "D",
+   "name": "SHWEPYI",
+   "sheets": [],
+   "activityNote": "Notified by NOTAM",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, Air to Ground firing, Heights and time of activation notified by NOTAM."
+  },
+  {
+   "designator": "23A",
+   "type": "D",
+   "name": "COMBAT TRAINING AREA",
+   "sheets": [],
+   "activityNote": "Notified by NOTAM",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, Airforce and Army training area, Times notified by NOTAM"
+  },
+  {
+   "designator": "19A",
+   "type": "R",
+   "name": "TAUNGOO",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF subsonic flying training area, H24. Subject to Coordinate with adjacent ATC unit for higher or lower flight level."
+  },
+  {
+   "designator": "44",
+   "type": "R",
+   "name": "MAGWAY",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF subsonic flying training area, H24. Need Pre-departure Clearance (PDC) from Yangon ACC and Mandalay APP."
+  },
+  {
+   "designator": "25",
+   "type": "D",
+   "name": "PYAPON AREA",
+   "sheets": [],
+   "activityNote": "Notified by NOTAM",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, Air force and Army training area, Times notified by NOTAM. The information shall reach to AIS 7 days in advance. Need Pre-departure Clearance (PDC) from Mingaladon Approach and Yangon ACC. Active: Permanent, Airforce and Army training area, Times notified by NOTAM"
+  },
+  {
+   "designator": "17",
+   "type": "R",
+   "name": "NAMPONG",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF flying training area, H24"
+  },
+  {
+   "designator": "12",
+   "type": "R",
+   "name": "HMAWBY",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF Subsonic flying training area, H24. Prior Notice the traffic information to Mingaladon APP."
+  },
+  {
+   "designator": "40A",
+   "type": "R",
+   "name": "DANUBYU EAST",
+   "sheets": [],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": ""
+  },
+  {
+   "designator": "37A",
+   "type": "R",
+   "name": "NAYPYITAW",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF subsonic flying training area, H24."
+  },
+  {
+   "designator": "21",
+   "type": "D",
+   "name": "TAUNGNYO",
+   "sheets": [],
+   "activityNote": "Notified by NOTAM",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, Date and Time to be notified by NOTAM, As for diversionary route temporarily established, aircraft bound for VYML and VYMD are to track as VYYY PCD HGU/VOR and BGO/VOR then maintain AWY V1 till crossing 2000N and set course."
+  },
+  {
+   "designator": "30",
+   "type": "R",
+   "name": "PATHEIN TRAINING AREA",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF flying training area. Subject to coordinate with Myeik ATC for ATC clearance due to SID & STAR traffic."
+  },
+  {
+   "designator": "18",
+   "type": "R",
+   "name": "TAUNGOO",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF flying training area. Subject to Coordinate with adjacent ATC unit for higher fight level."
+  },
+  {
+   "designator": "40B",
+   "type": "R",
+   "name": "DANUBYU WEST",
+   "sheets": [],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": ""
+  },
+  {
+   "designator": "39A",
+   "type": "R",
+   "name": "NYAUNGDON EAST",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF flying training area. Need Pre-departure Clearance (PDC) from Mingaladon Approach and Yangon ACC."
+  },
+  {
+   "designator": "50B",
+   "type": "R",
+   "name": "MANDALAY",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF flying training area. Subject to Coordinate with adjacent ATC unit for higher flight level."
+  },
+  {
+   "designator": "15",
+   "type": "R",
+   "name": "SHANTE",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF Subsonic flying training area, H24. Subject to coordinate with Mandalay APP for Lower or Higher altitude without fail."
+  },
+  {
+   "designator": "19C",
+   "type": "R",
+   "name": "TAUNGOO",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF subsonic flying training area, H24. Subject to Coordinate with adjacent ATC unit for higher or lower flight level."
+  },
+  {
+   "designator": "24",
+   "type": "D",
+   "name": "KUNGYANGONE AREA",
+   "sheets": [],
+   "activityNote": "Notified by NOTAM",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, Air force and Army training area. Notified by NOTAM when area is active. The information shall reach to AIS 7 days in advance. Need Pre-departure Clearance (PDC) from Mingaladon Approach and Yangon ACC. Active: Permanent, Airforceand Army training area, Timesnotifiedby NOTAM"
+  },
+  {
+   "designator": "45B",
+   "type": "R",
+   "name": "MAGWAY",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF subsonic flying training area, H24. Need Pre-departure Clearance (PDC) from Yangon ACC and Mandalay APP."
+  },
+  {
+   "designator": "31",
+   "type": "P",
+   "name": "PERLIAMENT AND PRESEDENTIAL HO",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent"
+  },
+  {
+   "designator": "54",
+   "type": "R",
+   "name": "HOMMALINN",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF flying training area."
+  },
+  {
+   "designator": "53",
+   "type": "R",
+   "name": "PATHEIN",
+   "sheets": [],
+   "activityNote": "Notified by NOTAM",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF supersonic flying training area, H24. Notified by NOTAM when area is active. The information shall reach to AIS 7 days in advance."
+  },
+  {
+   "designator": "16",
+   "type": "R",
+   "name": "SHANTE",
+   "sheets": [],
+   "activityNote": "Notified by NOTAM",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF supersonic flying training area, H24. Notified by NOTAM when area is active. The information shall reach to AIS department 7 days in advance. Need Pre-departure Clearance (PDC) from Yangon ACC and Mandalay APP."
+  },
+  {
+   "designator": "49",
+   "type": "R",
+   "name": "NAMSANG",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF subsonic flying training area, H24. Subject to Coordinate with adjacent ATC unit for higher flight level."
+  },
+  {
+   "designator": "51A",
+   "type": "R",
+   "name": "NAMPONG",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF subsonic flying training area, H24. Subject to coordinate with Myitkyina ATC for commercial arrival and departure traffic and Nampong APP for Higher flight level."
+  },
+  {
+   "designator": "11",
+   "type": "R",
+   "name": "HMAWBY",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF flying training area, H24."
+  },
+  {
+   "designator": "37C",
+   "type": "R",
+   "name": "NAYPYITAW",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF Subsonic flying training area, H24."
+  },
+  {
+   "designator": "51B",
+   "type": "R",
+   "name": "NAMPONG",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF subsonic flying training area, H24. Subject to coordinate with Myitkyina ATC for commercial arrival and departure traffic and Nampong APP for Higher flight level."
+  },
+  {
+   "designator": "33",
+   "type": "P",
+   "name": "MINISTRY OF DEFENCE",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent"
+  },
+  {
+   "designator": "26",
+   "type": "R",
+   "name": "MAUBIN",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF flying training area, H24. Need Pre-departure Clearance (PDC) from Mingaladon Approach and Yangon ACC."
+  },
+  {
+   "designator": "45A",
+   "type": "R",
+   "name": "MAGWAY",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF subsonic flying training area, H24. Need Pre-departure Clearance (PDC) from Yangon ACC and Mandalay APP."
+  },
+  {
+   "designator": "52",
+   "type": "R",
+   "name": "TAUNGOO",
+   "sheets": [],
+   "activityNote": "Notified by NOTAM",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF supersonic flying training area, H24. Notified by NOTAM when area is active. The information shall reach to AIS 7 days in advance. Need Pre-departure Clearance (PDC) from Yangon ACC."
+  },
+  {
+   "designator": "50A",
+   "type": "R",
+   "name": "MANDALAY",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF flying training area. Subject to Coordinate with adjacent ATC unit for higher fight level."
+  },
+  {
+   "designator": "10",
+   "type": "D",
+   "name": "DELTA REGION",
+   "sheets": [],
+   "activityNote": "Notified by NOTAM",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, Airforce and Army training area, Times notified by NOTAM"
+  },
+  {
+   "designator": "37B",
+   "type": "R",
+   "name": "NAYPYITAW",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF Subsonic flying training area, H24."
+  },
+  {
+   "designator": "19D",
+   "type": "R",
+   "name": "TAUNGOO",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF subsonic flying training area, H24. Subject to Coordinate with adjacent ATC unit for higher or lower flight level."
+  },
+  {
+   "designator": "41",
+   "type": "R",
+   "name": "HWAMBY",
+   "sheets": [],
+   "activityNote": "Notified by NOTAM",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF Supersonic flying training area. Notified by NOTAM when area is active. The information shall reach to AIS Department 7 days in advance. Need Pre-departure Clearance (PDC) from Yangon ACC and Mingaladon APP."
+  },
+  {
+   "designator": "46B",
+   "type": "R",
+   "name": "NAYPYITAW",
+   "sheets": [],
+   "activityNote": "Notified by NOTAM",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF subsonic flying training area, H24. Notified by NOTAM when area is active. The information shall reach to AIS Department 7 days in advance. Need Pre-departure Clearance (PDC) from Yangon ACC, Naypyitaw APP and Mandalay APP."
+  },
+  {
+   "designator": "5",
+   "type": "P",
+   "name": "YANGON CITY",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent"
+  },
+  {
+   "designator": "23B",
+   "type": "D",
+   "name": "COMBAT TRAINING AREA",
+   "sheets": [],
+   "activityNote": "Notified by NOTAM",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, Airforce and Army training area, Times notified by NOTAM"
+  },
+  {
+   "designator": "37D",
+   "type": "R",
+   "name": "NAYPYITAW",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF subsonic flying training area, H24."
+  },
+  {
+   "designator": "39B",
+   "type": "R",
+   "name": "NYAUNGDON WEST",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF flying training area Need Pre-departure Clearance (PDC) from Mingaladon Approach and Yangon ACC."
+  },
+  {
+   "designator": "43",
+   "type": "R",
+   "name": "MAGWAY",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF Beech flying training area."
+  },
+  {
+   "designator": "14",
+   "type": "R",
+   "name": "SHANTE",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF Helicopter training area, H24."
+  },
+  {
+   "designator": "19B",
+   "type": "R",
+   "name": "TAUNGOO",
+   "sheets": [
+    {
+     "day": "ANY",
+     "dayTil": null,
+     "start": "00:00",
+     "end": "24:00",
+     "startEvent": null,
+     "endEvent": null,
+     "excluded": false,
+     "timeReference": "UTC"
+    }
+   ],
+   "activityNote": "",
+   "restriction": "",
+   "hazard": "",
+   "remarks": "Active: Permanent, MAF subsonic flying training area, H24. Subject to Coordinate with adjacent ATC unit for higher or lower flight level."
+  }
+ ]
+}

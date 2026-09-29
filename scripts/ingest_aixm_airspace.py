@@ -5,9 +5,9 @@ as a flat attribute table -- it never touches the polygon itself. This walks
 each Airspace's AirspaceVolume(s) for their actual horizontal projection, so
 the areas can be drawn on the map instead of just listed.
 
-    python scripts/ingest_aixm_airspace.py --input <xml> --out <dir>
+    python scripts/ingest_aixm_airspace.py            # VY export -> aixm_vy/
 
-Outputs:
+Outputs (under ``web/public/data/aixm_vy/`` by default):
     restricted_areas.geojson    -- P / R / D / TRA polygons (one feature per
                                     AirspaceVolume, so an area published as
                                     several stacked altitude bands keeps each
@@ -30,8 +30,8 @@ from typing import Any, Iterator
 from xml.etree import ElementTree as ET
 
 _ROOT = Path(__file__).resolve().parent.parent
-_DEFAULT_INPUT = _ROOT / "aixm_export_2608_VT_v5.1.1.xml"
-_DEFAULT_OUT = _ROOT / "web" / "public" / "data" / "aixm"
+_DEFAULT_INPUT = _ROOT / "aixm_export_2609_VY_v5.1.1.xml"
+_DEFAULT_OUT = _ROOT / "web" / "public" / "data" / "aixm_vy"
 
 #: Airspace types that carry a flight restriction (mirrors
 #: extract_aixm_restricted_areas.py's ``_TYPES``).

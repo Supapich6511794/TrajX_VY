@@ -1,0 +1,270 @@
+{
+ "source": "AIP Myanmar, Table 3.6 Transition Altitude and Transition Level for aerodromes",
+ "aerodromes": [
+  {
+   "icao": "VYAN",
+   "aerodrome": "Ann",
+   "transition_altitude_ft": 7000,
+   "transition_altitude_m": 2133,
+   "transition_level_fl": 85,
+   "transition_level_m": 2590
+  },
+  {
+   "icao": "VYAS",
+   "aerodrome": "Anisakan",
+   "transition_altitude_ft": 9000,
+   "transition_altitude_m": 2743,
+   "transition_level_fl": 105,
+   "transition_level_m": 3200
+  },
+  {
+   "icao": "VYBG",
+   "aerodrome": "Bagan/Nyaung U",
+   "transition_altitude_ft": 8000,
+   "transition_altitude_m": 2438,
+   "transition_level_fl": 95,
+   "transition_level_m": 2895
+  },
+  {
+   "icao": "VYBM",
+   "aerodrome": "Banmaw",
+   "transition_altitude_ft": 10000,
+   "transition_altitude_m": 3048,
+   "transition_level_fl": 115,
+   "transition_level_m": 3505
+  },
+  {
+   "icao": "VYBP",
+   "aerodrome": "Bokpyinn",
+   "transition_altitude_ft": 7000,
+   "transition_altitude_m": 2133,
+   "transition_level_fl": 85,
+   "transition_level_m": 2590
+  },
+  {
+   "icao": "VYDW",
+   "aerodrome": "Dawei",
+   "transition_altitude_ft": 6000,
+   "transition_altitude_m": 1828,
+   "transition_level_fl": 75,
+   "transition_level_m": 2286
+  },
+  {
+   "icao": "VYHH",
+   "aerodrome": "Heho",
+   "transition_altitude_ft": 11000,
+   "transition_altitude_m": 3353,
+   "transition_level_fl": 125,
+   "transition_level_m": 3810
+  },
+  {
+   "icao": "VYHL",
+   "aerodrome": "Hommalinn",
+   "transition_altitude_ft": 13000,
+   "transition_altitude_m": 3965,
+   "transition_level_fl": 145,
+   "transition_level_m": 4420
+  },
+  {
+   "icao": "VYKG",
+   "aerodrome": "Kengtung",
+   "transition_altitude_ft": 11000,
+   "transition_altitude_m": 3353,
+   "transition_level_fl": 125,
+   "transition_level_m": 3810
+  },
+  {
+   "icao": "VYKI",
+   "aerodrome": "Kanti",
+   "transition_altitude_ft": 13000,
+   "transition_altitude_m": 3965,
+   "transition_level_fl": 145,
+   "transition_level_m": 4420
+  },
+  {
+   "icao": "VYKL",
+   "aerodrome": "Kalay",
+   "transition_altitude_ft": 12000,
+   "transition_altitude_m": 3658,
+   "transition_level_fl": 135,
+   "transition_level_m": 4115
+  },
+  {
+   "icao": "VYKP",
+   "aerodrome": "Kyaukpyu",
+   "transition_altitude_ft": 5000,
+   "transition_altitude_m": 1524,
+   "transition_level_fl": 65,
+   "transition_level_m": 1981
+  },
+  {
+   "icao": "VYKT",
+   "aerodrome": "Kawthoung",
+   "transition_altitude_ft": 4000,
+   "transition_altitude_m": 1220,
+   "transition_level_fl": 55,
+   "transition_level_m": 1676
+  },
+  {
+   "icao": "VYKU",
+   "aerodrome": "Kyauktu",
+   "transition_altitude_ft": null,
+   "transition_altitude_m": null,
+   "transition_level_fl": null,
+   "transition_level_m": null
+  },
+  {
+   "icao": "VYLK",
+   "aerodrome": "Loikaw",
+   "transition_altitude_ft": 10000,
+   "transition_altitude_m": 3048,
+   "transition_level_fl": 115,
+   "transition_level_m": 3505
+  },
+  {
+   "icao": "VYLS",
+   "aerodrome": "Lashio",
+   "transition_altitude_ft": 10000,
+   "transition_altitude_m": 3048,
+   "transition_level_fl": 115,
+   "transition_level_m": 3505
+  },
+  {
+   "icao": "VYMD",
+   "aerodrome": "Mandalay International",
+   "transition_altitude_ft": 6000,
+   "transition_altitude_m": 1828,
+   "transition_level_fl": 75,
+   "transition_level_m": 2286
+  },
+  {
+   "icao": "VYME",
+   "aerodrome": "Myeik",
+   "transition_altitude_ft": 5000,
+   "transition_altitude_m": 1524,
+   "transition_level_fl": 65,
+   "transition_level_m": 1981
+  },
+  {
+   "icao": "VYMK",
+   "aerodrome": "Myitkyina",
+   "transition_altitude_ft": 12000,
+   "transition_altitude_m": 3658,
+   "transition_level_fl": 135,
+   "transition_level_m": 4115
+  },
+  {
+   "icao": "VYMM",
+   "aerodrome": "Mawlamyine",
+   "transition_altitude_ft": 5000,
+   "transition_altitude_m": 1524,
+   "transition_level_fl": 65,
+   "transition_level_m": 1981
+  },
+  {
+   "icao": "VYMS",
+   "aerodrome": "Mong-hsat",
+   "transition_altitude_ft": 11000,
+   "transition_altitude_m": 3353,
+   "transition_level_fl": 125,
+   "transition_level_m": 3810,
+   "note": "AIP prints TA 1524 m; 3353 m (= 11 000 ft) used"
+  },
+  {
+   "icao": "VYMW",
+   "aerodrome": "Magwe",
+   "transition_altitude_ft": 7000,
+   "transition_altitude_m": 2133,
+   "transition_level_fl": 85,
+   "transition_level_m": 2590
+  },
+  {
+   "icao": "VYMY",
+   "aerodrome": "Monywar",
+   "transition_altitude_ft": 7000,
+   "transition_altitude_m": 2133,
+   "transition_level_fl": 85,
+   "transition_level_m": 2590
+  },
+  {
+   "icao": "VYNP",
+   "aerodrome": "Nampong",
+   "transition_altitude_ft": 12000,
+   "transition_altitude_m": 3658,
+   "transition_level_fl": 135,
+   "transition_level_m": 4115
+  },
+  {
+   "icao": "VYNT",
+   "aerodrome": "Naypyitaw International",
+   "transition_altitude_ft": 9000,
+   "transition_altitude_m": 2743,
+   "transition_level_fl": 105,
+   "transition_level_m": 3200
+  },
+  {
+   "icao": "VYPA",
+   "aerodrome": "Hpa-an",
+   "transition_altitude_ft": 9000,
+   "transition_altitude_m": 2743,
+   "transition_level_fl": 105,
+   "transition_level_m": 3200
+  },
+  {
+   "icao": "VYPN",
+   "aerodrome": "Pathein",
+   "transition_altitude_ft": 4000,
+   "transition_altitude_m": 1220,
+   "transition_level_fl": 55,
+   "transition_level_m": 1676
+  },
+  {
+   "icao": "VYPT",
+   "aerodrome": "Putao",
+   "transition_altitude_ft": 17000,
+   "transition_altitude_m": 5182,
+   "transition_level_fl": 185,
+   "transition_level_m": 5639
+  },
+  {
+   "icao": "VYPU",
+   "aerodrome": "Pakhokku",
+   "transition_altitude_ft": 7000,
+   "transition_altitude_m": 2133,
+   "transition_level_fl": 85,
+   "transition_level_m": 2590
+  },
+  {
+   "icao": "VYSW",
+   "aerodrome": "Sittwe",
+   "transition_altitude_ft": 4000,
+   "transition_altitude_m": 1220,
+   "transition_level_fl": 55,
+   "transition_level_m": 1676
+  },
+  {
+   "icao": "VYTD",
+   "aerodrome": "Thandwe",
+   "transition_altitude_ft": 6000,
+   "transition_altitude_m": 1828,
+   "transition_level_fl": 75,
+   "transition_level_m": 2286
+  },
+  {
+   "icao": "VYTL",
+   "aerodrome": "Tachileik",
+   "transition_altitude_ft": 9000,
+   "transition_altitude_m": 2743,
+   "transition_level_fl": 105,
+   "transition_level_m": 3200
+  },
+  {
+   "icao": "VYYY",
+   "aerodrome": "Yangon International",
+   "transition_altitude_ft": 6000,
+   "transition_altitude_m": 1828,
+   "transition_level_fl": 75,
+   "transition_level_m": 2286
+  }
+ ]
+}

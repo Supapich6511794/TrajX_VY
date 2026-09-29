@@ -1,13 +1,13 @@
 """Extract the prohibited / restricted / danger areas and their activity times.
 
-Reads the SWIM AIXM subset (``aixm_export_2608_VT_v5.1.1.xml``) and writes a
+Reads the Yangon FIR AIXM export (``aixm_export_2609_VY_v5.1.1.xml``) and writes a
 flat table of every ``Airspace`` whose ``type`` is P, R, D or TRA, together
 with the schedule that says when it is active.
 
     python scripts/extract_aixm_restricted_areas.py
 
-Outputs (under ``web/public/data/aixm/``):
-    prdt_areas_2608.csv     -- one row per area, schedule resolved to text
+Outputs (under ``web/public/data/aixm_vy/``):
+    prdt_areas_2609.csv     -- one row per area, schedule resolved to text
     pdr_activity.json       -- the same schedules unresolved, for the web app's
                                PDR conflict check (web/lib/pdr/schedule.ts)
 
@@ -20,7 +20,7 @@ AIXM states it two ways and this export uses both:
   either a clock window (``startTime``/``endTime``) or a solar one
   (``startEvent``/``endEvent``, SR = sunrise, SS = sunset). An area can carry
   several sheets, and a sheet marked ``excluded=YES`` carves time OUT of the
-  others (VTD70 is MON-FRI 0130-0930 *except public holidays*).
+  others (e.g. MON-FRI 0130-0930 *except public holidays*).
 * An ``activity:`` LinguisticNote -- free text, used for the schedules that do
   not reduce to a timesheet at all, almost always "Notified by NOTAM".
 
@@ -40,9 +40,9 @@ from typing import Iterator
 from xml.etree import ElementTree as ET
 
 _ROOT = Path(__file__).resolve().parent.parent
-_DEFAULT_INPUT = _ROOT / "aixm_export_2608_VT_v5.1.1.xml"
-_DEFAULT_OUT = _ROOT / "web" / "public" / "data" / "aixm" / "prdt_areas_2608.csv"
-_DEFAULT_JSON = _ROOT / "web" / "public" / "data" / "aixm" / "pdr_activity.json"
+_DEFAULT_INPUT = _ROOT / "aixm_export_2609_VY_v5.1.1.xml"
+_DEFAULT_OUT = _ROOT / "web" / "public" / "data" / "aixm_vy" / "prdt_areas_2609.csv"
+_DEFAULT_JSON = _ROOT / "web" / "public" / "data" / "aixm_vy" / "pdr_activity.json"
 
 #: Airspace types that carry a flight restriction.
 _TYPES = ("P", "R", "D", "TRA")
@@ -186,7 +186,7 @@ def extract(path: Path) -> tuple[list[dict], dict[str, str]]:
         )
 
     def sort_key(row: dict) -> tuple[int, str, int]:
-        # VTD8B after VTD8A but before VTD20: split the trailing digits out.
+        # D8B after D8A but before D20: split the trailing digits out.
         match = re.match(r"^\D*(\d+)", row["designator"])
         return (_TYPES.index(row["type"]), row["designator"][:3], int(match.group(1)) if match else 0)
 
@@ -203,7 +203,7 @@ def main() -> None:
 
     rows, validity = extract(args.input)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    # utf-8-sig: these get opened in Excel, which needs the BOM to read Thai names.
+    # utf-8-sig: these get opened in Excel, which needs the BOM to read non-ASCII names.
     with args.output.open("w", newline="", encoding="utf-8-sig") as fh:
         writer = csv.DictWriter(fh, fieldnames=list(_FIELDS), extrasaction="ignore")
         writer.writeheader()

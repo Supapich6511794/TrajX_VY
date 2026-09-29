@@ -1,15 +1,15 @@
 """Build the SID / STAR / approach layers from an AIXM 5.1.1 export.
 
 The terminal procedures used to come from a one-off ARINC 424 "DFD" GeoJSON
-export (``sid_waypoint_thai.geojson`` and friends) that cannot be refreshed
-from the AIP URL. This reads the SWIM AIXM subset instead
-(``aixm_export_2608_VT_v5.1.1.xml``) and writes the SAME DFD-schema files, so the
+export that cannot be refreshed from the AIP. This reads the AIRAC 2609
+Yangon FIR AIXM export instead (``aixm_export_2609_VY_v5.1.1.xml``) and writes
+the SAME DFD-schema files, so the
 navdata loader, the map layers and the holdings reader all keep working
 unchanged -- only the AIRAC behind them moves.
 
     python scripts/ingest_aixm_procedures.py
 
-Outputs (under ``web/public/data/aixm/``):
+Outputs (under ``web/public/data/aixm_vy/``):
     sid_waypoint.geojson / sid_line.geojson     -- StandardInstrumentDeparture
     star_waypoint.geojson / star_line.geojson   -- StandardInstrumentArrival
     pbn_waypoint.geojson / pbn_leg.geojson      -- RNAV/RNP approaches
@@ -46,8 +46,8 @@ from typing import Any, Iterator
 from xml.etree import ElementTree as ET
 
 _ROOT = Path(__file__).resolve().parent.parent
-_DEFAULT_INPUT = _ROOT / "aixm_export_2608_VT_v5.1.1.xml"
-_DEFAULT_OUT = _ROOT / "web" / "public" / "data" / "aixm"
+_DEFAULT_INPUT = _ROOT / "aixm_export_2609_VY_v5.1.1.xml"
+_DEFAULT_OUT = _ROOT / "web" / "public" / "data" / "aixm_vy"
 
 _XLINK_HREF = "{http://www.w3.org/1999/xlink}href"
 _GML_POS = "{http://www.opengis.net/gml/3.2}pos"
@@ -65,7 +65,7 @@ _LEG_FEATURES = frozenset(
 )
 
 #: AIXM approach type -> the ARINC 424 approach-identifier letter the DFD
-#: export uses (VTSP "VOR/DME Z RWY 09" is D09-Z, "VOR Y RWY 09" is S09-Y).
+#: export uses ("VOR/DME Z RWY 09" is D09-Z, "VOR Y RWY 09" is S09-Y).
 _APPROACH_LETTER = {
     "ILS": "I",
     "LOC": "L",
@@ -83,7 +83,7 @@ _APPROACH_LETTER = {
 }
 
 #: Circling-only approaches carry no runway, so the DFD export identifies them
-#: by the approach type spelled out plus the circling letter (VTCH "RNVA").
+#: by the approach type spelled out plus the circling letter ("RNVA").
 _CIRCLING_PREFIX = {
     "RNAV": "RNV",
     "RNP": "RNV",
@@ -170,7 +170,7 @@ def _num(elem: ET.Element | None, name: str) -> float | None:
 def _alt_ft(elem: ET.Element | None, name: str) -> float | None:
     """Altitude in feet, honouring the ``uom`` the export tags the value with.
 
-    The 2608 v5.1.1 subset states the higher procedure limits in flight levels
+    The v5.1.1 export states the higher procedure limits in flight levels
     (``uom="FL"``), so the raw number has to be scaled or FL130 lands as 130 ft.
     """
     if elem is None:
@@ -415,7 +415,7 @@ def _distance_nm(a: tuple[float, float], b: tuple[float, float]) -> float:
 class RowBuilder:
     """Turns resolved procedures into DFD-schema waypoint + line features."""
 
-    def __init__(self, index: AixmIndex, icao_region: str = "VT") -> None:
+    def __init__(self, index: AixmIndex, icao_region: str = "VY") -> None:
         self.index = index
         self.icao_region = icao_region
         self.fid = 0
@@ -650,7 +650,7 @@ def _write(path: Path, name: str, features: list[dict[str, Any]]) -> None:
 
 
 def build(
-    input_path: Path, out_dir: Path, icao_region: str = "VT"
+    input_path: Path, out_dir: Path, icao_region: str = "VY"
 ) -> dict[str, list[dict[str, Any]]]:
     """Parse the AIXM export and return the eight layers, keyed by file stem."""
     print(f"Reading {input_path.name} ...")
@@ -710,8 +710,8 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=_DEFAULT_OUT)
     parser.add_argument(
         "--icao-region",
-        default="VT",
-        help="ICAO region prefix stamped on each waypoint (e.g. VT, VY).",
+        default="VY",
+        help="ICAO region prefix stamped on each waypoint (default VY).",
     )
     args = parser.parse_args()
     build(args.input, args.out, args.icao_region)

@@ -30,8 +30,8 @@ web/Data/
 
 # Source AIXM exports kept locally: Navigraph/Jeppesen-derived commercial data,
 # licensed for internal and demonstration use only, NOT for redistribution. The
-# procedure layers built from it (web/public/data/aixm/) are committed so the
-# app runs from a clean clone; re-running scripts/ingest_aixm_procedures.py
+# layers built from it (web/public/data/aixm_vy/ etc.) are committed so the
+# app runs from a clean clone; re-running the scripts/ingest_aixm_*.py scripts
 # needs your own copy of the export.
 # (matches both the gzipped export and the plain-XML one.)
 aixm_export_*.xml

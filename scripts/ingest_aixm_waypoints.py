@@ -1,7 +1,5 @@
-"""Build a VY navdata cache (waypoints + airways + airports) in the SAME
-shape as the retired Thai `aip_VT.json`, so the one hardcoded consumer of
-that shape (`api/server.py`'s `_aip()`) works unchanged — only the data
-underneath it moves from Thailand to Myanmar.
+"""Build the VY navdata cache `aip_VY.json` (waypoints + airways + airports)
+in the shape `api/server.py`'s `_aip()` reads.
 
 Why this exists: `api/server.py`'s FPL/route-string generation path
 (`_expand_airways` -> `_airway_waypoint_index`) has NO coordinate source for
@@ -11,7 +9,7 @@ Myanmar aerodromes with published procedures — nothing for the ~135 enroute
 fixes a filed/matched Item-15 route actually names. Without this, every
 `/api/generate` call in "fpl" mode 500s with:
 
-    RuntimeError: AIP navdata cache missing at .../aip_VT.json
+    RuntimeError: AIP navdata cache missing at .../aip_VY.json
 
 Three pieces, three sources:
 
