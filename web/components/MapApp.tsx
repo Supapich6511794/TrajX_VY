@@ -193,6 +193,11 @@ import {
   type PdrFlight,
 } from "@/lib/pdr/usePdrCheck";
 import type { PdrReport } from "@/lib/pdr/detect";
+import {
+  autoResolvePdr,
+  type PdrAutoOutcome,
+  type PdrAutoSummary,
+} from "@/lib/pdr/autoResolve";
 import type { PdrArea } from "@/lib/pdr/types";
 import { activityAt } from "@/lib/pdr/schedule";
 import { saveBinaryFile, saveTextFile } from "@/lib/saveFile";
@@ -2340,7 +2345,11 @@ export default function MapApp() {
         events.push(...buildFlightEvents(flights[i], index));
         const now = performance.now();
         if (now - sliceStart < REPORT_SLICE_MS) continue;
-        if (now - shownAt >= REPORT_PROGRESS_MS) {
+        // Not while this tab is hidden. "View" puts the report tab in front,
+        // so nobody can see the percentage — and each update re-renders the
+        // whole console, which in a dev build (StrictMode double renders, dev
+        // React) ate a large share of the build time for nothing.
+        if (now - shownAt >= REPORT_PROGRESS_MS && !document.hidden) {
           setReportProgress({
             kind,
             percent: Math.min(100, Math.round(((i + 1) / flights.length) * 100)),
@@ -2835,6 +2844,48 @@ export default function MapApp() {
     [trajectories],
   );
 
+  // PDR auto-resolve: choose a clean published route for every rejected flight
+  // and stage it into its plan. Staging always goes through the generator's
+  // plans — that is where a route lives. Before generation the panel IS the
+  // plans, and the re-check runs on its own; after it, each generated flight is
+  // matched back to its plan by identity (a trajectory key is not a plan id)
+  // and waits for the next Generate.
+  const [pdrAuto, setPdrAuto] = useState<PdrAutoSummary | null>(null);
+  const handlePdrAutoResolve = useCallback(() => {
+    const plans = pdrPlanState;
+    const outcomes = pdrShowsPlans
+      ? autoResolvePdr(plans!.flights, plans!.reports, plans!.detailFor)
+      : autoResolvePdr(pdrFlights, pdr.reports, pdr.detailFor);
+    const up = (v: string) => v.trim().toUpperCase();
+    const staged: PdrAutoOutcome[] = outcomes.map((o) => {
+      if (o.kind !== "reroute") return o;
+      if (pdrShowsPlans) {
+        plans!.useRoute(o.flightKey, o.route);
+        return o;
+      }
+      const f = pdrFlights.find((x) => x.flightKey === o.flightKey);
+      const plan =
+        f &&
+        plans?.flights.find(
+          (p) =>
+            up(p.callsign) === up(f.callsign) &&
+            up(p.adep) === up(f.adep) &&
+            up(p.ades) === up(f.ades),
+        );
+      if (!plan) {
+        return {
+          kind: "unresolved",
+          flightKey: o.flightKey,
+          callsign: o.callsign,
+          reason: "Found " + o.route + ", but this flight has no plan in the generator to put it in.",
+        };
+      }
+      plans!.useRoute(plan.flightKey, o.route);
+      return o;
+    });
+    setPdrAuto({ outcomes: staged, needsGenerate: !pdrShowsPlans });
+  }, [pdrShowsPlans, pdrPlanState, pdrFlights, pdr.reports, pdr.detailFor]);
+
   // flightKey → its trajectory + EOBT offset, for building/validating maneuvers.
   const trajById = useMemo(() => {
     const m = new Map<string, { traj: TrajectoryResult; offset: number }>();
@@ -2855,7 +2906,14 @@ export default function MapApp() {
   // panel needs `blockers` to say WHICH aircraft rejected every candidate, and
   // `widened` marks results that only exist because the fallback envelope ran.
   const planAdvisory = useMemo<PlanAdvisoryResult>(() => {
-    const none = { resolutions: [], blockers: [], rejected: [], widened: false };
+    const none = {
+      resolutions: [],
+      blockers: [],
+      rejected: [],
+      widened: false,
+      chained: [],
+      atfm: false,
+    };
     if (!selectedConflictId) return none;
     const c = planConflicts.find((x) => x.id === selectedConflictId);
     if (!c) return none;
@@ -3187,6 +3245,28 @@ export default function MapApp() {
       if (m) commitManeuver(m);
     },
     [inlineSuggestions, commitManeuver],
+  );
+
+  // Blocker-first chain: both steps were validated TOGETHER, so both go in,
+  // blocker first. The blocker's step is logged under its own key — logging it
+  // against the pair would have the pair's own fix overwrite it.
+  const handleApplyChain = useCallback(
+    (idx: number) => {
+      const chain = planAdvisory.chained[idx];
+      const c = planConflicts.find((x) => x.id === selectedConflictId);
+      if (!chain || !c) return;
+      const withTiming = (r: PlanResolution) => ({
+        ...r,
+        timing: { tManLocal: r.tManLocal, deviationSec: r.deviationSec, rejoinSec: r.rejoinSec },
+      });
+      commitManeuver(withTiming(chain.blockerFix), {
+        id: `${c.id}~blocker`,
+        a: chain.blockerFix.target,
+        b: chain.fix.target,
+      });
+      commitManeuver(withTiming(chain.fix), c);
+    },
+    [planAdvisory, planConflicts, selectedConflictId, commitManeuver],
   );
 
   // Top plan-validated resolution for ANY conflict (not just the selected one),
@@ -5028,7 +5108,10 @@ export default function MapApp() {
                       }
                       onEditBlockerPlan={(b) => handleOpenPlan(b.id)}
                       widened={planAdvisory.widened}
+                      atfm={planAdvisory.atfm}
                       rejected={planAdvisory.rejected}
+                      chained={planAdvisory.chained}
+                      onApplyChain={handleApplyChain}
                     />
                   ) : null
                 }
@@ -5160,6 +5243,10 @@ export default function MapApp() {
                     : pdrFlights.find((f) => f.flightKey === k)
                   )?.rflFt
                 }
+                onAutoResolve={handlePdrAutoResolve}
+                autoSummary={pdrAuto}
+                onDismissAuto={() => setPdrAuto(null)}
+                scanning={pdrShowsPlans ? pdrPlanState!.scanning : pdr.scanning}
                 onClose={() => setCdrView(null)}
               />
             )}

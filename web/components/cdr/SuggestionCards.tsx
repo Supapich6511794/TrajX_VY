@@ -13,7 +13,11 @@
  */
 
 import { fmtNm } from "@/lib/cdr/format";
-import type { Blocker, RejectedCandidate } from "@/lib/cdr/planAdvisory";
+import type {
+  Blocker,
+  ChainedResolution,
+  RejectedCandidate,
+} from "@/lib/cdr/planAdvisory";
 import type { Maneuver } from "@/lib/cdr/types";
 
 interface Props {
@@ -52,6 +56,14 @@ interface Props {
   /** The suggestions came from the wider fallback envelope — the maneuvers are
    *  bigger than the engine would normally propose. */
   widened?: boolean;
+  /** The suggestions are ATFM ground delays — nothing airborne cleared. */
+  atfm?: boolean;
+  /** Blocker-first fixes, offered only when no single maneuver clears: move
+   *  the third aircraft, then the pair's fix works. */
+  chained?: ChainedResolution[];
+  /** Apply both steps of `chained[idx]`, blocker first. Omitted = the chains
+   *  are not shown. */
+  onApplyChain?: (idx: number) => void;
 }
 
 const TYPE_LABEL: Record<Maneuver["type"], string> = {
@@ -60,6 +72,7 @@ const TYPE_LABEL: Record<Maneuver["type"], string> = {
   route: "DCT",
   speed: "SPD",
   hold: "HOLD",
+  delay: "ATFM",
 };
 
 /** Short badge text per rejection reason — kept distinct on purpose:
@@ -69,6 +82,7 @@ const TYPE_LABEL: Record<Maneuver["type"], string> = {
  *  not be conflated. */
 const REJECT_LABEL: Record<RejectedCandidate["reason"], string> = {
   "secondary-conflict": "Secondary",
+  "rejoin-conflict": "Third · rejoin",
   "unresolved-primary": "Unresolved",
   "constraint-reject": "Constraint",
   "arrival-protected": "Arrival",
@@ -113,6 +127,64 @@ function RejectedTrail({
   );
 }
 
+/** "Resolve the blocker first" — each card is two steps applied together.
+ *  They were validated as a pair, so there is no per-step Apply: flying only
+ *  the second one is exactly the candidate that was rejected. */
+function ChainCards({
+  chained,
+  nameOf,
+  onApply,
+}: {
+  chained: ChainedResolution[];
+  nameOf: (id: string) => string;
+  onApply: (idx: number) => void;
+}) {
+  return (
+    <div className="cdr-adv">
+      <p className="cdr-adv-head">
+        Resolve the blocker first
+        <span className="cdr-adv-wide">2 steps</span>
+      </p>
+      {chained.map((c, i) => (
+        <div
+          key={`${c.blockerFix.target}-${c.blockerFix.type}-${c.fix.target}-${c.fix.type}`}
+          className="cdr-card"
+        >
+          {[c.blockerFix, c.fix].map((step, n) => (
+            <div key={n} className="cdr-chain-step">
+              <span className="cdr-chain-no">{n + 1}</span>
+              <span className={`cdr-card-type type-${step.type}`}>
+                {TYPE_LABEL[step.type]}
+              </span>
+              <span className="cdr-card-instr">
+                <strong>{nameOf(step.target)}</strong> {step.instruction}
+              </span>
+            </div>
+          ))}
+          <div className="cdr-card-meta">
+            <span className="cdr-card-outcome">
+              d_CPA {fmtNm(c.fix.origDCpaNm)} → <strong>{fmtNm(c.fix.newDCpaNm)}</strong>
+            </span>
+            <span className="cdr-card-cost">
+              {costLabel(c.blockerFix)} · {costLabel(c.fix)}
+            </span>
+          </div>
+          <div className="cdr-card-actions">
+            <button
+              type="button"
+              className="cdr-card-btn apply"
+              onClick={() => onApply(i)}
+              title={`Move ${nameOf(c.blockerFix.target)} first, then ${nameOf(c.fix.target)} — checked together against all traffic`}
+            >
+              Apply both
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** Compact cost string per maneuver kind. */
 function costLabel(m: Maneuver): string {
   if (m.type === "flightlevel") {
@@ -142,8 +214,19 @@ export default function SuggestionCards({
   onWorkBlocker,
   onEditBlockerPlan,
   widened,
+  atfm,
   rejected,
+  chained,
+  onApplyChain,
 }: Props) {
+  if (suggestions.length === 0 && chained?.length && onApplyChain) {
+    return (
+      <>
+        <ChainCards chained={chained} nameOf={nameOf} onApply={onApplyChain} />
+        {rejected && <RejectedTrail rejected={rejected} nameOf={nameOf} />}
+      </>
+    );
+  }
   if (suggestions.length === 0) {
     // Almost every "no resolution" is really "a third aircraft is in the way":
     // the maneuver separates the pair fine, then clips someone else and gets
@@ -205,6 +288,7 @@ export default function SuggestionCards({
       <p className="cdr-adv-head">
         Resolution advisories
         {widened && <span className="cdr-adv-wide">wider envelope</span>}
+        {atfm && <span className="cdr-adv-wide">ATFM · no airborne fix</span>}
       </p>
       {suggestions.map((m, i) => {
         const previewing = previewIdx === i;

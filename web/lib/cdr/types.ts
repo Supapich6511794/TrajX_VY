@@ -106,6 +106,8 @@ export interface ManeuverResolution {
     legSec: number;
     gsKt: number;
   };
+  /** Seconds to push the departure back — set by ATFM ground-delay "maneuvers". */
+  delaySec?: number;
 }
 
 /** A resolution the controller has APPLIED to a conflict — recorded so the
