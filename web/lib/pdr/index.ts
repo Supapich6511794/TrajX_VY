@@ -23,6 +23,7 @@
  *   penetration  — where a route is inside a volume, and when
  *   routeRules   — ENR 1.10 availability, direction and conditions
  *   detect       — the orchestrator: findings + ranked suggestions
+ *   autoResolve  — pick the fix for every rejected plan in one pass
  */
 
 export {
@@ -40,6 +41,8 @@ export type {
   SegmentIndex,
 } from "./airwayDirection";
 export { fetchPdrActivity, buildPdrAreas, areasWithoutSchedule } from "./areas";
+export { autoBlocker, autoResolveFlight, autoResolvePdr } from "./autoResolve";
+export type { PdrAutoFlight, PdrAutoOutcome, PdrAutoSummary } from "./autoResolve";
 export { analysePdr, areaScheduleText } from "./detect";
 export type {
   PdrCategory,
