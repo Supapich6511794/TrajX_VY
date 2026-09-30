@@ -34,7 +34,7 @@ export const MAIN_NAV_ITEMS: readonly MainNavDef[] = [
     id: "home",
     icon: "home",
     label: "Home",
-    hint: "Back to the Generator — the first page of a run",
+    hint: "Open the Generator — the first page of a run. Press again to close it",
     kind: "action",
     iconOnly: true,
   },

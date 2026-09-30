@@ -22,7 +22,7 @@ const repo = dirname(scriptsDir);
 const web = join(repo, "web");
 
 function run(cmd, args, cwd) {
-  // shell:true is needed so Windows resolves `npm`/`powershell`, but the
+  // shell:true is needed so Windows resolves `npm`/`py`, but the
   // shell then splits args on spaces — so any arg with a space (e.g. the
   // repo path "Flight Trajectory Generator") must be quoted ourselves.
   const quoted = args.map((a) => (/\s/.test(a) ? `"${a}"` : a));
@@ -71,6 +71,6 @@ if (!existsSync(venvUvicorn)) {
   run(venvPython, ["-m", "pip", "install", "-r", join(repo, "requirements.txt")], repo);
 }
 
-// 3. Start API + web together (auto-restart). Ctrl+C stops both.
+// 3. Start API + web together (each hot-reloads itself). Ctrl+C stops both.
 console.log("[run] Starting API (:8000) + web (:3000). Open http://localhost:3000");
 run("npm", ["run", "dev:serve"], web);

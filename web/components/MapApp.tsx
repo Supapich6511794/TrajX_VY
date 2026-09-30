@@ -415,6 +415,36 @@ async function loadReportAirspace(
   return buildAirspaceIndex(collections);
 }
 
+/** The PDR check's view of one generated trajectory. */
+function buildPdrFlight(t: TrajectoryResult, filedRoute: string): PdrFlight {
+  const path = pathFromTrajectory(t.points);
+  const hours = t.stats.timeMinutes / 60;
+  return {
+    flightKey: t.meta.flightKey,
+    callsign: t.meta.callsign,
+    adep: t.meta.adep,
+    ades: t.meta.ades,
+    actype: t.meta.aircraftType,
+    // The route string as filed for THIS combination (a plan can queue
+    // several), which is what the download row carries.
+    filedRoute,
+    // The first emitted sample is already an absolute UTC instant, so it
+    // anchors the schedule lookup without re-parsing the EOBT string.
+    eobtMs: path[0]?.timeMs ?? Date.parse(t.meta.eobtIso),
+    rflFt: t.stats.rflFt,
+    gsKt: hours > 0 ? t.stats.distanceNm / hours : 450,
+    // Candidate routes are estimates even here, so they get the same
+    // anchors — the flown trajectory's own ends.
+    terminals: {
+      dep: path[0] ? { lat: path[0].lat, lon: path[0].lon } : null,
+      arr: path.length
+        ? { lat: path[path.length - 1].lat, lon: path[path.length - 1].lon }
+        : null,
+    },
+    path,
+  };
+}
+
 export default function MapApp() {
   const [airways, setAirways] = useState<AirwayCollection | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1057,13 +1087,9 @@ export default function MapApp() {
   // is absolute, so subtract the route's own departure offset to keep each
   // profile's plane in lock-step with the map aircraft.
   const playSimT = (i: number): number | null => {
-    if (safePlaybackIdx === "all") {
-      const p = trajectories[i]?.points?.[0];
-      const off = p
-        ? (new Date(p.epoch_ts).getTime() - allOriginMs) / 1000
-        : 0;
-      return sim.simT - off;
-    }
+    // `routeOffsets` is the same per-route departure offset from the earliest
+    // flight, precomputed — this runs per card per animation frame.
+    if (safePlaybackIdx === "all") return sim.simT - (routeOffsets[i] ?? 0);
     return safePlaybackIdx === i ? sim.simT : null;
   };
 
@@ -1406,6 +1432,9 @@ export default function MapApp() {
     setCdrView(v);
     setDepPanelOpen(false);
   }, []);
+  // Stable, because GeneratorPanel is memo'd: an inline arrow re-rendered it
+  // (and its ~2000 plan tabs) on every MapApp render.
+  const openPdrCheck = useCallback(() => openCdrView("pdr"), [openCdrView]);
   // Nothing left to show → the panel closes itself rather than sitting there
   // empty (Auto fix all clears the whole list in one click).
   useEffect(() => {
@@ -2058,34 +2087,20 @@ export default function MapApp() {
     nonce: number;
   } | null>(null);
 
+  // The flight object built for each trajectory, reused while the trajectory
+  // and its filed route are unchanged — `usePdrCheck` caches its verdicts by
+  // object, so an auto-resolve fix re-checks ONE flight instead of all of them.
+  const pdrFlightCache = useRef(
+    new WeakMap<TrajectoryResult, { route: string; flight: PdrFlight }>(),
+  );
   const pdrFlights = useMemo<PdrFlight[]>(() => {
     return trajectories.map((t, i) => {
-      const path = pathFromTrajectory(t.points);
-      const hours = t.stats.timeMinutes / 60;
-      return {
-        flightKey: t.meta.flightKey,
-        callsign: t.meta.callsign,
-        adep: t.meta.adep,
-        ades: t.meta.ades,
-        actype: t.meta.aircraftType,
-        // The route string as filed for THIS combination (a plan can queue
-        // several), which is what the download row carries.
-        filedRoute: downloads[i]?.route ?? "",
-        // The first emitted sample is already an absolute UTC instant, so it
-        // anchors the schedule lookup without re-parsing the EOBT string.
-        eobtMs: path[0]?.timeMs ?? Date.parse(t.meta.eobtIso),
-        rflFt: t.stats.rflFt,
-        gsKt: hours > 0 ? t.stats.distanceNm / hours : 450,
-        // Candidate routes are estimates even here, so they get the same
-        // anchors — the flown trajectory's own ends.
-        terminals: {
-          dep: path[0] ? { lat: path[0].lat, lon: path[0].lon } : null,
-          arr: path.length
-            ? { lat: path[path.length - 1].lat, lon: path[path.length - 1].lon }
-            : null,
-        },
-        path,
-      };
+      const route = downloads[i]?.route ?? "";
+      const hit = pdrFlightCache.current.get(t);
+      if (hit && hit.route === route) return hit.flight;
+      const flight = buildPdrFlight(t, route);
+      pdrFlightCache.current.set(t, { route, flight });
+      return flight;
     });
   }, [trajectories, downloads]);
 
@@ -3856,6 +3871,10 @@ export default function MapApp() {
 
   // Remove one finished route by index — clears it from the map AND
   // from the toolbar / modal selections.
+  // Latest `removeResultAt` for the memo'd route cards, whose callback props
+  // are ignored by their memo comparison.
+  const removeResultAtRef = useRef(removeResultAt);
+  removeResultAtRef.current = removeResultAt;
   function removeResultAt(i: number) {
     const removedKey = trajectories[i]?.meta.flightKey;
     const next = trajectories.filter((_, k) => k !== i);
@@ -3961,12 +3980,74 @@ export default function MapApp() {
     setSidebarOpen(true);
     setCdrView(null);
     setDepPanelOpen(false);
-    setFilterOpen(false);
+    // The flight filter stays open (see `closePanelsExcept`).
     setLayersOpen(false);
     setDownloadOpen(false);
     setMeasureOn(false);
     setMeasurePicks([]);
   }, []);
+
+  /**
+   * One tab's panel at a time. Opening a panel FROM THE NAV BAR closes the one
+   * another tab left open — the left rail (Home / Trajectory), the right rail
+   * (Conflicts / Plan check / Sector / Sequencing), the flight filter (Tool)
+   * and the layer options (Layers). Export is a modal on top of the page, so it
+   * closes nothing. Links INSIDE a panel (e.g. the Generator's "N departure
+   * conflicts →") keep using the plain openers, so the panel they sit in stays.
+   */
+  type PanelOwner = "sidebar" | "rail" | "filter" | "layers";
+  const closePanelsExcept = useCallback((keep: PanelOwner) => {
+    if (keep !== "sidebar") {
+      setNav(null);
+      setSidebarOpen(false);
+      setFirstRunDismissed(true);
+    }
+    if (keep !== "rail") {
+      setCdrView(null);
+      setDepPanelOpen(false);
+    }
+    // The Tool menu's flight filter is the one exception: it sits on the
+    // opposite side of the map from the other panels and is used alongside
+    // them, so opening another tab leaves it open.
+    if (keep !== "layers") setLayersOpen(false);
+  }, []);
+  const navToSidebar = useCallback(
+    (n: NavView) => {
+      closePanelsExcept("sidebar");
+      handleNavChange(n);
+    },
+    [closePanelsExcept, handleNavChange],
+  );
+  const navOpenCdrView = useCallback(
+    (v: CdrView) => {
+      closePanelsExcept("rail");
+      openCdrView(v);
+    },
+    [closePanelsExcept, openCdrView],
+  );
+  const navOpenDepPanel = useCallback(() => {
+    closePanelsExcept("rail");
+    openDepPanel();
+  }, [closePanelsExcept, openDepPanel]);
+  const navOpenLayers = useCallback(
+    (tab: LayerTabKey) => {
+      closePanelsExcept("layers");
+      openLayers(tab);
+    },
+    [closePanelsExcept, openLayers],
+  );
+
+  /** The Home tab toggles, like the other tabs: a second press while the
+   *  Generator is open closes the panel exactly as its ✕ does. */
+  const toggleHome = useCallback(() => {
+    if (nav?.kind === "generator") {
+      setNav(null);
+      setSidebarOpen(false);
+      setFirstRunDismissed(true);
+      return;
+    }
+    goHome();
+  }, [nav, goHome]);
 
   const activeRouteLabel = (() => {
     if (nav?.kind === "all") {
@@ -4030,7 +4111,7 @@ export default function MapApp() {
     return {
       home: {
         active: nav?.kind === "generator",
-        onSelect: goHome,
+        onSelect: toggleHome,
       },
 
       tool: {
@@ -4072,6 +4153,7 @@ export default function MapApp() {
             measurePicked={measurePicks.length}
             filterOpen={filterOpen}
             onFilter={() => {
+              if (!filterOpen) closePanelsExcept("filter");
               setFilterOpen((v) => !v);
               close();
             }}
@@ -4086,11 +4168,11 @@ export default function MapApp() {
         badge: hasFlights ? { text: String(trajectories.length) } : null,
         // Pressing the tab itself goes to the overview; the dropdown is the
         // shortcut to one section, or to one flight's section.
-        onSelect: () => handleNavChange({ kind: "all", section: "both" }),
+        onSelect: () => navToSidebar({ kind: "all", section: "both" }),
         menu: (close) => (
           <TrajectoryMenu
             nav={nav}
-            onNavChange={handleNavChange}
+            onNavChange={navToSidebar}
             onPicked={close}
           />
         ),
@@ -4114,7 +4196,7 @@ export default function MapApp() {
         menu: (close) => (
           <ConflictsMenu
             cdrView={cdrView}
-            onOpenView={openCdrView}
+            onOpenView={navOpenCdrView}
             monitoring={cdrMonitoring}
             unresolvedCount={unresolvedConflicts.length}
             logCount={conflictLogCount.total}
@@ -4143,10 +4225,10 @@ export default function MapApp() {
         menu: (close) => (
           <PlanCheckMenu
             cdrView={cdrView}
-            onOpenView={openCdrView}
+            onOpenView={navOpenCdrView}
             depConflictCount={depConflicts.length}
             depPanelOpen={depPanelOpen}
-            onOpenDepartures={openDepPanel}
+            onOpenDepartures={navOpenDepPanel}
             pdrActionable={pdrActionable}
             onPicked={close}
           />
@@ -4163,7 +4245,7 @@ export default function MapApp() {
         menu: (close) => (
           <SectorMenu
             cdrView={cdrView}
-            onOpenView={openCdrView}
+            onOpenView={navOpenCdrView}
             onPicked={close}
           />
         ),
@@ -4178,7 +4260,7 @@ export default function MapApp() {
             : undefined,
         onSelect: () => {
           if (safePlaybackIdx !== "all") setPlaybackIdx("all");
-          openCdrView("arrivals");
+          navOpenCdrView("arrivals");
         },
       },
 
@@ -4209,7 +4291,7 @@ export default function MapApp() {
       layers: {
         active: layersOpen,
         menu: (close) => (
-          <LayersMenu onOpenLayers={openLayers} onPicked={close} />
+          <LayersMenu onOpenLayers={navOpenLayers} onPicked={close} />
         ),
       },
 
@@ -4233,8 +4315,13 @@ export default function MapApp() {
     downloadOpen,
     filterOpen,
     flightTagsOn,
-    goHome,
+    toggleHome,
     handleNavChange,
+    closePanelsExcept,
+    navToSidebar,
+    navOpenCdrView,
+    navOpenDepPanel,
+    navOpenLayers,
     layersOpen,
     measureOn,
     measurePicks.length,
@@ -4387,7 +4474,7 @@ export default function MapApp() {
             onDepartureConflicts={setDepConflictState}
             onOpenDepartureConflicts={openDepPanel}
             onPdrPlanCheck={setPdrPlanState}
-            onOpenPdrCheck={() => openCdrView("pdr")}
+            onOpenPdrCheck={openPdrCheck}
             focusPlan={planFocus}
             routeHandoff={routeHandoff}
           />
@@ -4403,7 +4490,7 @@ export default function MapApp() {
               routeIndex={
                 trajectories.length > 1 ? nav.routeIdx + 1 : null
               }
-              onRemove={() => removeResultAt(nav.routeIdx)}
+              onRemove={() => removeResultAtRef.current(nav.routeIdx)}
               forceSection={nav.section}
               simT={playSimT(nav.routeIdx)}
               airspace={airspaceByKey[downloads[nav.routeIdx].flightKey]}
@@ -4483,22 +4570,28 @@ export default function MapApp() {
 
             {/* Collapsible, colour-tagged route cards — expand any to reveal
                 the active section. Heavy charts mount only when expanded. */}
-            {profileRows.map(({ t, d, i }) => (
-              <RouteResultTabs
-                key={d.flightKey}
-                trajectory={t}
-                download={d}
-                routeIndex={i + 1}
-                onRemove={() => removeResultAt(i)}
-                collapsible
-                collapsed={!expandedKeys.has(d.flightKey)}
-                onToggleCollapse={() => toggleExpanded(d.flightKey)}
-                sectionMode={nav.section}
-                simT={playSimT(i)}
-                airspace={airspaceByKey[d.flightKey]}
-                airspaceSegmentsFor={airspaceSegmentsFor}
-              />
-            ))}
+            {/* A collapsed card shows only its header, so it gets no clock and
+                no live airspace: with those constant the memo'd card skips
+                re-rendering on every animation frame. */}
+            {profileRows.map(({ t, d, i }) => {
+              const open = expandedKeys.has(d.flightKey);
+              return (
+                <RouteResultTabs
+                  key={d.flightKey}
+                  trajectory={t}
+                  download={d}
+                  routeIndex={i + 1}
+                  onRemove={() => removeResultAtRef.current(i)}
+                  collapsible
+                  collapsed={!open}
+                  onToggleCollapse={() => toggleExpanded(d.flightKey)}
+                  sectionMode={nav.section}
+                  simT={open ? playSimT(i) : null}
+                  airspace={open ? airspaceByKey[d.flightKey] : undefined}
+                  airspaceSegmentsFor={airspaceSegmentsFor}
+                />
+              );
+            })}
 
             {profileRows.length === 0 && (
               <p className="rp-search-empty">

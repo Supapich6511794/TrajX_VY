@@ -20,7 +20,7 @@
  *     in-card Vertical/Summary switch).
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 
 import AltitudeProfile from "@/components/AltitudeProfile";
 import type { Phase, TrajectoryResult } from "@/lib/trajectory/types";
@@ -90,7 +90,7 @@ function fmtFL(ft: number | null | undefined): string {
   return `FL${Math.round(ft / 100)}`;
 }
 
-export default function RouteResultTabs({
+function RouteResultTabs({
   trajectory,
   download,
   routeIndex,
@@ -473,3 +473,18 @@ export default function RouteResultTabs({
     </div>
   );
 }
+
+/** Callback props are left out of the comparison: the parent passes fresh
+ *  closures each render, but they only close over values that ARE compared
+ *  (the route index / flight key) plus refs to its latest handlers. Without
+ *  this, every card in the "all routes" list re-rendered on every animation
+ *  frame of the playback. */
+function sameProps(a: Props, b: Props): boolean {
+  for (const k of Object.keys({ ...a, ...b }) as (keyof Props)[]) {
+    if (k === "onRemove" || k === "onToggleCollapse") continue;
+    if (!Object.is(a[k], b[k])) return false;
+  }
+  return true;
+}
+
+export default memo(RouteResultTabs, sameProps);

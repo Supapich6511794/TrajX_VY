@@ -29,6 +29,7 @@ import {
   GeoJSON,
   MapContainer,
   Marker,
+  Pane,
   Polygon,
   Polyline,
   Popup,
@@ -566,10 +567,31 @@ function matchesAcType(
 
 /** A small SVG plane icon, rotated to the current heading and tinted by
  *  aircraft type. */
+/** Plane icons by (heading, colour, followed). Handing react-leaflet the SAME
+ *  icon object lets it skip `setIcon`, which otherwise tore down and rebuilt
+ *  every aircraft's DOM element on every animation frame. Bounded: headings are
+ *  whole degrees and colours come from fixed palettes. */
+const planeIconCache = new Map<string, L.DivIcon>();
+
 function planeIcon(
   track: number,
   color: string,
   highlight = false,
+): L.DivIcon {
+  const key = `${track}|${color}|${highlight ? 1 : 0}`;
+  let icon = planeIconCache.get(key);
+  if (!icon) {
+    if (planeIconCache.size > 20000) planeIconCache.clear();
+    icon = buildPlaneIcon(track, color, highlight);
+    planeIconCache.set(key, icon);
+  }
+  return icon;
+}
+
+function buildPlaneIcon(
+  track: number,
+  color: string,
+  highlight: boolean,
 ): L.DivIcon {
   const ring = highlight
     ? `<span class="aircraft-ring"></span>`
@@ -1883,6 +1905,13 @@ export default function LeafletMap({
     };
   })();
 
+  // Moving-aircraft trails, collected by the aircraft loop below and drawn in
+  // their own pane. With `preferCanvas` every path shares ONE canvas, so a
+  // trail moving each frame made Leaflet redraw every airway, sector and fix
+  // under it — most of a playback frame. A separate pane gets its own canvas
+  // (Leaflet creates one renderer per pane); only trails are redrawn now.
+  const liveTrails: ReactNode[] = [];
+
   return (
     <>
       {/*
@@ -2158,9 +2187,13 @@ export default function LeafletMap({
         const airsText = tf.airspace
           ? formatAirspace(airspace?.[t.meta.flightKey], "compact")
           : "";
+        if (decayTrail) {
+          liveTrails.push(
+            <Fragment key={`trail-${t.meta.flightKey}`}>{decayTrail}</Fragment>,
+          );
+        }
         return (
           <Fragment key={`ac-${t.meta.flightKey}`}>
-            {decayTrail}
             {/* Invisible hit target. The visible plane Marker re-creates its
                 divIcon every frame (to rotate with heading), which replaces its
                 DOM element ~60×/sec — a click (mousedown+mouseup on one element)
@@ -2210,6 +2243,13 @@ export default function LeafletMap({
           </Fragment>
         );
       })}
+
+      {/* Above the static overlays, below the markers; never a click target
+          (the trails are non-interactive), so the canvas lets events through
+          to the aircraft hit targets and the layers underneath. */}
+      <Pane name="aircraft-trails" style={{ zIndex: 410, pointerEvents: "none" }}>
+        {liveTrails}
+      </Pane>
 
       {/* CD&R resolution preview — the modified (uncommitted) path, dashed with
           a pulsing cyan glow (cyan = proposed, green = already applied). Same

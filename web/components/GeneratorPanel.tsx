@@ -547,6 +547,48 @@ function RwyDefaultHint({
   );
 }
 
+/** One plan tab. Memoised with primitive props and stable handlers so that,
+ *  with thousands of imported plans, editing the active plan re-renders only
+ *  its own tab instead of the whole strip. */
+const PlanTab = memo(function PlanTab({
+  id,
+  label,
+  active,
+  removable,
+  onSelect,
+  onRemove,
+}: {
+  id: string;
+  label: string;
+  active: boolean;
+  removable: boolean;
+  onSelect: (id: string) => void;
+  onRemove: (id: string) => void;
+}) {
+  return (
+    <div className={`plan-tab${active ? " active" : ""}`}>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={active}
+        onClick={() => onSelect(id)}
+      >
+        {label}
+      </button>
+      {removable && (
+        <button
+          type="button"
+          className="plan-x"
+          title="Remove this plan"
+          onClick={() => onRemove(id)}
+        >
+          ✕
+        </button>
+      )}
+    </div>
+  );
+});
+
 // Memoised: this panel stays mounted (hidden via display:none) while the
 // map aircraft animates, so MapApp re-renders it ~60×/sec. Its props are
 // referentially stable (state setters + a useCallback'd onResult), so memo
@@ -808,26 +850,54 @@ function GeneratorPanel({
     }
   };
 
+  // Stable tab handlers, so the memo'd <PlanTab>s skip re-rendering while the
+  // active plan is being edited — a bulk import can open thousands of tabs.
+  const removePlanRef = useRef(removePlan);
+  removePlanRef.current = removePlan;
+  const selectPlanTab = useCallback((id: string) => switchToRef.current(id), []);
+  const removePlanTab = useCallback((id: string) => removePlanRef.current(id), []);
+
   // Live view of every plan with the active tab reflecting unsaved edits,
   // for the header counters and "Generate all".
-  const liveActive = snapshotActive();
-  const allDrafts = plans.map((p) => (p.id === activeId ? liveActive : p));
+  //
+  // Memoised on the editor fields so it only changes identity when a plan
+  // does. Rebuilt every render, it made `depConflicts` a new array every
+  // render, which fired the upward emit, whose parent setState re-rendered
+  // this panel — a render loop that pinned the CPU with ~2000 imported plans.
+  const liveActive = useMemo<PlanDraft>(
+    () => snapshotActive(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      activeId, callsign, actype, adep, ades, eobt, gsKt, rfl, entryFl,
+      routeMode, routeStr, builtWpts, routes, sid, star, depRwy, arrRwy,
+      approach, approachTransition,
+    ],
+  );
+  const allDrafts = useMemo(
+    () => plans.map((p) => (p.id === activeId ? liveActive : p)),
+    [plans, activeId, liveActive],
+  );
 
   // Plan-tab rows after the FPL search box: each tab keeps its ORIGINAL index
   // (so "Plan N" labels stay stable) and is matched on callsign / ADEP / ADES
   // / route / SID / STAR — handy once a bulk import opens dozens of tabs.
-  const planTokens = planQuery.trim().toUpperCase().split(/[\s,]+/).filter(Boolean);
-  const planHay = (d: PlanDraft) =>
-    [d.callsign, d.adep, d.ades, d.routeStr, d.sid, d.star, ...d.routes.map((r) => r.route)]
-      .filter(Boolean)
-      .join(" ")
-      .toUpperCase();
-  const planTabRows = allDrafts
-    .map((d, i) => ({ d, i }))
-    .filter(({ d }) => planTokens.length === 0 || planTokens.every((t) => planHay(d).includes(t)));
-  const totalRoutes = allDrafts.reduce(
-    (n, d) => n + draftCombos(d).length,
-    0,
+  const planTokens = useMemo(
+    () => planQuery.trim().toUpperCase().split(/[\s,]+/).filter(Boolean),
+    [planQuery],
+  );
+  const planTabRows = useMemo(() => {
+    const planHay = (d: PlanDraft) =>
+      [d.callsign, d.adep, d.ades, d.routeStr, d.sid, d.star, ...d.routes.map((r) => r.route)]
+        .filter(Boolean)
+        .join(" ")
+        .toUpperCase();
+    return allDrafts
+      .map((d, i) => ({ d, i }))
+      .filter(({ d }) => planTokens.length === 0 || planTokens.every((t) => planHay(d).includes(t)));
+  }, [allDrafts, planTokens]);
+  const totalRoutes = useMemo(
+    () => allDrafts.reduce((n, d) => n + draftCombos(d).length, 0),
+    [allDrafts],
   );
   const uniqueAirports = useMemo(() => {
     const s = new Set<string>();
@@ -2872,29 +2942,15 @@ function GeneratorPanel({
       {/* Plan tab strip (underline tabs). */}
       <div className="plans-tabs" role="tablist">
         {planTabRows.map(({ d, i }) => (
-          <div
+          <PlanTab
             key={d.id}
-            className={`plan-tab${d.id === activeId ? " active" : ""}`}
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={d.id === activeId}
-              onClick={() => switchTo(d.id)}
-            >
-              {planLabel(d, i)}
-            </button>
-            {plans.length > 1 && (
-              <button
-                type="button"
-                className="plan-x"
-                title="Remove this plan"
-                onClick={() => removePlan(d.id)}
-              >
-                ✕
-              </button>
-            )}
-          </div>
+            id={d.id}
+            label={planLabel(d, i)}
+            active={d.id === activeId}
+            removable={plans.length > 1}
+            onSelect={selectPlanTab}
+            onRemove={removePlanTab}
+          />
         ))}
         {planTokens.length > 0 && planTabRows.length === 0 && (
           <span className="plans-nomatch">No FPL matches “{planQuery}”.</span>

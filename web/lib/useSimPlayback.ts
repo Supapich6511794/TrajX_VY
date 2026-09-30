@@ -66,13 +66,21 @@ export interface SimPlayback {
 /** Total elapsed seconds of a trajectory (last epoch − first epoch). This is
  *  the real flight duration the playback clock runs to — use it for arrival
  *  checks rather than the rounded `stats.timeMinutes`, which can exceed it. */
+/** Durations by point array (never mutated — a change replaces the array).
+ *  Several per-frame paths ask for every flight's duration, and each call
+ *  parsed two ISO timestamps. */
+const durationCache = new WeakMap<TrajectoryPoint[], number>();
+
 export function totalSeconds(points: TrajectoryPoint[] | undefined): number {
   if (!points || points.length < 2) return 0;
-  return (
+  const hit = durationCache.get(points);
+  if (hit !== undefined) return hit;
+  const sec =
     (new Date(points[points.length - 1].epoch_ts).getTime() -
       new Date(points[0].epoch_ts).getTime()) /
-    1000
-  );
+    1000;
+  durationCache.set(points, sec);
+  return sec;
 }
 
 // Sample tables are derived purely from the point array, so they are cached
