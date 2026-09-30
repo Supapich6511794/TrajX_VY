@@ -35,6 +35,7 @@ import type {
   Remedy,
   RouteSuggestion,
 } from "@/lib/pdr/detect";
+import type { PdrAutoSummary } from "@/lib/pdr/autoResolve";
 import type { PdrArea } from "@/lib/pdr/types";
 import { matchesPdrSearch, pdrSearchTerms } from "@/lib/pdr/search";
 import {
@@ -90,7 +91,78 @@ interface Props {
    *  header: when the form and the check disagree, the number that matters is
    *  the one the check used. */
   rflFtOf?: (flightKey: string) => number | undefined;
+  /** Stage the best clean published route into every rejected plan. Omitted =
+   *  no auto-resolve button. */
+  onAutoResolve?: () => void;
+  /** What the last auto-resolve run did, until dismissed. */
+  autoSummary?: PdrAutoSummary | null;
+  onDismissAuto?: () => void;
+  /** The bulk scan is still running — verdicts are incomplete, so an
+   *  auto-resolve now would silently skip the flights not yet reached. */
+  scanning?: boolean;
   onClose: () => void;
+}
+
+/** The auto-resolve summary: every rejected flight, what was staged for it or
+ *  why nothing was. A row opens its flight, where the full report shows. */
+function AutoSummary({
+  summary,
+  onSelect,
+  onDismiss,
+}: {
+  summary: PdrAutoSummary;
+  onSelect: (key: string) => void;
+  onDismiss?: () => void;
+}) {
+  const staged = summary.outcomes.filter((o) => o.kind === "reroute");
+  const left = summary.outcomes.filter((o) => o.kind === "unresolved");
+  return (
+    <div className="pdr-auto-summary" role="status">
+      <div className="pdr-auto-head">
+        <strong>
+          Auto-resolve: {staged.length} re-routed · {left.length} left for review
+        </strong>
+        {onDismiss && (
+          <button type="button" className="pdr-auto-x" onClick={onDismiss} aria-label="Dismiss">
+            ✕
+          </button>
+        )}
+      </div>
+      {summary.outcomes.length === 0 && (
+        <p className="pdr-auto-note">No rejected flights to resolve.</p>
+      )}
+      {staged.length > 0 && (
+        <p className="pdr-auto-note">
+          {summary.needsGenerate
+            ? "Routes are staged in the plans. Press Generate to re-fly them — the check re-runs on the new trajectories."
+            : "Routes are staged in the plans and re-checked below. Nothing is generated until you press Generate."}
+        </p>
+      )}
+      <ul className="pdr-auto-list">
+        {summary.outcomes.map((o) => (
+          <li key={o.flightKey} className={"pdr-auto-row k-" + o.kind}>
+            <button type="button" className="pdr-auto-flight" onClick={() => onSelect(o.flightKey)}>
+              {o.callsign}
+            </button>
+            {o.kind === "reroute" ? (
+              <span className="pdr-auto-text">
+                → <code>{o.route}</code>
+                {o.suggestion.clears.length > 0 && <> · clears {o.suggestion.clears.join(", ")}</>}
+                {o.remaining.length > 0 && (
+                  <span className="pdr-auto-warn">still: {o.remaining.join("; ")}</span>
+                )}
+              </span>
+            ) : (
+              <span className="pdr-auto-text">
+                {o.reason}
+                {o.action && <span className="pdr-auto-action">{o.action}</span>}
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 /** Chip wording. "REJECTED" rather than "conflict": the finding is that the
@@ -306,6 +378,10 @@ export default function PdrPanel({
   onFocusArea,
   shownAreas,
   rflFtOf,
+  onAutoResolve,
+  autoSummary,
+  onDismissAuto,
+  scanning,
   onClose,
 }: Props) {
   const selected = selectedKey
@@ -348,6 +424,11 @@ export default function PdrPanel({
     [found, tab],
   );
   const tabLabel = PDR_TABS.find((t) => t.id === tab)!.label;
+  // Across every flight, not the search: auto-resolve works the whole list.
+  const rejectedCount = useMemo(
+    () => verdicts.filter((v) => v === "rejected").length,
+    [verdicts],
+  );
 
   return (
     <div className="cdr-panel pdr-panel" role="dialog" aria-label="PDR conflict check">
@@ -387,6 +468,28 @@ export default function PdrPanel({
           Add a flight plan with a route to check it against the restricted
           areas — no need to generate first.
         </p>
+      )}
+
+      {!loading && !error && flights.length > 0 && onAutoResolve && (
+        <div className="pdr-auto">
+          <button
+            type="button"
+            className="pdr-edit-plan"
+            onClick={onAutoResolve}
+            disabled={scanning || rejectedCount === 0}
+            title={
+              scanning
+                ? "Wait for the check to reach every flight"
+                : "Put the best clean published route into every rejected plan. Routes that still cross an active area, break another rule, need a condition checked or a different nav spec are left for you."
+            }
+          >
+            ⚡ Auto-resolve rejected ({rejectedCount})
+          </button>
+          {scanning && <span className="pdr-auto-note">checking…</span>}
+        </div>
+      )}
+      {autoSummary && (
+        <AutoSummary summary={autoSummary} onSelect={onSelect} onDismiss={onDismissAuto} />
       )}
 
       {!loading && !error && flights.length > 0 && (

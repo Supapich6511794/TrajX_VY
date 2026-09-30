@@ -147,6 +147,9 @@ export interface ResolutionWeights {
   trackDeviationPerDeg: number; // w1 — per degree of heading change
   extraDistancePerNm: number; // w2 — per extra NM flown
   altitudeChangePerThousandFt: number; // w3 — per 1000 ft level change
+  /** Per minute of ATFM ground delay — only priced among ground-delay options,
+   *  which are offered only once no airborne maneuver clears the conflict. */
+  delayPerMin: number;
   typePenalty: Record<ManeuverType, number>; // w4 — fixed per maneuver kind
 }
 
@@ -155,7 +158,9 @@ export type ManeuverType =
   | "flightlevel"
   | "route"
   | "speed"
-  | "hold";
+  | "hold"
+  /** ATFM ground delay: push the departure back, the route itself untouched. */
+  | "delay";
 
 export interface CdrConfig {
   horizontal: HorizontalMinima;
@@ -250,7 +255,11 @@ export const DEFAULT_CDR_CONFIG: CdrConfig = {
     // dearest. (This drives the auto-suggestion order.)
     // A HOLD is a big, disruptive delay — offered mainly for arrival-merge
     // sequencing where speed/level/heading can't clear, so it's the dearest.
-    typePenalty: { speed: 0, flightlevel: 10, heading: 20, route: 30, hold: 40 },
+    // A GROUND DELAY (ATFM) is not a tactical fix at all — it is what flow
+    // management falls back on when nothing airborne clears — so it is the
+    // dearest of the lot.
+    delayPerMin: 2,
+    typePenalty: { speed: 0, flightlevel: 10, heading: 20, route: 30, hold: 40, delay: 60 },
   },
   environment: "enroute",
   resolveHysteresisTicks: 5,

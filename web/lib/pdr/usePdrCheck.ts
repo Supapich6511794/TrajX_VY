@@ -93,22 +93,31 @@ export interface PdrCheckState {
   validTo: string | null;
 }
 
+type TrajPoint = {
+  lat: number;
+  lon: number;
+  altitude_ft: number | null;
+  epoch_ts: string;
+};
+
+/** Paths already built, keyed by the (never mutated) points array. A CD&R fix
+ *  replaces ONE trajectory's points; without this every fix re-parsed every
+ *  timestamp of every flight — the single biggest cost in a playback trace. */
+const pathCache = new WeakMap<ReadonlyArray<TrajPoint>, TimedPoint[]>();
+
 /** Convert a generated trajectory into the absolute-timed path the check wants. */
-export function pathFromTrajectory(
-  points: ReadonlyArray<{
-    lat: number;
-    lon: number;
-    altitude_ft: number | null;
-    epoch_ts: string;
-  }>,
-): TimedPoint[] {
+export function pathFromTrajectory(points: ReadonlyArray<TrajPoint>): TimedPoint[] {
+  const hit = pathCache.get(points);
+  if (hit) return hit;
   const out: TimedPoint[] = [];
   for (const p of points) {
     const timeMs = Date.parse(p.epoch_ts);
     if (!Number.isFinite(timeMs)) continue;
     out.push({ lat: p.lat, lon: p.lon, altFt: p.altitude_ft ?? 0, timeMs });
   }
-  return decimatePath(out);
+  const path = decimatePath(out);
+  pathCache.set(points, path);
+  return path;
 }
 
 export function usePdrCheck(
@@ -202,6 +211,17 @@ export function usePdrCheck(
   const [reports, setReports] = useState<Map<string, PdrReport>>(new Map());
   const [scanning, setScanning] = useState(false);
 
+  // Verdicts by flight OBJECT, so a re-scan after one flight changed only
+  // analyses that flight (callers reuse the objects of unchanged flights).
+  // Dropped whenever the AIP data changes.
+  const scanCache = useRef<{ data: Loaded | null; map: WeakMap<PdrFlight, PdrReport> }>({
+    data: null,
+    map: new WeakMap(),
+  });
+  if (scanCache.current.data !== loaded) {
+    scanCache.current = { data: loaded, map: new WeakMap() };
+  }
+
   useEffect(() => {
     if (!loaded || flights.length === 0) {
       setReports(new Map());
@@ -225,7 +245,16 @@ export function usePdrCheck(
     const step = () => {
       if (cancelled) return;
       const end = Math.min(i + CHUNK, flights.length);
-      for (; i < end; i++) acc.set(flights[i].flightKey, analyse(flights[i], loaded, false));
+      const cache = scanCache.current.map;
+      for (; i < end; i++) {
+        const f = flights[i];
+        let r = cache.get(f);
+        if (!r) {
+          r = analyse(f, loaded, false);
+          cache.set(f, r);
+        }
+        acc.set(f.flightKey, r);
+      }
       // Publish on a coarser boundary than the work chunk: each publish
       // re-renders a panel listing every flight, which is itself not cheap.
       // The FIRST chunk always publishes, so a re-scan after an edit replaces

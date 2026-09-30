@@ -212,8 +212,14 @@ export type RejectionReason =
    *  the job it was proposed for. Not a secondary/cascading conflict. */
   | "unresolved-primary"
   /** Clears the original pair but would newly lose separation with a THIRD
-   *  aircraft — a true secondary conflict per §5 of the resolution spec. */
+   *  aircraft WHILE the maneuver is being flown — a true secondary conflict
+   *  per §5 of the resolution spec. */
   | "secondary-conflict"
+  /** Same, but the new loss of separation comes only AFTER the maneuver —
+   *  on the way back to the flight plan (the rejoin leg, or the re-timed
+   *  remainder of the route). The "third conflict" of ATC practice: the
+   *  deviation itself was clean, returning to the plan is what hits someone. */
+  | "rejoin-conflict"
   /** Cleared every aircraft (pair + third parties) but failed a hard
    *  constraint — airspace, level band, speed/altitude envelope, etc. */
   | "constraint-reject";
@@ -226,8 +232,8 @@ export interface RejectedCandidate {
   instruction: string;
   reason: RejectionReason;
   detail: string;
-  /** Set for "unresolved-primary" / "secondary-conflict": who it's still or
-   *  newly in conflict with. */
+  /** Set for "unresolved-primary" / "secondary-conflict" / "rejoin-conflict":
+   *  who it's still or newly in conflict with. */
   conflictWith?: { id: string; callsign: string; dCpaNm: number };
 }
 
@@ -245,6 +251,41 @@ export interface PlanAdvisoryResult {
   /** True when nothing cleared inside the normal envelope and the results came
    *  from the wider fallback search — the maneuvers are bigger than usual. */
   widened: boolean;
+  /** Two-step fixes, found only when no single maneuver clears: move the
+   *  aircraft that blocked a candidate FIRST, then that candidate clears.
+   *  Empty whenever `resolutions` came from the tactical search. */
+  chained: ChainedResolution[];
+  /** True when `resolutions` are ATFM ground delays — nothing airborne, single
+   *  or chained, cleared the conflict, so the fix is to hold a departure. */
+  atfm: boolean;
+}
+
+/** "Resolve the blocker first": a candidate for the conflict that failed on
+ *  exactly ONE third aircraft, paired with a maneuver that moves that third
+ *  aircraft out of its way. Validated together — `blockerFix` against all
+ *  traffic with `fix` already flown — so applying both leaves no conflict
+ *  among the three, nor with anyone else. */
+export interface ChainedResolution {
+  /** Apply first: moves the third aircraft. */
+  blockerFix: PlanResolution;
+  /** Apply second: resolves the original conflict. */
+  fix: PlanResolution;
+  cost: number;
+  /** 0–100, relative to the cheapest chain. */
+  score: number;
+}
+
+/** A candidate that separated the pair and would have been offered, but for a
+ *  single third aircraft — the raw material for a `ChainedResolution`. */
+interface NearMiss {
+  resolution: PlanResolution;
+  /** The maneuvered flight the blocker has to be moved clear of. */
+  flight: PlanFlight;
+  traj: TrajectoryResult;
+  offset: number;
+  blockerId: string;
+  /** The maneuvered flight vs the blocker — what the blocker's fix must solve. */
+  conflict: PlanConflict;
 }
 
 /** Gated behind `console.debug` (hidden under the default/"Info" console
@@ -275,12 +316,19 @@ function logAccepted(conflict: PlanConflict, r: PlanResolution): void {
       `[Candidate] VALID · cost ${r.cost.toFixed(1)}`,
   );
 }
+const CHECK_TAG: Record<RejectionReason, string> = {
+  "secondary-conflict": "SecondaryCheck",
+  "rejoin-conflict": "RejoinCheck",
+  "unresolved-primary": "ForwardSimulation",
+  "constraint-reject": "ForwardSimulation",
+  "arrival-protected": "ForwardSimulation",
+};
 function logRejected(conflict: PlanConflict, r: RejectedCandidate): void {
   if (!debugLogging) return;
   console.debug(
     `[ConflictResolution] Primary: ${conflict.aCallsign}-${conflict.bCallsign}\n` +
       `[Candidate] ${r.targetCallsign} ${r.instruction}\n` +
-      `[${r.reason === "secondary-conflict" ? "SecondaryCheck" : "ForwardSimulation"}] ${r.detail}\n` +
+      `[${CHECK_TAG[r.reason]}] ${r.detail}\n` +
       `[Candidate] REJECTED · ${r.reason}`,
   );
 }
@@ -288,19 +336,167 @@ function logRejected(conflict: PlanConflict, r: RejectedCandidate): void {
 /** Generate ranked, validated resolutions for a conflict, plus the diagnostics
  *  behind them. Runs the gentle envelope first and only falls back to the wide
  *  one when that finds nothing, so the extra search cost is paid only on the
- *  hard conflicts. */
+ *  hard conflicts.
+ *
+ *  When neither envelope clears, the search escalates the way a controller
+ *  would: first try moving the one aircraft that blocked an otherwise-good
+ *  candidate (`chained`), and only when that fails too hand the pair to flow
+ *  management — a ground delay on whichever of them has not departed. */
 export function planResolutions(args: PlanAdvisoryArgs): PlanAdvisoryResult {
   const blocked = new Map<string, Blocker>();
-  let { resolutions, rejected } = searchEnvelope(args, NORMAL_ENVELOPE, blocked);
+  const nearMisses: NearMiss[] = [];
+  let { resolutions, rejected } = searchEnvelope(args, NORMAL_ENVELOPE, blocked, {
+    nearMisses,
+  });
   let widened = false;
+  let chained: ChainedResolution[] = [];
+  let atfm = false;
   if (resolutions.length === 0) {
     blocked.clear(); // the wide pass re-reports whoever is really in the way
-    ({ resolutions, rejected } = searchEnvelope(args, WIDE_ENVELOPE, blocked));
+    ({ resolutions, rejected } = searchEnvelope(args, WIDE_ENVELOPE, blocked, {
+      nearMisses,
+    }));
     widened = resolutions.length > 0;
     for (const r of resolutions) r.widened = true;
   }
+  if (resolutions.length === 0) chained = resolveBlockersFirst(args, nearMisses);
+  if (resolutions.length === 0 && chained.length === 0) {
+    resolutions = groundDelays(args);
+    atfm = resolutions.length > 0;
+  }
   const blockers = [...blocked.values()].sort((a, b) => b.count - a.count);
-  return { resolutions, blockers, rejected, widened };
+  return { resolutions, blockers, rejected, widened, chained, atfm };
+}
+
+/** Near misses tried for a blocker-first chain, cheapest first. Each costs a
+ *  full search on the blocker, and this only runs on a conflict nothing else
+ *  cleared, so a handful is plenty. */
+const MAX_CHAIN_TRIES = 4;
+const MAX_CHAINS = 3;
+
+/** Iterative resolution, one level deep: for each candidate that cleared the
+ *  pair but hit a single third aircraft, fly the candidate and search for a
+ *  maneuver on that third aircraft that clears it — checked against every
+ *  flight WITH the candidate in place, so the two together are safe. */
+function resolveBlockersFirst(
+  args: PlanAdvisoryArgs,
+  nearMisses: NearMiss[],
+): ChainedResolution[] {
+  const tries = [...nearMisses]
+    .sort((a, b) => a.resolution.cost - b.resolution.cost)
+    .slice(0, MAX_CHAIN_TRIES);
+  const chains: ChainedResolution[] = [];
+  for (const nm of tries) {
+    const id = nm.resolution.target;
+    const flights = args.flights.map((f) => (f.id === id ? nm.flight : f));
+    const trajById = new Map(args.trajById);
+    trajById.set(id, { traj: nm.traj, offset: nm.offset });
+    const { resolutions } = searchEnvelope(
+      { ...args, conflict: nm.conflict, flights, trajById, topN: 1 },
+      NORMAL_ENVELOPE,
+      new Map(),
+      { onlyTarget: nm.blockerId },
+    );
+    const blockerFix = resolutions[0];
+    if (!blockerFix) continue;
+    chains.push({
+      blockerFix,
+      fix: nm.resolution,
+      cost: blockerFix.cost + nm.resolution.cost,
+      score: 0,
+    });
+  }
+  chains.sort((a, b) => a.cost - b.cost);
+  const seen = new Set<string>();
+  const out: ChainedResolution[] = [];
+  for (const c of chains) {
+    const key = `${c.blockerFix.target}:${c.blockerFix.type}|${c.fix.target}:${c.fix.type}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(c);
+    if (out.length >= MAX_CHAINS) break;
+  }
+  const minCost = out.length ? out[0].cost : 0;
+  for (const c of out) c.score = relativeScore(c.cost, minCost);
+  return out;
+}
+
+/** Ground-delay steps (min), smallest first — the first that clears is kept. */
+const DELAY_STEPS_MIN = [2, 5, 10, 15, 20, 30, 45, 60];
+/** A delay has to be issued before the aircraft is off blocks; anything
+ *  departing sooner than this is treated as already gone. */
+const MIN_DELAY_NOTICE_SEC = 60;
+
+/** ATFM fallback: push back the departure of whichever aircraft of the pair
+ *  has not left yet, by the smallest step that leaves it clear of EVERY flight
+ *  (the route is untouched, so only the timing can create a new conflict). */
+function groundDelays(args: PlanAdvisoryArgs): PlanResolution[] {
+  const { conflict, flights, trajById, simT, cfg, topN = 5 } = args;
+  const w = cfg.weights;
+  const out: PlanResolution[] = [];
+  for (const [targetId, intruderId] of [
+    [conflict.a, conflict.b],
+    [conflict.b, conflict.a],
+  ] as const) {
+    const info = trajById.get(targetId);
+    const flight = flights.find((f) => f.id === targetId);
+    const intr = flights.find((f) => f.id === intruderId);
+    if (!info || !flight || !intr) continue;
+    if (info.offset - simT < MIN_DELAY_NOTICE_SEC) continue;
+    const others = flights.filter((f) => f.id !== targetId);
+    for (const min of DELAY_STEPS_MIN) {
+      const delaySec = min * 60;
+      const delayed = { ...flight, offsetSec: flight.offsetSec + delaySec };
+      if (others.some((o) => pairConflict(delayed, o, cfg))) continue;
+      // No shared airborne time with the partner any more = nothing to measure.
+      const sep = pairSeparation(delayed, intr);
+      const r: PlanResolution = {
+        type: "delay",
+        target: targetId,
+        targetCallsign: flight.callsign,
+        instruction: `Ground delay +${min} min`,
+        resolution: { delaySec },
+        value: delaySec,
+        origDCpaNm: conflict.dCpaNm,
+        newDCpaNm: sep?.minHNm ?? Infinity,
+        origVertFt: conflict.vSepAtCpaFt,
+        newVertFt: sep?.vSepAtCpaFt ?? conflict.vSepAtCpaFt,
+        extraDistanceNm: 0,
+        extraTimeSec: delaySec,
+        altChangeFt: 0,
+        trackDeviationDeg: 0,
+        cost: w.typePenalty.delay + w.delayPerMin * min,
+        score: 0,
+        reason: `ATFM: no airborne maneuver clears this pair — hold ${flight.callsign} on the ground ${min} min past its EOBT.`,
+        constraintVerdict: "accept",
+        tManLocal: 0,
+        deviationSec: 0,
+        rejoinSec: 0,
+      };
+      out.push(r);
+      logAccepted(conflict, r);
+      break; // smallest clearing delay per aircraft
+    }
+  }
+  out.sort((a, b) => a.cost - b.cost);
+  const ranked = out.slice(0, topN);
+  const minCost = ranked.length ? ranked[0].cost : 0;
+  for (const r of ranked) r.score = relativeScore(r.cost, minCost);
+  return ranked;
+}
+
+/** 0–100, anchored so the cheapest option scores 100. */
+function relativeScore(cost: number, minCost: number): number {
+  return Math.max(1, Math.min(100, Math.round((100 * (minCost + 1)) / (cost + 1))));
+}
+
+/** Knobs for one envelope pass. `nearMisses` collects the candidates a
+ *  single third aircraft blocked (for the blocker-first chain);
+ *  `onlyTarget` maneuvers just that one aircraft of the conflict — the
+ *  blocker, when the chain is searching for its fix. */
+interface SearchOpts {
+  nearMisses?: NearMiss[];
+  onlyTarget?: string;
 }
 
 /** Ranked, validated resolutions for a conflict (the diagnostics are dropped —
@@ -313,6 +509,7 @@ function searchEnvelope(
   args: PlanAdvisoryArgs,
   env: Envelope,
   blocked: Map<string, Blocker>,
+  opts: SearchOpts = {},
 ): { resolutions: PlanResolution[]; rejected: RejectedCandidate[] } {
   const { conflict, flights, trajById, simT, cfg, restricted, holdings, topN = 5 } = args;
   const need = horizontalMinimumNm(cfg) + cfg.buffer.horizontalNm;
@@ -342,6 +539,7 @@ function searchEnvelope(
     [conflict.a, conflict.b],
     [conflict.b, conflict.a],
   ] as const) {
+    if (opts.onlyTarget && targetId !== opts.onlyTarget) continue;
     const info = trajById.get(targetId);
     const intrFlight = flights.find((f) => f.id === intruderId);
     if (!info || !intrFlight) continue;
@@ -398,6 +596,8 @@ function searchEnvelope(
           return `Direct ${resolution.directTo?.ident ?? "fix"}`;
         case "hold":
           return `Hold at ${resolution.hold?.ident ?? "fix"}`;
+        case "delay":
+          return `Ground delay +${Math.round((resolution.delaySec ?? 0) / 60)} min`;
       }
     };
 
@@ -450,6 +650,77 @@ function searchEnvelope(
         bankAngleDeg: cfg.bankAngleDeg,
       });
       const afterFlight = flightFrom(targetId, modified, offset);
+      const newDur = totalSeconds(modified.points);
+      const extraTimeSec = Math.max(0, newDur - origDur);
+
+      /** Everything after the traffic check: the before→after readout, the
+       *  constraint engine and the cost. Returns the failure text when a hard
+       *  constraint rejects it. Shared by an accepted candidate and a near miss
+       *  (one only a single third aircraft blocked), so a chained fix is priced
+       *  and constraint-checked exactly like a plain one. */
+      const finish = (): PlanResolution | string => {
+        // Separation to the conflict partner (for the before→after readout).
+        const sep = pairSeparation(afterFlight, intrFlight);
+        const newDCpaNm = sep?.minHNm ?? conflict.dCpaNm;
+        const newVertFt = sep?.vSepAtCpaFt ?? conflict.vSepAtCpaFt;
+
+        // Constraint engine over the maneuver window (local time around the turn).
+        const wLo = offset + Math.max(0, timing.tMan - 60);
+        const wHi = offset + timing.tMan + timing.deviationSec + 300;
+        const afterPath = pathWithAlt(toSamples(modified.points), offset, wLo, wHi);
+        const beforePath = pathWithAlt(samples, offset, wLo, wHi);
+        const report = evaluateConstraints({
+          maneuverType: type,
+          resolution,
+          cfg,
+          afterPath,
+          originalAreaIdents: areaIdentsOnPath(beforePath, restricted),
+          restricted,
+          trackDeg,
+          newGsKt: type === "speed" ? resolution.gsKt : undefined,
+          newAltFt: type === "flightlevel" ? resolution.altFt : undefined,
+          // Only reached when the candidate clears the pair (and, for a near
+          // miss, everyone but the one blocker the chain will move).
+          recheck: { clear: true, minSepNm: newDCpaNm },
+        });
+        if (report.verdict === "reject") {
+          const failed = report.checks.filter((c) => c.status === "fail");
+          return failed.map((c) => c.label).join("; ") || "Failed a hard constraint.";
+        }
+
+        const extraDistanceNm =
+          type === "speed" ? 0 : (extraTimeSec / 3600) * curGs;
+        const w = cfg.weights;
+        const cost =
+          w.trackDeviationPerDeg * Math.abs(trackDeviationDeg) +
+          w.extraDistancePerNm * extraDistanceNm +
+          w.altitudeChangePerThousandFt * (Math.abs(altChangeFt) / 1000) +
+          w.typePenalty[type];
+
+        return {
+          type,
+          target: targetId,
+          targetCallsign,
+          instruction: "",
+          resolution,
+          value,
+          origDCpaNm: conflict.dCpaNm,
+          newDCpaNm,
+          origVertFt: conflict.vSepAtCpaFt,
+          newVertFt,
+          extraDistanceNm,
+          extraTimeSec,
+          altChangeFt,
+          trackDeviationDeg,
+          cost,
+          score: 0,
+          reason: "",
+          constraintVerdict: report.verdict,
+          tManLocal: timing.tMan,
+          deviationSec: timing.deviationSec,
+          rejoinSec: timing.rejoinSec,
+        };
+      };
 
       // 3-D clearance vs EVERY other flight (level changes clear vertically).
       //
@@ -458,6 +729,8 @@ function searchEnvelope(
       // separately, because the two failures mean different things. See the
       // blocker note below.
       let offender: PlanFlight | undefined; // third party, tightest first
+      let offenderConflict: PlanConflict | undefined;
+      let thirdCount = 0; // how many third parties it conflicts with
       let tightestNm = Infinity; // against anything, for the blocker readout
       let thirdTightestNm = Infinity;
       let intruderCpaNm: number | undefined; // the ORIGINAL pair's new CPA, if still tight
@@ -469,9 +742,13 @@ function searchEnvelope(
         if (c.dCpaNm < tightestNm) tightestNm = c.dCpaNm;
         if (o.id === intruderId) {
           intruderCpaNm = c.dCpaNm;
-        } else if (c.dCpaNm < thirdTightestNm) {
+          continue;
+        }
+        thirdCount += 1;
+        if (c.dCpaNm < thirdTightestNm) {
           thirdTightestNm = c.dCpaNm;
           offender = o;
+          offenderConflict = c;
         }
       }
       // Rejected — but WHY matters: "no fix" almost always means some third
@@ -483,7 +760,13 @@ function searchEnvelope(
       // this conflict IS WITH sends the controller in a circle — there is
       // nothing to go and resolve first, the candidate simply did not work.
       if (!clear) {
-        if (offender) {
+        // A third aircraft is only "in the way" of a candidate that actually
+        // separated the pair. One that still conflicts with the partner failed
+        // on its own: moving the third aircraft would not make it work, so it
+        // must not be tallied as a blocker ("resolve MMA502 first" when every
+        // candidate also left KBZ845 in conflict sent the controller to fix an
+        // aircraft that was not the problem).
+        if (offender && offenderConflict && intruderCpaNm === undefined) {
           const b = blocked.get(offender.id) ?? {
             id: offender.id,
             callsign: offender.callsign,
@@ -493,21 +776,49 @@ function searchEnvelope(
           b.count += 1;
           b.tightestNm = Math.min(b.tightestNm, thirdTightestNm);
           blocked.set(offender.id, b);
-          // Clears the original pair (or the loop would report intruderCpaNm
-          // below instead) but newly conflicts with a THIRD aircraft — a real
-          // secondary conflict per §5 of the resolution spec, distinct from
-          // the pair simply not being resolved.
+
+          // Blocked by this one aircraft ALONE, the pair itself separated: move
+          // the blocker and this candidate works — keep it for the chain.
+          if (opts.nearMisses && thirdCount === 1 && intruderCpaNm === undefined) {
+            const r = finish();
+            if (typeof r !== "string") {
+              r.instruction = briefInstruction(type, value, resolution);
+              r.reason = `Clears ${intrFlight.callsign} once ${offender.callsign} has been moved out of the way.`;
+              opts.nearMisses.push({
+                resolution: r,
+                flight: afterFlight,
+                traj: modified,
+                offset,
+                blockerId: offender.id,
+                conflict: offenderConflict,
+              });
+            }
+          }
+
+          // WHERE on the maneuvered path it happens says which knock-on it is.
+          // During the maneuver: a secondary conflict (§5 of the resolution
+          // spec). Only after it — the aircraft back on its way to the plan
+          // (the rejoin leg, or a re-timed remainder of the route) — the
+          // "third conflict" of ATC practice. A hold's own loop is its
+          // deviation, and its length is the time the hold added.
+          const deviationEndAbs =
+            offset + timing.tMan + (type === "hold" ? extraTimeSec : timing.deviationSec);
+          const onRejoin = offenderConflict.tCpaAbsSec >= deviationEndAbs;
+          const cpaText = `CPA ${thirdTightestNm.toFixed(1)} NM < ${need} NM`;
           return reject(
-            "secondary-conflict",
-            `Would newly lose separation with ${offender.callsign} (CPA ${thirdTightestNm.toFixed(1)} NM < ${need} NM).`,
+            onRejoin ? "rejoin-conflict" : "secondary-conflict",
+            onRejoin
+              ? `The deviation is clean, but returning to the flight plan it would newly lose separation with ${offender.callsign} (${cpaText}, ~${Math.max(0, Math.round((offenderConflict.tCpaAbsSec - deviationEndAbs) / 60))} min after the deviation ends).`
+              : `Would newly lose separation with ${offender.callsign} (${cpaText}).`,
             { id: offender.id, callsign: offender.callsign, dCpaNm: thirdTightestNm },
           );
         }
-        // No third party involved — this maneuver simply did not resolve the
-        // conflict it was proposed for.
+        // The maneuver did not resolve the conflict it was proposed for —
+        // whatever else it also runs into.
         return reject(
           "unresolved-primary",
-          `Still conflicts with ${intrFlight.callsign} — CPA ${(intruderCpaNm ?? conflict.dCpaNm).toFixed(1)} NM < ${need} NM.`,
+          `Still conflicts with ${intrFlight.callsign} — CPA ${(intruderCpaNm ?? conflict.dCpaNm).toFixed(1)} NM < ${need} NM` +
+            (offender ? ` (and would also conflict with ${offender.callsign}).` : "."),
           {
             id: intruderId,
             callsign: intrFlight.callsign,
@@ -516,71 +827,8 @@ function searchEnvelope(
         );
       }
 
-      // Separation to the conflict partner (for the before→after readout).
-      const sep = pairSeparation(afterFlight, intrFlight);
-      const newDCpaNm = sep?.minHNm ?? conflict.dCpaNm;
-      const newVertFt = sep?.vSepAtCpaFt ?? conflict.vSepAtCpaFt;
-
-      // Constraint engine over the maneuver window (local time around the turn).
-      const wLo = offset + Math.max(0, timing.tMan - 60);
-      const wHi = offset + timing.tMan + timing.deviationSec + 300;
-      const afterPath = pathWithAlt(toSamples(modified.points), offset, wLo, wHi);
-      const beforePath = pathWithAlt(samples, offset, wLo, wHi);
-      const report = evaluateConstraints({
-        maneuverType: type,
-        resolution,
-        cfg,
-        afterPath,
-        originalAreaIdents: areaIdentsOnPath(beforePath, restricted),
-        restricted,
-        trackDeg,
-        newGsKt: type === "speed" ? resolution.gsKt : undefined,
-        newAltFt: type === "flightlevel" ? resolution.altFt : undefined,
-        // Only reached when the candidate is clear of everything, pair included.
-        recheck: { clear: true, minSepNm: newDCpaNm },
-      });
-      if (report.verdict === "reject") {
-        const failed = report.checks.filter((c) => c.status === "fail");
-        return reject(
-          "constraint-reject",
-          failed.map((c) => c.label).join("; ") || "Failed a hard constraint.",
-        );
-      }
-
-      const newDur = totalSeconds(modified.points);
-      const extraTimeSec = Math.max(0, newDur - origDur);
-      const extraDistanceNm =
-        type === "speed" ? 0 : (extraTimeSec / 3600) * curGs;
-      const w = cfg.weights;
-      const cost =
-        w.trackDeviationPerDeg * Math.abs(trackDeviationDeg) +
-        w.extraDistancePerNm * extraDistanceNm +
-        w.altitudeChangePerThousandFt * (Math.abs(altChangeFt) / 1000) +
-        w.typePenalty[type];
-
-      return {
-        type,
-        target: targetId,
-        targetCallsign,
-        instruction: "",
-        resolution,
-        value,
-        origDCpaNm: conflict.dCpaNm,
-        newDCpaNm,
-        origVertFt: conflict.vSepAtCpaFt,
-        newVertFt,
-        extraDistanceNm,
-        extraTimeSec,
-        altChangeFt,
-        trackDeviationDeg,
-        cost,
-        score: 0,
-        reason: "",
-        constraintVerdict: report.verdict,
-        tManLocal: timing.tMan,
-        deviationSec: timing.deviationSec,
-        rejoinSec: timing.rejoinSec,
-      };
+      const r = finish();
+      return typeof r === "string" ? reject("constraint-reject", r) : r;
     };
 
     // --- Heading: smallest clearing turn each side, started kinematically ---

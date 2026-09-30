@@ -239,6 +239,11 @@ export function applyManeuver(
   tManeuverSec: number,
   opts: ApplyOptions = {},
 ): TrajectoryResult {
+  // A ground delay moves the whole flight later on the clock, the path itself
+  // untouched — so it ignores the maneuver time, which is a point ON the path.
+  if (maneuver.type === "delay") {
+    return delayDeparture(traj, maneuver.resolution.delaySec ?? 0);
+  }
   const climbFpm = opts.climbFpm ?? 1200;
   const recover = opts.recover ?? true;
   // Clamp the span that drives the per-step deviation/hold loops so a corrupt
@@ -352,6 +357,22 @@ export function applyManeuver(
       })()
     : null;
   return { ...traj, points, stats, profile: { ...traj.profile, toc, tod }, validation };
+}
+
+/** ATFM ground delay: every point, and the EOBT, `delaySec` later. The shared
+ *  clock derives each flight's offset from its first point, so this alone
+ *  re-slots the departure. */
+function delayDeparture(traj: TrajectoryResult, delaySec: number): TrajectoryResult {
+  if (!(delaySec > 0) || !Number.isFinite(delaySec)) return traj;
+  const shift = (ts: string) => iso(new Date(ts).getTime() + delaySec * 1000);
+  const points = traj.points.map((p) => ({ ...p, epoch_ts: shift(p.epoch_ts) }));
+  const { toc, tod } = recomputeStats(traj, points);
+  return {
+    ...traj,
+    points,
+    profile: { ...traj.profile, toc, tod },
+    meta: { ...traj.meta, eobtIso: shift(traj.meta.eobtIso) },
+  };
 }
 
 /** Recompute the summary stats + TOC/TOD from a modified point list, so the

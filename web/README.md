@@ -47,6 +47,12 @@ server:
 NEXT_PUBLIC_CARTO_API_KEY=your_key_here npm run dev
 ```
 
+## Performance
+
+For smooth playback, run the production build (`npm run build && npm start`)
+rather than `npm run dev`. [PERFORMANCE.md](PERFORMANCE.md) describes what
+was slow in the recorded traces, what was changed, and how to re-measure.
+
 ## Architecture
 
 ```

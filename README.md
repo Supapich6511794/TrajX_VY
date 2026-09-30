@@ -19,6 +19,10 @@ basemaps, FIR, and a route builder.
 Where each dataset comes from, and how to refresh it for a new AIRAC cycle, is
 in [DATA_SOURCES.md](DATA_SOURCES.md).
 
+How the deployed system fits together (Vercel front-end, Render API, keep-alive
+job, Docker Compose) is in [DEPLOYMENT_ARCHITECTURE.md](DEPLOYMENT_ARCHITECTURE.md);
+the step-by-step setup is in [DEPLOY.md](DEPLOY.md).
+
 ## Run
 
 ```bash

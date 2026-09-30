@@ -113,6 +113,7 @@ const TYPE_LABEL: Record<ManeuverType, string> = {
   speed: "SPD",
   route: "DCT",
   hold: "HOLD",
+  delay: "ATFM",
 };
 
 /** Compact cost string for a suggestion. */
@@ -411,6 +412,11 @@ export default function PreviewModal({
   // Maneuver timing comes from `eff` (the picked suggestion's validated timing,
   // or the manual editor's kinematic timing).
   const { tMan, deviationSec, rejoinSec } = eff;
+  // Where the maneuvered flight sits on the shared clock. A ground delay moves
+  // the whole flight later, and samples are timed from the flight's OWN first
+  // point — so the delay lives here, not in the path. Using the original offset
+  // re-checked the undelayed flight: "conflict persists" on a fix that clears.
+  const afterOff = targetOff + (effType === "delay" ? (resolution.delaySec ?? 0) : 0);
 
   // The maneuvered trajectory + resolved separation (live).
   const afterTraj = useMemo(
@@ -427,7 +433,7 @@ export default function PreviewModal({
       id: targetId,
       callsign: "",
       samples: toSamples(afterTraj.points),
-      offsetSec: targetOff,
+      offsetSec: afterOff,
       durationSec: totalSeconds(afterTraj.points),
     };
     const B: PlanFlight = {
@@ -438,7 +444,7 @@ export default function PreviewModal({
       durationSec: totalSeconds(intrTraj.points),
     };
     return pairSeparation(A, B);
-  }, [afterTraj, intrSamples, intrTraj, targetId, targetOff, intrOff]);
+  }, [afterTraj, intrSamples, intrTraj, targetId, afterOff, intrOff]);
 
   // Playback / draw window. For a LATERAL maneuver the window spans from the
   // turn INITIATION point (so the white arc originates at the aircraft on its
@@ -480,7 +486,7 @@ export default function PreviewModal({
   const intrPath = pathOf(intrSamples, intrOff, winStart, winEnd, STEP);
   const afterTargetPath = pathOf(
     toSamples(afterTraj.points),
-    targetOff,
+    afterOff,
     winStart,
     winEnd,
     STEP,
@@ -494,11 +500,13 @@ export default function PreviewModal({
   const afterTargetSamples = useMemo(() => toSamples(afterTraj.points), [afterTraj]);
   const pBeforeTarget = posAt(targetSamples, targetOff);
   const pIntr = posAt(intrSamples, intrOff);
-  const pAfterTarget = posAt(afterTargetSamples, targetOff);
+  const pAfterTarget = posAt(afterTargetSamples, afterOff);
 
   const tiles = BASEMAPS.dark;
   const beforeD = conflict.dCpaNm;
-  const afterD = afterSep?.minHNm ?? beforeD;
+  // A delayed flight may no longer share any airborne time with the partner —
+  // no encounter at all, which `fmtNm` renders as such.
+  const afterD = afterSep?.minHNm ?? (effType === "delay" ? Infinity : beforeD);
   const cleared = afterD >= conflict.shNm + 1; // minima + buffer
 
   // --- Resolution summary values -------------------------------------------
@@ -542,6 +550,11 @@ export default function PreviewModal({
       const side = eff.turnDeltaDeg >= 0 ? "right" : "left";
       return `${callTgt}, turn ${side} heading ${hdg}, then resume own navigation.`;
     }
+    if (effType === "delay" && resolution.delaySec != null) {
+      // ATFM, not an RT clearance to an airborne aircraft: the flight is held
+      // on the ground with a new off-block time.
+      return `${callTgt}, expect departure delay ${Math.round(resolution.delaySec / 60)} minutes, new off-block time to follow.`;
+    }
     if (effType === "speed" && resolution.gsKt != null) {
       return `${callTgt}, ${resolution.gsKt < curGs ? "reduce" : "increase"} speed to ${Math.round(resolution.gsKt)} knots.`;
     }
@@ -552,7 +565,7 @@ export default function PreviewModal({
 
   // --- Constraint engine: airspace + performance + level + conflict re-check.
   const report = useMemo(() => {
-    const afterPath = pathWithAlt(afterTargetSamples, targetOff, winStart, winEnd, 15);
+    const afterPath = pathWithAlt(afterTargetSamples, afterOff, winStart, winEnd, 15);
     const beforePath = pathWithAlt(targetSamples, targetOff, winStart, winEnd, 15);
     const originalAreaIdents = areaIdentsOnPath(beforePath, restricted);
     // Re-check the maneuvered trajectory against EVERY other flight.
@@ -560,7 +573,7 @@ export default function PreviewModal({
       id: targetId,
       callsign: "",
       samples: afterTargetSamples,
-      offsetSec: targetOff,
+      offsetSec: afterOff,
       durationSec: totalSeconds(afterTraj.points),
     };
     // 3-D re-check vs every other flight (a level change clears vertically even
@@ -610,7 +623,7 @@ export default function PreviewModal({
       },
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [afterTargetSamples, afterTraj, effType, resolution, restricted, allFlights, targetId, targetOff, curTrk, config, winStart, winEnd, isA, conflict.a, conflict.b]);
+  }, [afterTargetSamples, afterTraj, effType, resolution, restricted, allFlights, targetId, targetOff, afterOff, curTrk, config, winStart, winEnd, isA, conflict.a, conflict.b]);
   const rejected = report.verdict === "reject";
 
   // A maneuver that changes nothing (e.g. "Increase 0 kt") isn't a resolution —
@@ -624,6 +637,7 @@ export default function PreviewModal({
         Math.abs(resolution.altFt - (targetNow?.altitudeFt ?? curFL * 100)) < 50
       );
     if (effType === "heading") return Math.abs(eff.turnDeltaDeg) < 1;
+    if (effType === "delay") return !(resolution.delaySec && resolution.delaySec > 0);
     return false; // direct-to is always a real change
   })();
   const cannotApply = rejected || isNoOp;

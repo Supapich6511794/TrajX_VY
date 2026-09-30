@@ -196,10 +196,17 @@ export default function FilterPanel({
   // status, then the list is ordered like a monitoring feed: airborne flights
   // first (most recently departed on top), then arrived (most recent first),
   // then not-yet-departed flights (soonest to depart first).
+  const durations = useMemo(
+    () => trajectories.map((t) => totalSeconds(t.points)),
+    [trajectories],
+  );
+  // Recomputed every animation frame (it reads `simT`), so it does nothing
+  // while the panel is closed — MapApp keeps it mounted.
   const shown = useMemo(() => {
+    if (!open) return [];
     const q = resultQuery.trim().toUpperCase();
     let rows = trajectories.map((t, i) => {
-      const dur = totalSeconds(t.points);
+      const dur = durations[i];
       const localT = localClock(i, simT, offsets, playbackIdx);
       const status = statusFromLocalT(localT, dur);
       return { t, i, status, offset: offsets[i] ?? 0, arrivalT: (offsets[i] ?? 0) + dur };
@@ -219,7 +226,7 @@ export default function FilterPanel({
       return a.offset - b.offset; // scheduled: soonest to depart on top
     });
     return rows;
-  }, [trajectories, resultQuery, simT, offsets, playbackIdx]);
+  }, [open, trajectories, durations, resultQuery, simT, offsets, playbackIdx]);
 
   // Live count of airborne flights, for the Results header.
   const enrouteCount = useMemo(

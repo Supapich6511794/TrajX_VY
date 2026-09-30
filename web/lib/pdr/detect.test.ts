@@ -25,6 +25,7 @@ import type { AipRoute } from "@/lib/aipRoutes";
 import { CLEAR, VYMD, synthActivity, synthGeo } from "./__fixtures__/vyPdr";
 import { checkAirwayUsage, indexSegments } from "./airwayDirection";
 import { buildPdrAreas } from "./areas";
+import { autoResolveFlight } from "./autoResolve";
 import { analysePdr } from "./detect";
 import { pathFromFixes } from "./penetration";
 import type { PdrArea } from "./types";
@@ -818,5 +819,41 @@ describe("an unset requested level is unknown, not sea level", () => {
     const r = analysePdr({ ...noLevel, rflFt: 9000 });
     expect(r.findings.some((f) => f.category === "airway-level")).toBe(true);
     expect(r.findings.find((x) => x.id === "plan:no-level")).toBeUndefined();
+  });
+});
+
+describe("auto-resolve on the real engine", () => {
+  const start = MON + 3 * HOUR;
+  const input = {
+    ...baseInput,
+    filedRoute: "MADEUP ROUTING",
+    eobtMs: start,
+    path: pathThrough(find("D91"), start),
+    segmentIndex,
+  };
+  const flight = { flightKey: "k", callsign: "UBA1", filedRoute: input.filedRoute };
+
+  it("stages the best clean published route, skipping the conventional one", () => {
+    // FL240 fits the airways' published bands (W13 / W5 end at 26000 ft).
+    const out = autoResolveFlight(flight, analysePdr({ ...input, rflFt: 24000 }));
+    // Y8 is one-way the other way (the segment table rules it out) and W5 is a
+    // non-RNAV swap — a decision, not an automatic one.
+    expect(out).toMatchObject({ kind: "reroute", route: "BGO W13 MIA", remaining: [] });
+    if (out.kind === "reroute") expect(out.suggestion.clears).toContain("D91");
+  });
+
+  it("applies nothing when every alternative breaks an airway band, and says so", () => {
+    const out = autoResolveFlight(flight, analysePdr({ ...input, rflFt: 33000 }));
+    expect(out.kind).toBe("unresolved");
+    if (out.kind === "unresolved") {
+      expect(out.reason).toMatch(/BGO W13 MIA: .*26000 ft/);
+      expect(out.reason).not.toMatch(/\.\.$/);
+    }
+  });
+
+  it("leaves the flight alone when D91 is cold and nothing is rejected on it", () => {
+    const later = MON + 12 * HOUR;
+    const r = analysePdr({ ...input, eobtMs: later, path: pathThrough(find("D91"), later) });
+    expect(r.findings.some((f) => f.severity === "violation")).toBe(false);
   });
 });

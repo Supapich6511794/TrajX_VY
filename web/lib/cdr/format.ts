@@ -27,7 +27,9 @@ export function fmtCountdown(sec: number | null): string {
 }
 
 /** Horizontal separation, 1 decimal NM. */
-export const fmtNm = (nm: number): string => `${nm.toFixed(1)} NM`;
+/** Non-finite = the two never share the sky (e.g. after a ground delay). */
+export const fmtNm = (nm: number): string =>
+  Number.isFinite(nm) ? `${nm.toFixed(1)} NM` : "no encounter";
 
 /** Vertical separation, rounded to 100 ft. */
 export const fmtFt = (ft: number): string => `${Math.round(ft / 100) * 100} ft`;

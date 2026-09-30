@@ -483,3 +483,254 @@ describe("planResolutions — wide fallback envelope", () => {
     expect(solve(25).blockers.length).toBeGreaterThan(0);
   });
 });
+
+/* --- Third conflict, blocker-first chains, ATFM ground delay --- */
+
+/** A northbound cruise leg that crosses latitude `lat` at `lon`, `tCrossSec`
+ *  after its departure (T0). */
+function northLeg(
+  id: string,
+  lat: number,
+  lon: number,
+  tCrossSec: number,
+  altFt: number,
+  n = 600,
+  gs = 450,
+): TrajectoryResult {
+  const base = leg(id, lat, lon, 90, altFt, n, gs);
+  const dt = 4;
+  const lat0 = lat - (gs * tCrossSec) / 3600 / 60;
+  const points = base.points.map((p, i) => ({
+    ...p,
+    lat: lat0 + (gs * i * dt) / 3600 / 60,
+    lon,
+    track_deg: 0,
+  }));
+  const last = points[points.length - 1];
+  return { ...base, points, route: [{ ident: "WPT1", lat: last.lat, lon }] };
+}
+
+function planOf(entries: { traj: TrajectoryResult; offset: number }[]) {
+  const flights: PlanFlight[] = entries.map(({ traj, offset }) => ({
+    id: traj.meta.flightKey,
+    callsign: traj.meta.callsign,
+    samples: toSamples(traj.points),
+    offsetSec: offset,
+    durationSec: totalSeconds(traj.points),
+  }));
+  const trajById = new Map(entries.map((e) => [e.traj.meta.flightKey, e]));
+  return { flights, trajById };
+}
+
+describe("planResolutions — third (rejoin) conflict", () => {
+  it("labels a conflict met only on the way back to the plan as rejoin, not secondary", () => {
+    // UBA1's "Climb FL370" holds FL370 until 2 min past the CPA (t≈360 s),
+    // then descends back. RJN, westbound at FL370, meets UBA1 at t≈400 s —
+    // clear during the hold (10 NM apart when it ends), inside the buffer on
+    // the descent back to FL350. The original UBA1 at FL350 never conflicts.
+    const lat = 13;
+    const nmPerDegLon = Math.cos((lat * Math.PI) / 180) * 60;
+    const { a, b } = headOn();
+    const rjn = leg("RJN", lat, 100 + 100 / nmPerDegLon, 270, 37000);
+    const { flights, trajById } = planOf([a, b, rjn].map((traj) => ({ traj, offset: 0 })));
+    const conflict = scanFlightPlanConflicts(flights, cfg).find(
+      (x) => [x.a, x.b].includes("UBA1") && [x.a, x.b].includes("KMV2"),
+    )!;
+    const res = planResolutions({ conflict, flights, trajById, simT: 0, cfg, restricted: [] });
+
+    const climb = res.rejected.find(
+      (r) => r.target === "UBA1" && r.instruction === "Climb FL370",
+    );
+    expect(climb?.reason).toBe("rejoin-conflict");
+    expect(climb?.conflictWith?.callsign).toBe("RJN");
+    expect(climb?.detail).toMatch(/returning to the flight plan/);
+  });
+
+  it("keeps a conflict met during the maneuver itself as secondary", () => {
+    // SHADOW is co-routed at FL370: UBA1 climbs straight into it.
+    const { flights, trajById } = headOnWithShadows([{ id: "SHADOW", altFt: 37000 }]);
+    const [conflict] = scanFlightPlanConflicts(flights, cfg);
+    const res = planResolutions({ conflict, flights, trajById, simT: 0, cfg, restricted: [] });
+    const climb = res.rejected.find(
+      (r) => r.target === "UBA1" && r.instruction === "Climb FL370",
+    );
+    expect(climb?.reason).toBe("secondary-conflict");
+  });
+});
+
+/** A short head-on pair nothing tactical can clear on its own:
+ *  - both legs are 10 min, so every lateral fix is arrival-protected;
+ *  - head-on, so no speed change separates them;
+ *  - the clock (simT 235) leaves only ±2000 ft reachable before the CPA
+ *    (t≈410 s), and ±1000 ft is inside the vertical buffer;
+ *  - so UBA1's FL370 / FL330 are the only real candidates, and northbound
+ *    crossers at those levels cut across UBA1's path while it holds there.
+ *  `crossersPerLevel` 1 → each candidate is blocked by ONE aircraft (a chain
+ *  can move it); 2 → by two (no chain) and the pair falls to ATFM.
+ *  KMV2 departs at t=300, after the clock — it can still be ground-delayed. */
+function boxedShortPair(crossersPerLevel: 1 | 2) {
+  const lat = 13;
+  const nmPerDegLon = Math.cos((lat * Math.PI) / 180) * 60;
+  const a = leg("UBA1", lat, 100, 90, 35000, 150);
+  const b = leg("KMV2", lat, 100 + 65 / nmPerDegLon, 270, 35000, 150);
+  const entries = [
+    { traj: a, offset: 0 },
+    { traj: b, offset: 300 },
+  ];
+  // UBA1 is 57.5 NM along at t=460 and 50 NM along at t=400 — inside its hold.
+  const crossings = [
+    { nm: 57.5, t: 460 },
+    { nm: 50, t: 400 },
+  ].slice(0, crossersPerLevel);
+  for (const altFt of [37000, 33000]) {
+    crossings.forEach((c, i) =>
+      entries.push({
+        traj: northLeg(
+          `X${altFt / 100}${"AB"[i]}`,
+          lat,
+          100 + c.nm / nmPerDegLon,
+          c.t,
+          altFt,
+        ),
+        offset: 0,
+      }),
+    );
+  }
+  const { flights, trajById } = planOf(entries);
+  const conflicts = scanFlightPlanConflicts(flights, cfg);
+  const conflict = conflicts.find(
+    (x) => [x.a, x.b].includes("UBA1") && [x.a, x.b].includes("KMV2"),
+  )!;
+  return { flights, trajById, conflicts, conflict, simT: 235 };
+}
+
+/** Apply a resolution to its target's PlanFlight, as the UI would. */
+function flown(
+  flights: PlanFlight[],
+  trajById: Map<string, { traj: TrajectoryResult; offset: number }>,
+  r: {
+    target: string;
+    type: import("./config").ManeuverType;
+    resolution: import("./types").ManeuverResolution;
+    tManLocal: number;
+    deviationSec: number;
+    rejoinSec: number;
+  },
+): PlanFlight[] {
+  const info = trajById.get(r.target)!;
+  const modified = applyManeuver(info.traj, r, r.tManLocal, {
+    deviationSec: r.deviationSec,
+    rejoinSec: r.rejoinSec,
+    bankAngleDeg: cfg.bankAngleDeg,
+  });
+  trajById.set(r.target, { traj: modified, offset: info.offset + (r.resolution.delaySec ?? 0) });
+  return flights.map((f) =>
+    f.id === r.target
+      ? {
+          ...f,
+          samples: toSamples(modified.points),
+          durationSec: totalSeconds(modified.points),
+          offsetSec: f.offsetSec + (r.resolution.delaySec ?? 0),
+        }
+      : f,
+  );
+}
+
+describe("planResolutions — resolve the blocker first (chained)", () => {
+  it("the scenario really has no single-maneuver fix", () => {
+    const s = boxedShortPair(1);
+    expect(s.conflicts).toHaveLength(1); // only the pair itself
+    const res = planResolutions({ ...s, cfg, restricted: [] });
+    expect(res.resolutions).toHaveLength(0);
+    expect(res.atfm).toBe(false); // a chain was found, so no ground delay
+  });
+
+  it("moves the one blocking crosser, then the original fix clears", () => {
+    const s = boxedShortPair(1);
+    const res = planResolutions({ ...s, cfg, restricted: [] });
+    expect(res.chained.length).toBeGreaterThan(0);
+    const [top] = res.chained;
+    expect(top.fix.target).toBe("UBA1");
+    expect(top.blockerFix.target).toMatch(/^X(370|330)A$/);
+    expect(top.cost).toBeCloseTo(top.fix.cost + top.blockerFix.cost);
+    expect(top.score).toBe(100);
+
+    // Apply both, blocker first: the whole plan is conflict-free.
+    const trajById = new Map(s.trajById);
+    let flights = flown(s.flights, trajById, top.blockerFix);
+    flights = flown(flights, trajById, top.fix);
+    expect(scanFlightPlanConflicts(flights, cfg)).toHaveLength(0);
+  });
+
+  it("is not attempted when a single maneuver already clears", () => {
+    const { flights, trajById } = headOnWithShadows([{ id: "SHADOW", altFt: 37000 }]);
+    const [conflict] = scanFlightPlanConflicts(flights, cfg);
+    const res = planResolutions({ conflict, flights, trajById, simT: 0, cfg, restricted: [] });
+    expect(res.resolutions.length).toBeGreaterThan(0);
+    expect(res.chained).toEqual([]);
+  });
+});
+
+describe("planResolutions — who is really in the way", () => {
+  it("never blames a third aircraft for a candidate that left the pair in conflict", () => {
+    // KBZ312/KBZ845 in the field: "Resolve MMA502 first" was shown although the
+    // candidates MMA502 "blocked" did not separate the pair either.
+    const s = boxedShortPair(2);
+    const res = planResolutions({ ...s, cfg, restricted: [] });
+    const climb = res.rejected.find(
+      (r) => r.target === "KMV2" && r.instruction === "Climb FL360",
+    )!;
+    // FL360 is 1000 ft from UBA1 — inside the buffer, so the pair is not
+    // separated; that it ALSO passes a crosser is secondary to that.
+    expect(climb.reason).toBe("unresolved-primary");
+    expect(climb.conflictWith?.callsign).toBe("UBA1");
+    expect(climb.detail).toMatch(/also conflict with X370/);
+    // Every blocker tallied comes from a candidate that DID separate the pair.
+    const pairSeparated = res.rejected.filter(
+      (r) => r.reason === "secondary-conflict" || r.reason === "rejoin-conflict",
+    );
+    for (const b of res.blockers) {
+      expect(pairSeparated.some((r) => r.conflictWith?.id === b.id)).toBe(true);
+    }
+  });
+});
+
+describe("planResolutions — ATFM ground delay", () => {
+  it("falls back to delaying the aircraft that has not departed", () => {
+    const s = boxedShortPair(2);
+    const res = planResolutions({ ...s, cfg, restricted: [] });
+    expect(res.chained).toEqual([]);
+    expect(res.atfm).toBe(true);
+    expect(res.resolutions.length).toBeGreaterThan(0);
+    // UBA1 is airborne — only KMV2 (EOBT t=300, clock 235) can be held.
+    for (const r of res.resolutions) {
+      expect(r.type).toBe("delay");
+      expect(r.target).toBe("KMV2");
+    }
+    const [top] = res.resolutions;
+    expect(top.instruction).toMatch(/^Ground delay \+\d+ min$/);
+    expect(top.extraTimeSec).toBe(top.resolution.delaySec);
+
+    const flights = flown(s.flights, new Map(s.trajById), top);
+    expect(scanFlightPlanConflicts(flights, cfg)).toHaveLength(0);
+  });
+
+  it("offers no ground delay once both aircraft are off blocks", () => {
+    const s = boxedShortPair(2);
+    // Clock past KMV2's EOBT: nobody left on the ground to hold.
+    const res = planResolutions({ ...s, simT: 290, cfg, restricted: [] });
+    expect(res.atfm).toBe(false);
+    expect(res.resolutions.every((r) => r.type !== "delay")).toBe(true);
+  });
+
+  it("shifts the whole trajectory and EOBT, the path untouched", () => {
+    const t = leg("DLY1", 13, 100, 90);
+    const d = applyManeuver(t, { type: "delay", resolution: { delaySec: 600 } }, 0);
+    const ms = (s: string) => new Date(s).getTime();
+    expect(ms(d.points[0].epoch_ts) - ms(t.points[0].epoch_ts)).toBe(600_000);
+    expect(ms(d.meta.eobtIso) - ms(t.meta.eobtIso)).toBe(600_000);
+    expect(d.points.map((p) => [p.lat, p.lon, p.altitude_ft])).toEqual(
+      t.points.map((p) => [p.lat, p.lon, p.altitude_ft]),
+    );
+  });
+});

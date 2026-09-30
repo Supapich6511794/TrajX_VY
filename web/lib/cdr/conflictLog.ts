@@ -128,6 +128,28 @@ function crossingAt(
   return trackDiff(a.track, b.track);
 }
 
+/** Same flight path on the same clock — the only inputs the window walk reads.
+ *  `samples` is cached per point array upstream, so an untouched flight keeps
+ *  it even when its PlanFlight wrapper is rebuilt. */
+function sameFlight(x: PlanFlight | undefined, y: PlanFlight | undefined): boolean {
+  if (x === y) return true;
+  return (
+    !!x &&
+    !!y &&
+    x.samples === y.samples &&
+    x.offsetSec === y.offsetSec &&
+    x.durationSec === y.durationSec
+  );
+}
+
+/** Entries already derived, by conflict object. The incremental re-scan keeps
+ *  the objects of every pair it did not touch, so after an auto-resolve fix
+ *  only the re-scanned pairs are walked again, not the whole log. */
+const entryCache = new WeakMap<
+  PlanConflict,
+  { A?: PlanFlight; B?: PlanFlight; cfg: CdrConfig; entry: ConflictLogEntry }
+>();
+
 /** One log entry from a live conflict. */
 function entryFrom(
   c: PlanConflict,
@@ -137,6 +159,22 @@ function entryFrom(
 ): ConflictLogEntry {
   const A = flights.get(c.a);
   const B = flights.get(c.b);
+  const hit = entryCache.get(c);
+  if (hit && hit.cfg === cfg && sameFlight(hit.A, A) && sameFlight(hit.B, B)) {
+    return hit.entry.seenAtSec === seenAtSec ? hit.entry : { ...hit.entry, seenAtSec };
+  }
+  const entry = deriveEntry(c, A, B, cfg, seenAtSec);
+  entryCache.set(c, { A, B, cfg, entry });
+  return entry;
+}
+
+function deriveEntry(
+  c: PlanConflict,
+  A: PlanFlight | undefined,
+  B: PlanFlight | undefined,
+  cfg: CdrConfig,
+  seenAtSec: number,
+): ConflictLogEntry {
   // The window minima are actually breached in — the same walk the exported
   // conflict marks use, so the log and the downloaded file tell one story.
   // A real loss walks the hard minima; a sub-buffer pass walks the advisory
