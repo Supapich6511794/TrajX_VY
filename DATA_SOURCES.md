@@ -41,7 +41,7 @@ each runs with no arguments. Nothing reads the XML at runtime.
 | Script | Reads | Writes (under `web/public/data/`) |
 |---|---|---|
 | `ingest_aixm_route_segments.py` | `RouteSegment` endpoints, direction, level band | `aixm_vy/route_segments.json` — 186 segments on 86 routes, 15 one-way |
-| `ingest_aixm_airports.py` | `AirportHeliport`, `Runway`, `RunwayDirection`, THR centreline points | `airports/Airport_with_AP_Main_vy.csv` (48), `airports/runway_vy.csv` (96 thresholds) |
+| `ingest_aixm_airports.py` | `AirportHeliport`, `Runway`, `RunwayDirection`, THR centreline points, plus `_OVERRIDES` (VYCI: the export's placeholder ARP/thresholds replaced from OSM + Wikipedia — see the script) | `airports/Airport_with_AP_Main_vy.csv` (48), `airports/runway_vy.csv` (96 thresholds) |
 | `ingest_aixm_waypoints.py` | `DesignatedPoint` / `Navaid` positions + the two files above | `aip_VY.json` — 456 waypoints, 86 airways, 48 airports |
 | `ingest_aixm_airways.py` | `route_segments.json` + `VOR` features | `aixm_vy/airway_segments_vy.geojson` (186), `aixm_vy/airway_vor_vy.geojson` (18) |
 | `ingest_aixm_procedures.py` | SIDs, STARs, approaches and their transition legs | `aixm_vy/{sid,star,pbn,ils}_*.geojson` |

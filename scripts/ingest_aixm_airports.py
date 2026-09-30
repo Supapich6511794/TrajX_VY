@@ -199,6 +199,52 @@ class Index:
                     self.thresholds[direction_uuid] = pt
 
 
+#: Corrections for aerodromes the AIXM export only carries as placeholders.
+#: Applied on top of the export, so a re-ingest keeps them; each one names
+#: its source. Delete an entry once the export itself is right.
+#:
+#: VYCI (Coco Island) -- the export has the ARP rounded to the whole minute
+#: (14 08 00N 093 23 00E, ~1 NM SE of the field, in the sea), both thresholds
+#: on that same point, and the pre-extension length (3999 ft). The field is
+#: now military and its runway was extended to ~2450 m. Thresholds are the
+#: ends of OSM way 229884166 (runway 01/19, traced from imagery), giving
+#: 2446 m on 010 deg true; ARP from Wikipedia / OurAirports (14 08 29N
+#: 093 22 06E), which lies on that centreline.
+_OVERRIDES: dict[str, dict[str, Any]] = {
+    "VYCI": {
+        "arp": (14.1413, 93.3683),
+        "runway_length_ft": 8024,
+        "thresholds": {
+            "RW01": {"lat": 14.1271532, "lon": 93.3659232, "true_brg": 10},
+            "RW19": {"lat": 14.1488142, "lon": 93.3698567, "true_brg": 190},
+        },
+    },
+}
+
+
+def apply_overrides(
+    airport_rows: list[dict[str, Any]], runway_rows: list[dict[str, Any]]
+) -> None:
+    """Patch the rows in place with ``_OVERRIDES``."""
+    for row in airport_rows:
+        fix = _OVERRIDES.get(row["airport_identifier"])
+        if fix and "arp" in fix:
+            lat, lon = fix["arp"]
+            row["airport_ref_latitude"] = f"{lat:.8f}"
+            row["airport_ref_longitude"] = f"{lon:.8f}"
+    for row in runway_rows:
+        fix = _OVERRIDES.get(row["airport_identifier"])
+        if not fix:
+            continue
+        thr = fix.get("thresholds", {}).get(row["runway_identifier"])
+        if thr:
+            row["runway_latitude"] = f"{thr['lat']:.8f}"
+            row["runway_longitude"] = f"{thr['lon']:.8f}"
+            row["runway_true_bearing"] = thr["true_brg"]
+        if "runway_length_ft" in fix:
+            row["runway_length"] = fix["runway_length_ft"]
+
+
 #: An aerodrome counts as "Main" when its AIP name is flagged INTL
 #: (YANGON INTL, MANDALAY INTL, NAYPYITAW INTL).
 def _is_main(name: str) -> bool:
@@ -307,6 +353,7 @@ def main() -> None:
 
     airport_rows = build_airport_rows(idx)
     runway_rows = build_runway_rows(idx)
+    apply_overrides(airport_rows, runway_rows)
 
     args.out.mkdir(parents=True, exist_ok=True)
     print(f"Writing to {args.out} ...")
