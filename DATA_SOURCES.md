@@ -145,9 +145,10 @@ against the real ATS network from `wp1..wp3`.
 
 `scripts/make_vy_track_sid_star.py` writes `vy_2025_07_01_to_07_dummy.csv`: the
 same rows plus `sid`, `star`, `approach`, `dep_rwy`, `arr_rwy`, matched against
-the source-A procedures (falling back to the first published runway in
-`runway_vy.csv`), so imported flights get a terminal procedure and a runway for
-arrival sequencing.
+the source-A procedures (with no procedure match, the runway end in
+`runway_vy.csv` that points the way the flight goes — the same rule as the
+generator's "Auto" runway), so imported flights get a terminal procedure and a
+runway for arrival sequencing.
 
 ---
 

@@ -3524,7 +3524,8 @@ function GeneratorPanel({
 
           {/* Runway FIRST — pick the departure RWY at ADEP / arrival RWY at
               ADES; the SID/STAR pickers below then list only that runway's
-              procedures. "Auto" = let the engine pick the first runway. */}
+              procedures. "Auto" = the engine picks the end that points
+              the way the flight goes (towards the route / from the arrival). */}
           <div className="field-row">
             <label className="field">
               <span>Departure RWY (at {dep || "ADEP"})</span>
@@ -3533,7 +3534,7 @@ function GeneratorPanel({
                 onChange={(e) => setDepRwy(e.target.value)}
                 disabled={!dep || depRwyOptions.length === 0}
               >
-                <option value="">Auto</option>
+                <option value="">Auto (by direction)</option>
                 {depRwy && !depRwyOptions.includes(depRwy) && (
                   <option value={depRwy}>{depRwy}</option>
                 )}
@@ -3557,7 +3558,7 @@ function GeneratorPanel({
                 onChange={(e) => setArrRwy(e.target.value)}
                 disabled={!des || arrRwyOptions.length === 0}
               >
-                <option value="">Auto</option>
+                <option value="">Auto (by direction)</option>
                 {arrRwy && !arrRwyOptions.includes(arrRwy) && (
                   <option value={arrRwy}>{arrRwy}</option>
                 )}

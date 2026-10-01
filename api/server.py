@@ -57,10 +57,11 @@ from trajectory_sim.navdata import (
     RUNWAY_HEURISTIC_SOURCE,
     RunwayEnd,
     SpeedConstraintType,
-    expand_runway_arrival_heuristic,
     expand_runway_departure_heuristic,
     expand_sid_departure,
     register_runways,
+    pick_runway_for_track,
+    runway_arrival_pattern,
     runway_end,
     splice_procedures,
 )
@@ -1287,6 +1288,20 @@ def _turn_fixes(
     return out
 
 
+#: How a synthetic arrival circuit's corners are turned (see ``approach_from``
+#: in :func:`_smooth_turns`): low in the circuit, at descent speed, with the
+#: intermediate-approach bank — the same height the runway heuristic's own
+#: turns are flown at.
+_CIRCUIT_FIX = _TurnFix(
+    direction=None,
+    flyover=False,
+    alt_ft=_RUNWAY_HEURISTIC_ALT_FT,
+    speed_kt=None,
+    phase="descent",
+    bank_deg=bank_angle_deg("intermediate_approach"),
+)
+
+
 def _smooth_turns(
     route_pts: "list[tuple[str, float, float]]",
     actype: str,
@@ -1294,6 +1309,7 @@ def _smooth_turns(
     procs: "list[tuple[Procedure | None, str]]",
     head: "tuple[float, float] | None" = None,
     tail: "tuple[float, float] | None" = None,
+    approach_from: "int | None" = None,
 ) -> "tuple[list[tuple[str, float, float]], dict[str, float]]":
     """Turn the route's corners into the arcs an aircraft actually flies.
 
@@ -1324,6 +1340,9 @@ def _smooth_turns(
             on afterwards: an anchor added later leaves the route's FIRST and
             LAST fixes with a corner apiece, since neither had a leg on both
             sides of it while the turns were being built.
+        approach_from: Index (counting ``head``) from which the points are a
+            synthetic arrival circuit (``runway_arrival_pattern``): turned at
+            circuit height and approach speed, not as en-route fixes.
 
     Returns:
         ``(path, fix_distance_nm)``. ``path`` is the flown polyline: the
@@ -1358,6 +1377,8 @@ def _smooth_turns(
         fit the 1.3 NM downwind, so no arc could be drawn at all and the map
         showed the corner raw.
         """
+        if approach_from is not None and i >= approach_from:
+            return _CIRCUIT_FIX
         ident = (route_pts[i][0] or "").upper()
         fix = fixes.get(ident)
         if fix is not None:
@@ -1632,91 +1653,98 @@ def _finish(
     # `_smooth_turns` only the CORE route each heuristic leaves behind avoids
     # building that corner in the first place, rather than trying to find and
     # cut it out afterwards.
-    dep_source = "PUBLISHED_SID" if sid_proc is not None else "DCT"
-    dep_extra: "list[tuple[str, float, float]] | None" = None
-    dep_cut = 0  # route_pts[:dep_cut] is the heuristic's — dropped from the core
-    if sid_proc is None and route_pts:
-        dep_rwy = runway_end(adep, terminal.get("dep_rwy"))
-        # The turn has to aim at a fix that actually says which way the route
-        # goes — a route filed "ADEP DCT ADES"-style repeats the departure
-        # airport itself as route_pts[0], which is no direction to turn
-        # towards at all. Skip any leading point that IS the departure
-        # aerodrome.
-        dep_target_idx = next(
-            (
-                i
-                for i, p in enumerate(route_pts)
-                if adep_ll is None or _sq_dist(p[1:], adep_ll) > _COINCIDENT_SQ
-            ),
-            None,
-        )
-        if dep_rwy is not None and dep_target_idx is not None:
-            candidate = expand_runway_departure_heuristic(
-                dep_rwy,
-                route_pts[dep_target_idx][1:],
-                _runway_heuristic_speed_kt(actype, "climb"),
-            )
-            if candidate is not None:
-                dep_extra, dep_cut = candidate, dep_target_idx
-                dep_source = RUNWAY_HEURISTIC_SOURCE
+    def _off(p: "tuple[float, float]", ll: "tuple[float, float] | None") -> bool:
+        return ll is None or _sq_dist(p, ll) > _COINCIDENT_SQ
 
+    # The route's own en-route fixes: neither aerodrome. A route filed
+    # "ADEP DCT ADES" has none at all, and a fix sitting on the field (VYTL's
+    # TCL VOR) is the aerodrome as far as the turn geometry is concerned.
+    enroute_idx = [
+        i for i, p in enumerate(route_pts)
+        if _off(p[1:], adep_ll) and _off(p[1:], ades_ll)
+    ]
+
+    # --- arrival: a final approach onto the runway, never the airport point.
+    # Where it comes from is the last en-route fix, or the departure aerodrome
+    # when the route has none.
     arr_source = (
         "PUBLISHED_APPROACH" if approach_proc is not None else
         "PUBLISHED_STAR" if star_proc is not None else
         "DCT"
     )
-    arr_extra: "list[tuple[str, float, float]] | None" = None
-    arr_rwy: "RunwayEnd | None" = None
-    arr_keep = len(route_pts)  # route_pts[arr_keep:] is the heuristic's
-    if star_proc is None and approach_proc is None and len(route_pts) >= 2:
-        arr_rwy = runway_end(ades, terminal.get("arr_rwy"))
-        # Same idea as the departure side, mirrored: drop any trailing point
-        # that IS the destination aerodrome (the common "... DCT ADES"
-        # filing) and turn from the last one that isn't.
-        arr_idx = [
-            i
-            for i, p in enumerate(route_pts)
-            if ades_ll is None or _sq_dist(p[1:], ades_ll) > _COINCIDENT_SQ
-        ]
-        arr_prev = arr_last = arr_last_idx = None
-        if len(arr_idx) >= 2:
-            arr_prev = route_pts[arr_idx[-2]][1:]
-            arr_last_idx = arr_idx[-1]
-            arr_last = route_pts[arr_last_idx][1:]
-        elif len(arr_idx) == 1:
-            # Only one fix in the whole route isn't the destination itself.
-            # Use the point right before it as the "before" anchor; when it
-            # IS the route's very first fix (a plain "<fix> DCT ADES" filing
-            # with no departure-end fix of its own), fall back to the
-            # departure aerodrome itself — the aircraft was flying from there
-            # regardless of whether it is a named point on the route.
-            prior_idx = arr_idx[-1] - 1
-            arr_prev = route_pts[prior_idx][1:] if prior_idx >= 0 else adep_ll
-            arr_last_idx = arr_idx[-1]
-            arr_last = route_pts[arr_last_idx][1:]
-        if arr_prev is None or (
-            arr_last is not None and _sq_dist(arr_prev, arr_last) <= _COINCIDENT_SQ
-        ):
-            # No "before" point at all, or it's the departure aerodrome
-            # falling back onto itself (ADEP == ADES's one surviving fix) —
-            # either way there is no real inbound track to turn from.
-            arr_last = None
-        if arr_rwy is not None and arr_last is not None:
-            candidate = expand_runway_arrival_heuristic(
-                arr_rwy,
-                arr_prev,
-                arr_last,
-                _runway_heuristic_speed_kt(actype, "descent"),
+    arr_from = route_pts[enroute_idx[-1]][1:] if enroute_idx else adep_ll
+    arr_pattern: "list[tuple[str, float, float]] | None" = None
+    arr_keep = len(route_pts)  # route_pts[arr_keep:] is replaced by the pattern
+    if (
+        star_proc is None
+        and approach_proc is None
+        and ades_ll is not None
+        and arr_from is not None
+    ):
+        if not terminal.get("arr_rwy") and _off(arr_from, ades_ll):
+            # No runway asked for: land on the one that points the way the
+            # aircraft is arriving, so it flies straight on rather than round
+            # the field.
+            auto = pick_runway_for_track(
+                ades, compute_bearing(*arr_from, *ades_ll)
             )
-            if candidate is not None:
-                arr_extra, arr_keep = candidate, arr_last_idx + 1
-                arr_source = RUNWAY_HEURISTIC_SOURCE
+            if auto is not None:
+                terminal["arr_rwy"] = auto.ident
+        arr_rwy = runway_end(ades, terminal.get("arr_rwy"))
+        if arr_rwy is not None:
+            arr_pattern = runway_arrival_pattern(arr_rwy, arr_from)
+            not_ades = [
+                i for i, p in enumerate(route_pts) if _off(p[1:], ades_ll)
+            ]
+            arr_keep = not_ades[-1] + 1 if not_ades else 0
+            arr_source = RUNWAY_HEURISTIC_SOURCE
 
-    if dep_cut >= arr_keep:
+    # --- departure: off the runway that points towards the route, then a turn
+    # onto it. Its target is the first en-route fix, or — with none — wherever
+    # the arrival begins.
+    dep_source = "PUBLISHED_SID" if sid_proc is not None else "DCT"
+    dep_extra: "list[tuple[str, float, float]] | None" = None
+    dep_cut = 0  # route_pts[:dep_cut] is the heuristic's — dropped from the core
+    if sid_proc is None and route_pts and adep_ll is not None:
+        dep_target: "tuple[float, float] | None"
+        if enroute_idx:
+            dep_cut = enroute_idx[0]
+            dep_target = route_pts[dep_cut][1:]
+        elif arr_pattern is not None:
+            dep_cut = arr_keep
+            dep_target = arr_pattern[0][1:]
+        else:
+            # Nothing but the aerodromes, and no arrival runway either: aim at
+            # whichever filed point is not the departure field.
+            dep_cut = next(
+                (i for i, p in enumerate(route_pts) if _off(p[1:], adep_ll)),
+                len(route_pts),
+            )
+            dep_target = route_pts[dep_cut][1:] if dep_cut < len(route_pts) else None
+        if dep_target is not None and _off(dep_target, adep_ll):
+            if not terminal.get("dep_rwy"):
+                auto = pick_runway_for_track(
+                    adep, compute_bearing(*adep_ll, *dep_target)
+                )
+                if auto is not None:
+                    terminal["dep_rwy"] = auto.ident
+            dep_rwy = runway_end(adep, terminal.get("dep_rwy"))
+            if dep_rwy is not None:
+                dep_extra = expand_runway_departure_heuristic(
+                    dep_rwy,
+                    dep_target,
+                    _runway_heuristic_speed_kt(actype, "climb"),
+                )
+        if dep_extra is not None:
+            dep_source = RUNWAY_HEURISTIC_SOURCE
+        else:
+            dep_cut = 0
+
+    if dep_cut > arr_keep:
         # Degenerate overlap (a route short enough that both heuristics would
         # claim the same fix) — give way to neither rather than smooth an
-        # empty or inverted core route.
-        dep_extra = arr_extra = None
+        # inverted core route.
+        dep_extra = arr_pattern = None
         dep_cut, arr_keep = 0, len(route_pts)
         dep_source = "PUBLISHED_SID" if sid_proc is not None else "DCT"
         arr_source = (
@@ -1725,14 +1753,35 @@ def _finish(
             "DCT"
         )
 
-    # Anchors from the FULL route — unchanged from before this feature —
-    # since they also carry the "route doesn't reach ADES" warning check,
-    # which must still compare against the route as actually filed, not the
-    # slice a heuristic is about to take over.
+    # Anchors from the FULL route, since they also carry the "route doesn't
+    # reach ADES" warning check, which must still compare against the route as
+    # actually filed, not the slice a heuristic is about to take over.
     head, tail = _aerodrome_anchors(adep, ades, route_pts, terminal, warnings)
     core_route = route_pts[dep_cut:arr_keep]
-    core_head = None if dep_extra is not None else head
-    core_tail = None if arr_extra is not None else tail
+    # With a departure turn, the core starts where that turn rolls out: as its
+    # head, so the first fix gets a proper fly-by corner instead of being an
+    # end point turned on the spot.
+    if dep_extra is not None:
+        core_head = dep_extra[-1][1:]
+    else:
+        core_head = head if dep_cut == 0 else None
+    if (
+        core_head is None
+        and dep_extra is None
+        and arr_pattern is not None
+        and adep_ll is not None
+        and (not core_route or _off(core_route[0][1:], adep_ll))
+    ):
+        # The route's only filed points were the aerodromes, now dropped: the
+        # flight still leaves from the field.
+        core_head = adep_ll
+    approach_from: "int | None" = None
+    if arr_pattern is not None:
+        approach_from = (1 if core_head is not None else 0) + len(core_route)
+        core_route = [*core_route, *arr_pattern]
+        core_tail = None
+    else:
+        core_tail = tail
     path_pts, fix_distance_nm = _smooth_turns(
         core_route,
         actype,
@@ -1740,12 +1789,11 @@ def _finish(
         [(sid_proc, "climb"), (star_proc, "descent"), (approach_proc, "descent")],
         head=core_head,
         tail=core_tail,
+        approach_from=approach_from,
     )
     if dep_extra is not None:
-        path_pts = [*dep_extra, *path_pts]
-    if arr_extra is not None:
-        assert arr_rwy is not None
-        path_pts = [*path_pts, *arr_extra, ("", arr_rwy.lat, arr_rwy.lon)]
+        # The roll-out point is already the smoothed path's first point.
+        path_pts = [*dep_extra[:-1], *path_pts]
 
     terminal["dep_trajectory_source"] = dep_source
     terminal["arr_trajectory_source"] = arr_source

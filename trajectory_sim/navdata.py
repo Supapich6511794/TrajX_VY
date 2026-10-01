@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
@@ -25,7 +26,6 @@ from .turns import (
     signed_turn_deg,
     turn_arc,
     turn_radius_nm,
-    turn_to_heading,
 )
 
 logger = logging.getLogger(__name__)
@@ -888,6 +888,37 @@ def register_runways(runways: "list[RunwayEnd]") -> None:
         _RUNWAY_ENDS[(rwy.icao.upper(), _norm_runway_ident(rwy.ident))] = rwy
 
 
+def runway_ends(icao: str) -> list[RunwayEnd]:
+    """Every runway end on record at an aerodrome, in ident order. An ARINC
+    "both" group (``RW21B``) is not an end of its own and is left out."""
+    key = icao.upper()
+    return sorted(
+        (
+            r
+            for (ap, ident), r in _RUNWAY_ENDS.items()
+            if ap == key and not re.fullmatch(r"RW\d{2}B", ident)
+        ),
+        key=lambda r: r.ident,
+    )
+
+
+def pick_runway_for_track(icao: str, track_deg: float) -> RunwayEnd | None:
+    """The runway end whose true bearing is closest to ``track_deg``.
+
+    With no wind or ATC assignment to go on, the runway a synthetic flight
+    should use is the one that points the way it is going: a departure takes
+    off towards its first fix (bearing from the field to that fix), an arrival
+    lands straight on from the direction it arrives (bearing from its last
+    fix to the field). Picking any other end makes it take off away from its
+    route, or fly round the field to land. ``None`` when the aerodrome has no
+    runway on record.
+    """
+    ends = runway_ends(icao)
+    if not ends:
+        return None
+    return min(ends, key=lambda r: abs(signed_turn_deg(r.true_bearing, track_deg)))
+
+
 def runway_end(icao: str, runway: str | None) -> RunwayEnd | None:
     """Threshold geometry for a runway, or ``None`` if it isn't on record.
 
@@ -1029,38 +1060,19 @@ def expand_sid_departure(
 #: wheels are up, short enough to stay close to the field. Not derived from
 #: anything published (there is no procedure to publish it): a nominal
 #: wings-level segment, roughly 15-20s at the low-altitude turn speed this
-#: heuristic uses. The arrival heuristic has no equivalent parameter — it
-#: turns straight onto the runway's heading and the caller flies the ordinary
-#: straight leg from there to the threshold (see
-#: :func:`expand_runway_arrival_heuristic`).
+#: heuristic uses. The arrival side has its own geometry, a final approach
+#: on the extended centreline (see :func:`runway_arrival_pattern`).
 RUNWAY_HEURISTIC_INITIAL_LEG_NM = 1.0
 
 #: A synthetic-turn source that is NOT a published procedure. Every point
-#: :func:`expand_runway_departure_heuristic` / :func:`expand_runway_arrival_
-#: heuristic` invent carries an empty ident except the runway threshold
+#: :func:`expand_runway_departure_heuristic` / :func:`runway_arrival_pattern`
+#: invent carries an empty ident except the runway threshold
 #: itself (same convention as :func:`expand_sid_departure`'s prepended
 #: threshold) — callers that need to tell a heuristic track apart from a real
 #: SID/STAR/approach do it from whether these functions were even called, not
 #: from anything on the points themselves; see ``dep_trajectory_source`` /
 #: ``arr_trajectory_source`` in ``api/server.py``.
 RUNWAY_HEURISTIC_SOURCE = "RUNWAY_HEURISTIC"
-
-#: How far off the runway's true bearing the threshold is allowed to sit,
-#: measured FROM the arrival heuristic's roll-out point, before its geometry
-#: is rejected as broken rather than merely approximate (see
-#: :func:`expand_runway_arrival_heuristic`). turn_to_heading only solves for
-#: the roll-out DIRECTION, not its position relative to the runway, so the
-#: straight leg the caller flies from roll-out to the threshold generally
-#: needs a further course correction of its own — same as a real "turn to
-#: base, turn to final" being followed by a last correction onto the
-#: localiser, not one continuous arc. That correction is the accepted
-#: approximation this whole heuristic makes (there is no coded localiser to
-#: intercept); this only rejects the case that is not a correction at all —
-#: a last fix close enough to the field that the turn radius overshoots the
-#: threshold and rolls out on the WRONG SIDE of it, needing to fly away from
-#: the runway's heading rather than merely across it to reach the threshold.
-_MAX_ROLLOUT_MISALIGNMENT_DEG = 60.0
-
 
 def expand_runway_departure_heuristic(
     runway: "RunwayEnd",
@@ -1141,79 +1153,82 @@ def expand_runway_departure_heuristic(
     return points
 
 
-def expand_runway_arrival_heuristic(
-    runway: "RunwayEnd",
-    prev_fix: "tuple[float, float]",
-    last_fix: "tuple[float, float]",
-    turn_speed_kt: float,
-    bank_deg: float | None = None,
-) -> "list[tuple[str, float, float]] | None":
-    """A plausible final turn onto a runway with no coded STAR/approach.
+#: Where the synthetic arrival joins the extended centreline, from the
+#: threshold. 10 NM on a 3° glide is ~3 000 ft above the runway — a normal
+#: final approach fix height — so the aircraft is established on final, wings
+#: level, well before it lands. Not published for any runway (there is no
+#: procedure to publish it); a nominal straight-in final.
+RUNWAY_FINAL_NM = 10.0
 
-    The mirror image of :func:`expand_runway_departure_heuristic`: the
-    aircraft crosses the route's last fix on whatever track it is already
-    flying and turns until established on the runway's OWN true bearing — a
-    synthetic final turn, never a fabricated STAR or approach (see
+#: How far to the side of the centreline the base leg (and the downwind, when
+#: one is flown) runs. Wide enough for a 90° turn onto final at circuit speed
+#: to fit without cutting inside the join point.
+RUNWAY_BASE_OFFSET_NM = 5.0
+
+#: Largest angle at which the arrival may join the final directly. Beyond
+#: this the join is a turn too steep to roll out on the centreline, so the
+#: aircraft flies a base leg (and a downwind, from the far side) first.
+_STRAIGHT_IN_MAX_DEG = 60.0
+
+
+def runway_arrival_pattern(
+    runway: "RunwayEnd",
+    from_ll: "tuple[float, float]",
+    final_nm: float = RUNWAY_FINAL_NM,
+    base_nm: float = RUNWAY_BASE_OFFSET_NM,
+) -> "list[tuple[str, float, float]]":
+    """The corners of a synthetic arrival onto a runway with no coded
+    STAR/approach, ending on the threshold.
+
+    The aircraft never lands across the runway or at the aerodrome reference
+    point: it always finishes on ``final_nm`` of the extended centreline,
+    flown on the runway's own true bearing to the threshold. How it gets onto
+    that final depends on where it comes from (``from_ll``: the route's last
+    en-route fix, or the departure aerodrome when there is none):
+
+    * **straight-in** — already within ``_STRAIGHT_IN_MAX_DEG`` of the final
+      course: direct to the join point, then final;
+    * **base** — off to one side: a base leg ``base_nm`` out on that side,
+      perpendicular to final, then a 90° turn onto it;
+    * **downwind** — from beyond the far end of the runway: a downwind abeam
+      the threshold on the side it is already on, then base, then final.
+
+    Only corners — the caller turns them into arcs like any other route, at
+    the speed of an aircraft low in the circuit. Same convention as the
+    departure heuristic: every point carries an empty ident (nothing here is a
+    published fix), and it is never reported as a STAR or approach (see
     ``RUNWAY_HEURISTIC_SOURCE``).
 
-    Built from :func:`~trajectory_sim.turns.turn_to_heading` rather than
-    :func:`~trajectory_sim.turns.turn_arc`: this needs the aircraft established
-    on the runway's COURSE, not pointed at some nearby fix, and aiming a
-    ``turn_arc`` at a point near the threshold only approximates the runway's
-    true bearing — worse the farther the last fix is from the field.
-    ``turn_to_heading`` solves for the heading directly, so the roll-out track
-    is the runway's true bearing exactly.
-
-    Args:
-        runway: Arrival threshold geometry (:func:`runway_end`).
-        prev_fix: ``(lat, lon)`` of the fix before the route's last one — sets
-            the inbound track the aircraft crosses the last fix on.
-        last_fix: ``(lat, lon)`` of the route's last filed fix.
-        turn_speed_kt: TAS to fly the turn at — sets its radius.
-        bank_deg: Maximum bank for the turn. Defaults to the PANS-OPS final-
-            approach figure (15°, see :func:`bank_angle_deg`) — a low, late
-            turn onto the runway is flown gently, same as a real one.
-
     Returns:
-        Arc points (empty ident) from the last fix to established on the
-        runway's true bearing. The caller appends the runway threshold itself
-        after these — the final straight leg is the ordinary great-circle
-        interpolation onto it. Flying it on the established heading, from
-        somewhere near the field, lands close to the centreline; it is not
-        guaranteed to be exact (there is no coded localiser to intercept), the
-        same approximation any single-turn-plus-straight-in model makes.
-        ``None`` when the aircraft is already tracking on the runway's
-        heading (no turn needed) or no safe turn geometry exists; either way
-        the caller keeps its existing behaviour.
+        ``[("", lat, lon), ..., ("", thr_lat, thr_lon)]`` — the join point is
+        always the second-to-last corner and the threshold the last.
     """
-    if bank_deg is None:
-        bank_deg = bank_angle_deg("final_approach")
+    recip = (runway.true_bearing + 180.0) % 360.0
+    join = project_point(runway.lat, runway.lon, recip, final_nm)
+    threshold = ("", runway.lat, runway.lon)
 
-    inbound_deg = compute_bearing(prev_fix[0], prev_fix[1], last_fix[0], last_fix[1])
-    radius_nm = turn_radius_nm(turn_speed_kt, bank_deg=bank_deg)
-    arc = turn_to_heading(
-        last_fix[0], last_fix[1], inbound_deg, runway.true_bearing, radius_nm
-    )
-    if not arc:
-        return None
+    to_join = compute_bearing(from_ll[0], from_ll[1], join[0], join[1])
+    beyond_join = haversine_distance(
+        runway.lat, runway.lon, from_ll[0], from_ll[1]
+    ) > final_nm
+    if beyond_join and abs(signed_turn_deg(runway.true_bearing, to_join)) <= _STRAIGHT_IN_MAX_DEG:
+        return [("", *join), threshold]
 
-    # turn_to_heading only controls the roll-out DIRECTION, not where it ends
-    # up — it has no notion of the runway's position, only its bearing. When
-    # the last fix is already close to the field (this heuristic's ONLY input
-    # for "how far out" — there is no STAR to say otherwise) the turn radius
-    # can be wider than that distance, swinging the roll-out point round to
-    # the FAR side of the threshold: established on the right heading, but
-    # with the runway now behind it rather than ahead. Flying the reported
-    # heading from there would go the wrong way — worse than the straight
-    # line this is meant to improve on. Reject it rather than hand back
-    # geometry that looks fine locally and is backwards overall.
-    rollout_lat, rollout_lon = arc[-1]
-    bearing_to_threshold = compute_bearing(
-        rollout_lat, rollout_lon, runway.lat, runway.lon
+    # Which side of the centreline the aircraft is on, seen looking out along
+    # the final from the threshold: the base (and downwind) run on that side,
+    # so the aircraft never crosses the final to reach them.
+    side_deg = signed_turn_deg(
+        recip, compute_bearing(runway.lat, runway.lon, from_ll[0], from_ll[1])
     )
-    if abs(signed_turn_deg(runway.true_bearing, bearing_to_threshold)) > _MAX_ROLLOUT_MISALIGNMENT_DEG:
-        return None
-    return [("", lat, lon) for lat, lon in arc]
+    lateral = recip + (90.0 if side_deg >= 0 else -90.0)
+    base = project_point(join[0], join[1], lateral, base_nm)
+    corners = [("", *base), ("", *join), threshold]
+    if abs(side_deg) > 90.0:
+        # From the far side of the field: fly down its side first, abeam the
+        # threshold, rather than cut across the runway to reach the base.
+        downwind = project_point(runway.lat, runway.lon, lateral, base_nm)
+        corners.insert(0, ("", *downwind))
+    return corners
 
 
 def _collapse_consecutive_idents(

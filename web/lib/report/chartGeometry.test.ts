@@ -192,6 +192,48 @@ describe("tracks", () => {
   });
 });
 
+describe("tracks from row groups", () => {
+  // Long layout: one row per event, a flight per block of rows.
+  const rows: Cell[][] = [
+    ["flight_key", "callsign", "elapsed_s", "lon", "lat", "altitude_ft", "event", "ident"],
+    ["UBA1_K", "UBA1", 0, 100, 13, 0, "TAKEOFF", "VYYY"],
+    ["UBA1_K", "UBA1", 600, 101, 14, 33000, "WAYPOINT", "PG"],
+    ["KBZ2_K", "KBZ2", 0, 99, 12, 0, "TAKEOFF", "VYMD"],
+  ];
+  const spec: ChartSpec = {
+    kind: "scatter",
+    title: "Flight trajectories",
+    xTitle: "Longitude",
+    yTitle: "Latitude",
+    xCol: 3,
+    yCol: 4,
+    groups: [
+      { name: "UBA1", r0: 1, r1: 2 },
+      { name: "KBZ2", r0: 3, r1: 3 },
+    ],
+    hoverCols: [1, 5, 6, 7],
+  };
+
+  it("draws one path per group, over that group's rows only", () => {
+    const p = pathPlot(spec, rows, BOX);
+    expect(p.seriesNames).toEqual(["UBA1", "KBZ2"]);
+    expect(p.paths[0].d.match(/L/g)).toHaveLength(1);
+    expect(p.paths[1].d.match(/L/g)).toBeNull();
+  });
+
+  it("gives every point its hover lines from the named columns", () => {
+    const p = pathPlot(spec, rows, BOX);
+    expect(p.points).toHaveLength(3);
+    expect(p.points[1].series).toBe(0);
+    expect(p.points[1].hover).toEqual([
+      "callsign: UBA1",
+      "altitude_ft: 33000",
+      "event: WAYPOINT",
+      "ident: PG",
+    ]);
+  });
+});
+
 describe("buildPlot", () => {
   it("sends a scatter spec to the track renderer and everything else to bars", () => {
     expect(buildPlot(BAR_SPEC, ROWS, BOX).kind).toBe("bar");

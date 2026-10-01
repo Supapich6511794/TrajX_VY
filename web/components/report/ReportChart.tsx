@@ -32,6 +32,19 @@ const SERIES = [
   "#64748b",
 ];
 
+/** Colour of series `i` of `n`. The fixed palette while it lasts; past it,
+ *  hues stepped by the golden angle so every flight still gets its own colour
+ *  and neighbours in the legend never land on near-identical ones. */
+function seriesColor(i: number, n: number): string {
+  if (n <= SERIES.length) return SERIES[i % SERIES.length];
+  const hue = Math.round((i * 137.508) % 360);
+  return `hsl(${hue}, 70%, 48%)`;
+}
+
+/** Hover box geometry: a line of 11px system text is ~6.4px a character. */
+const TIP_LINE_H = 15;
+const TIP_CHAR_W = 6.4;
+
 const PAD: Omit<Box, "width" | "height"> = {
   padLeft: 64,
   padRight: 18,
@@ -49,7 +62,7 @@ interface Props {
 export default function ReportChart({ spec, rows, height = 340 }: Props) {
   const wrap = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(880);
-  const [hover, setHover] = useState<{ x: number; y: number; text: string } | null>(
+  const [hover, setHover] = useState<{ x: number; y: number; lines: string[] } | null>(
     null,
   );
 
@@ -71,6 +84,19 @@ export default function ReportChart({ spec, rows, height = 340 }: Props) {
     () => buildPlot(spec, rows, { width, height, ...PAD }),
     [spec, rows, width, height],
   );
+  const color = (i: number) => seriesColor(i, plot.seriesNames.length);
+
+  // The hover box: sized to its longest line, kept inside the chart, and
+  // dropped below the point when there is no room above it.
+  const tip = hover
+    ? (() => {
+        const w = Math.max(...hover.lines.map((l) => l.length)) * TIP_CHAR_W + 16;
+        const h = hover.lines.length * TIP_LINE_H + 8;
+        const x = Math.min(Math.max(hover.x - w / 2, 2), Math.max(2, width - w - 2));
+        const y = hover.y - h - 8 >= 2 ? hover.y - h - 8 : hover.y + 10;
+        return { x, y, w, h };
+      })()
+    : null;
 
   const axisColor = "#94a3b8";
   const gridColor = "#cbd5e155";
@@ -120,12 +146,12 @@ export default function ReportChart({ spec, rows, height = 340 }: Props) {
                 y={b.y}
                 width={Math.max(0.5, b.w - 1)}
                 height={b.h}
-                fill={SERIES[b.series % SERIES.length]}
+                fill={color(b.series)}
                 onMouseEnter={() =>
                   setHover({
                     x: b.x + b.w / 2,
                     y: b.y,
-                    text: `${b.label} · ${plot.seriesNames[b.series] ?? ""} ${b.value}`,
+                    lines: [`${b.label} · ${plot.seriesNames[b.series] ?? ""} ${b.value}`],
                   })
                 }
               />
@@ -135,7 +161,7 @@ export default function ReportChart({ spec, rows, height = 340 }: Props) {
                 key={i}
                 d={p.d}
                 fill="none"
-                stroke={SERIES[p.series % SERIES.length]}
+                stroke={color(p.series)}
                 strokeWidth={1.4}
                 strokeLinejoin="round"
                 strokeLinecap="round"
@@ -144,6 +170,25 @@ export default function ReportChart({ spec, rows, height = 340 }: Props) {
                 <title>{p.name}</title>
               </path>
             ))}
+
+        {/* A dot per event, over the lines. The visible dot is small; the
+            transparent ring around it is what the pointer actually has to hit. */}
+        {plot.kind === "path" &&
+          plot.points.map((pt, i) => (
+            <g
+              key={"p" + i}
+              onMouseEnter={() =>
+                setHover({
+                  x: pt.x,
+                  y: pt.y,
+                  lines: pt.hover.length ? pt.hover : [plot.seriesNames[pt.series] ?? ""],
+                })
+              }
+            >
+              <circle cx={pt.x} cy={pt.y} r={7} fill="transparent" />
+              <circle cx={pt.x} cy={pt.y} r={2.4} fill={color(pt.series)} />
+            </g>
+          ))}
 
         {/* Axes last: a bar drawn over its own baseline looks detached. */}
         <line
@@ -201,27 +246,29 @@ export default function ReportChart({ spec, rows, height = 340 }: Props) {
           {spec.yTitle}
         </text>
 
-        {hover && (
+        {hover && tip && (
           <g pointerEvents="none">
             <rect
-              x={Math.min(Math.max(hover.x - 80, 2), Math.max(2, width - 162))}
-              y={Math.max(2, hover.y - 26)}
-              width={160}
-              height={20}
+              x={tip.x}
+              y={tip.y}
+              width={tip.w}
+              height={tip.h}
               rx={4}
               fill="#0f172a"
               opacity={0.92}
             />
-            <text
-              x={Math.min(Math.max(hover.x, 82), Math.max(82, width - 82))}
-              y={Math.max(2, hover.y - 12)}
-              textAnchor="middle"
-              fontSize={11}
-              fill="#f8fafc"
-              fontFamily="system-ui, sans-serif"
-            >
-              {hover.text}
-            </text>
+            {hover.lines.map((line, i) => (
+              <text
+                key={i}
+                x={tip.x + 8}
+                y={tip.y + 4 + TIP_LINE_H * (i + 1) - 4}
+                fontSize={11}
+                fill="#f8fafc"
+                fontFamily="system-ui, sans-serif"
+              >
+                {line}
+              </text>
+            ))}
           </g>
         )}
       </svg>
@@ -232,7 +279,7 @@ export default function ReportChart({ spec, rows, height = 340 }: Props) {
         <figcaption className="rv-legend">
           {plot.seriesNames.slice(0, 12).map((n, i) => (
             <span key={i}>
-              <i style={{ background: SERIES[i % SERIES.length] }} />
+              <i style={{ background: color(i) }} />
               {n}
             </span>
           ))}

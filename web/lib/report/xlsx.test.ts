@@ -295,6 +295,26 @@ describe("the chart", () => {
     expect(scatter).toContain("<c:yVal>");
   });
 
+  it("points each grouped series at its own block of rows", () => {
+    const grouped = chartOf(ROWS, {
+      kind: "scatter",
+      title: "Tracks",
+      xTitle: "Longitude",
+      yTitle: "Latitude",
+      xCol: 0,
+      yCol: 1,
+      groups: [
+        { name: "UBA1", r0: 1, r1: 2 },
+        { name: "KBZ<2>", r0: 3, r1: 3 },
+      ],
+    });
+    expect(grouped.match(/<c:ser>/g)).toHaveLength(2);
+    // Row index 1..2 of the table is sheet rows 2..3.
+    expect(grouped).toContain("$A$2:$A$3");
+    expect(grouped).toContain("$B$4:$B$4");
+    expect(grouped).toContain("<c:tx><c:v>KBZ&lt;2&gt;</c:v></c:tx>");
+  });
+
   it("puts a bar chart's columns up", () => {
     const bar = chartOf(ROWS, { ...LINE, kind: "bar" });
     expect(bar).toContain("<c:barChart>");

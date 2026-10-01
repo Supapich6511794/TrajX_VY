@@ -185,6 +185,9 @@ function fromObject(o: Record<string, unknown>): FlightRecord {
     }
     return undefined;
   };
+  const sid = get("sid", "sid_name")?.toUpperCase();
+  const star = get("star", "star_name")?.toUpperCase();
+  const approach = get("approach", "iap", "approach_name")?.toUpperCase();
   return {
     callsign: get("callsign", "acid", "flight")?.toUpperCase(),
     actype: get("actype", "aircraft_type", "aircraft", "type")?.toUpperCase(),
@@ -195,9 +198,9 @@ function fromObject(o: Record<string, unknown>): FlightRecord {
     gsKt: numOrUndef(get("gs", "gs_kt", "ground_speed", "speed_kt")),
     entryFl: positiveOrUndef(get("entry_fl", "entryfl", "entry_level")),
     route: get("route", "route_string", "item15") ?? wpRouteFrom(o),
-    sid: get("sid", "sid_name")?.toUpperCase(),
-    star: get("star", "star_name")?.toUpperCase(),
-    approach: get("approach", "iap", "approach_name")?.toUpperCase(),
+    sid,
+    star,
+    approach,
     depRwy: get("dep_rwy", "departure_runway", "dep_runway", "sid_runway")
       ?.toUpperCase(),
     arrRwy: get("arr_rwy", "arrival_runway", "arr_runway", "star_runway")

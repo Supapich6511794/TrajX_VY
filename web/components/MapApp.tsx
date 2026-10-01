@@ -2488,9 +2488,9 @@ export default function MapApp() {
             .flatMap((t) => buildFlightEvents(toReportFlight(t), index));
         }
         const series = flightTrajectoryRows(events);
-        // Pairs, not columns: the trajectory chart carries two columns per
-        // flight, and the count is however many flights fitted on it.
-        const drawn = Math.floor((series[0]?.length ?? 0) / 2);
+        // One series per flight_key, however many fitted on the chart.
+        const spec = flightTrajectoryChart(series);
+        const drawn = spec.groups?.length ?? 0;
         return {
           kind: "events",
           title: "Flight trajectories",
@@ -2500,7 +2500,7 @@ export default function MapApp() {
               : `All ${drawn.toLocaleString()} flight${drawn === 1 ? "" : "s"}`) +
             ` · takeoff, filed fixes, TOC/TOD, sector boundaries and landing · ${run}`,
           series,
-          spec: flightTrajectoryChart(drawn),
+          spec,
         };
       }
 

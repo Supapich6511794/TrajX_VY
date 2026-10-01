@@ -57,9 +57,21 @@ export interface BarPlot {
   plot: PlotBox;
 }
 
+/** One plotted point and what its hover says. */
+export interface PathPoint {
+  x: number;
+  y: number;
+  series: number;
+  /** One line per `hoverCols` column ("altitude_ft: 33000"); empty when the
+   *  spec names none. */
+  hover: string[];
+}
+
 export interface PathPlot {
   kind: "path";
   paths: { d: string; series: number; name: string }[];
+  /** Every point of every path, for hit-testing the hover. */
+  points: PathPoint[];
   seriesNames: string[];
   yTicks: Tick[];
   xTicks: Tick[];
@@ -209,7 +221,8 @@ export function barPlot(spec: ChartSpec, rows: Cell[][], box: Box): BarPlot {
 }
 
 /**
- * Joined points: one path per X/Y column pair.
+ * Joined points: one path per X/Y column pair, or per row group when the spec
+ * has `groups` (one flight_key's rows each).
  *
  * Used for the flight tracks, where X is longitude rather than a category, so
  * both axes are numeric and the aspect has to be honest — a track stretched to
@@ -221,27 +234,63 @@ export function barPlot(spec: ChartSpec, rows: Cell[][], box: Box): BarPlot {
  */
 export function pathPlot(spec: ChartSpec, rows: Cell[][], box: Box): PathPlot {
   const head = rows[0] ?? [];
-  const body = rows.slice(1);
-  const pairs = spec.pairs ?? [];
   const plot = plotBox(box);
+  const hoverCols = spec.hoverCols ?? [];
+
+  // Either layout comes down to the same thing: per series, its points in
+  // drawing order, with null where the pen lifts.
+  type Pt = { x: number; y: number; row: Cell[] } | null;
+  const tracks: { name: string; pts: Pt[] }[] = [];
+  if (spec.groups) {
+    const xc = spec.xCol ?? 0;
+    const yc = spec.yCol ?? 1;
+    for (const g of spec.groups) {
+      const pts: Pt[] = [];
+      for (let r = g.r0; r <= g.r1 && r < rows.length; r++) {
+        const row = rows[r];
+        pts.push(
+          blank(row[xc]) || blank(row[yc]) ? null : { x: num(row[xc]), y: num(row[yc]), row },
+        );
+      }
+      tracks.push({ name: g.name, pts });
+    }
+  } else {
+    const body = rows.slice(1);
+    for (const p of spec.pairs ?? []) {
+      tracks.push({
+        name: text(head[p.xCol]).replace(/^lon_/, ""),
+        pts: body.map((row) =>
+          blank(row[p.xCol]) || blank(row[p.yCol])
+            ? null
+            : { x: num(row[p.xCol]), y: num(row[p.yCol]), row },
+        ),
+      });
+    }
+  }
 
   let xMin = Infinity;
   let xMax = -Infinity;
   let yMin = Infinity;
   let yMax = -Infinity;
-  for (const r of body) {
-    for (const p of pairs) {
-      if (blank(r[p.xCol]) || blank(r[p.yCol])) continue;
-      const x = num(r[p.xCol]);
-      const y = num(r[p.yCol]);
-      if (x < xMin) xMin = x;
-      if (x > xMax) xMax = x;
-      if (y < yMin) yMin = y;
-      if (y > yMax) yMax = y;
+  for (const t of tracks) {
+    for (const p of t.pts) {
+      if (!p) continue;
+      if (p.x < xMin) xMin = p.x;
+      if (p.x > xMax) xMax = p.x;
+      if (p.y < yMin) yMin = p.y;
+      if (p.y > yMax) yMax = p.y;
     }
   }
   if (!Number.isFinite(xMin)) {
-    return { kind: "path", paths: [], seriesNames: [], yTicks: [], xTicks: [], plot };
+    return {
+      kind: "path",
+      paths: [],
+      points: [],
+      seriesNames: [],
+      yTicks: [],
+      xTicks: [],
+      plot,
+    };
   }
 
   const spanX = xMax - xMin || 1;
@@ -252,20 +301,27 @@ export function pathPlot(spec: ChartSpec, rows: Cell[][], box: Box): PathPlot {
   const sx = (v: number) => offX + (v - xMin) * k;
   const sy = (v: number) => offY - (v - yMin) * k;
 
-  const paths = pairs.map((p, i) => {
+  const points: PathPoint[] = [];
+  const paths = tracks.map((t, i) => {
     let d = "";
     let pen = false;
-    for (const r of body) {
-      if (blank(r[p.xCol]) || blank(r[p.yCol])) {
+    for (const p of t.pts) {
+      if (!p) {
         pen = false;
         continue;
       }
-      d += `${pen ? "L" : "M"}${sx(num(r[p.xCol])).toFixed(1)} ${sy(
-        num(r[p.yCol]),
-      ).toFixed(1)}`;
+      const px = sx(p.x);
+      const py = sy(p.y);
+      d += `${pen ? "L" : "M"}${px.toFixed(1)} ${py.toFixed(1)}`;
       pen = true;
+      points.push({
+        x: px,
+        y: py,
+        series: i,
+        hover: hoverCols.map((c) => `${text(head[c])}: ${text(p.row[c])}`),
+      });
     }
-    return { d, series: i, name: text(head[p.xCol]).replace(/^lon_/, "") };
+    return { d, series: i, name: t.name };
   });
 
   const axis = (lo: number, hi: number, to: (v: number) => number): Tick[] => {
@@ -280,6 +336,7 @@ export function pathPlot(spec: ChartSpec, rows: Cell[][], box: Box): PathPlot {
   return {
     kind: "path",
     paths,
+    points,
     seriesNames: paths.map((p) => p.name),
     yTicks: axis(yMin, yMax, sy),
     xTicks: axis(xMin, xMax, sx),

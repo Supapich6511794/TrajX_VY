@@ -1,7 +1,8 @@
 """Tests for the synthetic runway-heuristic turns
-(:func:`expand_runway_departure_heuristic` / :func:`expand_runway_arrival_
-heuristic`) — the plausible departure/arrival ground track used when a
-runway is known but no coded SID/STAR/approach can be resolved.
+(:func:`expand_runway_departure_heuristic` / :func:`runway_arrival_pattern`)
+— the plausible departure/arrival ground track used when a runway is known
+but no coded SID/STAR/approach can be resolved — and the direction-based
+runway pick (:func:`pick_runway_for_track`).
 
 Modelled on VYNT RW16 / VYTL RW04 (ARINC runway table), the exact pair a
 straight "VYNT DCT VYTL" filing has no published procedure for.
@@ -15,9 +16,14 @@ from trajectory_sim.geodesy import compute_bearing, project_point
 from trajectory_sim.navdata import (
     RUNWAY_HEURISTIC_SOURCE,
     RunwayEnd,
-    expand_runway_arrival_heuristic,
+    _RUNWAY_ENDS,
     expand_runway_departure_heuristic,
+    pick_runway_for_track,
+    register_runways,
+    runway_arrival_pattern,
 )
+from trajectory_sim.navdata import RUNWAY_BASE_OFFSET_NM, RUNWAY_FINAL_NM
+from trajectory_sim.geodesy import haversine_distance
 
 # VYNT RW16, from the ARINC runway table (runway_vy.csv).
 _RW16 = RunwayEnd(
@@ -109,29 +115,83 @@ def test_departure_falls_back_to_none_for_degenerate_geometry():
     assert pts is None
 
 
-def test_arrival_turns_onto_the_extended_runway_centreline():
-    prev_fix = (19.75, 96.60)  # somewhere en route, west of VYTL
-    last_fix = (20.30, 99.40)  # the route's last filed fix, still off to one side
-    pts = expand_runway_arrival_heuristic(_RW04, prev_fix, last_fix, _TURN_SPEED_KT)
-    assert pts is not None and len(pts) > 0
-    # Rolling out, the track must point along the runway's own bearing (i.e.
-    # towards the threshold from the extended centreline), not at some other
-    # angle that would cross the numbers sideways.
-    rollout_track = compute_bearing(pts[-2][1], pts[-2][2], pts[-1][1], pts[-1][2])
-    diff = (rollout_track - _RW04.true_bearing + 180.0) % 360.0 - 180.0
-    assert abs(diff) < 10.0
+def _track(p, q):
+    return compute_bearing(p[1], p[2], q[1], q[2])
 
 
-def test_arrival_already_aligned_needs_no_turn():
-    """A last fix already on the extended centreline gets no synthetic arc —
-    the caller keeps its existing straight-in-to-threshold behaviour."""
+def _off_deg(a, b):
+    return abs((a - b + 180.0) % 360.0 - 180.0)
+
+
+def test_arrival_always_ends_on_final_into_the_threshold():
+    """Whatever side it comes from, the last leg is the final: from the join
+    point on the extended centreline, along the runway's own bearing, onto the
+    threshold — never across the runway or to the aerodrome point."""
+    for from_ll in [(19.75, 96.60), (21.5, 99.5), (20.9, 100.3), (19.9, 99.3)]:
+        pts = runway_arrival_pattern(_RW04, from_ll)
+        assert pts[-1][1:] == (_RW04.lat, _RW04.lon)
+        assert _off_deg(_track(pts[-2], pts[-1]), _RW04.true_bearing) < 1.0
+        join_nm = haversine_distance(pts[-2][1], pts[-2][2], _RW04.lat, _RW04.lon)
+        assert join_nm == pytest.approx(RUNWAY_FINAL_NM, abs=0.01)
+
+
+def test_arrival_from_the_approach_side_flies_straight_in():
     reciprocal = (_RW04.true_bearing + 180.0) % 360.0
-    on_centreline = project_point(_RW04.lat, _RW04.lon, reciprocal, 15.0)
-    farther_back = project_point(_RW04.lat, _RW04.lon, reciprocal, 25.0)
-    pts = expand_runway_arrival_heuristic(
-        _RW04, farther_back, on_centreline, _TURN_SPEED_KT
+    far_out = project_point(_RW04.lat, _RW04.lon, reciprocal + 20.0, 40.0)
+    pts = runway_arrival_pattern(_RW04, far_out)
+    assert len(pts) == 2  # join point, threshold
+
+
+def test_arrival_from_abeam_flies_a_base_on_its_own_side():
+    """From off to the side, a base leg perpendicular to final first, on the
+    side the aircraft is already on — it never crosses the final to get there."""
+    reciprocal = (_RW04.true_bearing + 180.0) % 360.0
+    # Off to the right, still on the approach side of the threshold (exactly
+    # abeam or beyond, it flies a downwind first — see the next test).
+    abeam_right = project_point(_RW04.lat, _RW04.lon, reciprocal + 80.0, 30.0)
+    pts = runway_arrival_pattern(_RW04, abeam_right)
+    assert len(pts) == 3  # base, join, threshold
+    base, join = pts[0], pts[1]
+    assert _off_deg(_track(base, join), reciprocal - 90.0) < 1.0
+    side = (compute_bearing(join[1], join[2], base[1], base[2]) - reciprocal) % 360.0
+    assert side == pytest.approx(90.0, abs=1.0)
+    assert haversine_distance(base[1], base[2], join[1], join[2]) == pytest.approx(
+        RUNWAY_BASE_OFFSET_NM, abs=0.01
     )
-    assert pts is None
+
+
+def test_arrival_from_beyond_the_runway_flies_a_downwind_first():
+    """From past the far end: downwind abeam the threshold, base, final — not
+    a cut straight across the runway."""
+    beyond = project_point(_RW04.lat, _RW04.lon, _RW04.true_bearing + 10.0, 30.0)
+    pts = runway_arrival_pattern(_RW04, beyond)
+    assert len(pts) == 4  # downwind, base, join, threshold
+    reciprocal = (_RW04.true_bearing + 180.0) % 360.0
+    assert _off_deg(_track(pts[0], pts[1]), reciprocal) < 1.0  # downwind leg
+
+
+@pytest.fixture
+def vymd_runways():
+    ends = [
+        RunwayEnd("VYMD", "RW17", 21.72005833, 95.97401111, 171, 171),
+        RunwayEnd("VYMD", "RW35", 21.68203333, 95.98074444, 351, 351),
+    ]
+    saved = dict(_RUNWAY_ENDS)
+    register_runways(ends)
+    yield
+    _RUNWAY_ENDS.clear()
+    _RUNWAY_ENDS.update(saved)
+
+
+def test_pick_runway_takes_the_end_pointing_the_way_the_flight_goes(vymd_runways):
+    assert pick_runway_for_track("VYMD", 340.0).ident == "RW35"  # northbound
+    assert pick_runway_for_track("VYMD", 190.0).ident == "RW17"  # southbound
+    # VYMD -> VYTL is ~107 deg (ESE): RW17 (171) is 64 deg off, RW35 (351) 116.
+    assert pick_runway_for_track("VYMD", 107.0).ident == "RW17"
+
+
+def test_pick_runway_without_runways_on_record_is_none():
+    assert pick_runway_for_track("ZZZZ", 90.0) is None
 
 
 def test_trajectory_source_label_is_distinct_from_published_procedures():
