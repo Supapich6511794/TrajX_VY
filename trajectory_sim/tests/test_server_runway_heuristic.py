@@ -1,7 +1,8 @@
 """End-to-end: the runway-heuristic priority the trajectory builder must
 respect (see ``_finish`` in ``api/server.py``):
 
-    1. Published SID / STAR / Approach
+    1. Published SID / STAR / Approach — an arrival with no STAR filed still
+       flies the aerodrome's published approach (ILS > RNP > VOR) from AIXM
     2. RUNWAY_HEURISTIC (a known runway, nothing published to fly off/onto it)
     3. DCT (nothing at all — no runway either)
 
@@ -78,29 +79,48 @@ def test_case3_published_star_and_approach_are_not_overridden():
     assert d["meta"]["approach"] == "R03"
 
 
-def test_case4_no_star_or_approach_but_known_runway_uses_the_heuristic():
-    """A known arrival runway with nothing published to fly onto it, and a
-    last fix far enough from the field for a final turn to make sense."""
+def test_case4_requested_runway_without_an_approach_uses_the_heuristic():
+    """VYTL publishes an approach only to RW22 (D22). A flight asked onto
+    RW04 has nothing published to fly onto it: synthetic final, never a
+    procedure claimed for a runway it doesn't serve."""
     d = _fly(
-        adep="VYYY", ades="VYNT", route="PALPO DCT VYNT",
-        star_runway="RW34",
+        adep="VYMD", ades="VYTL", route="VYMD DCT VYTL",
+        star_runway="RW04",
     )
     assert d["meta"]["arr_trajectory_source"] == "RUNWAY_HEURISTIC"
+    assert d["meta"]["arr_rwy"] == "RW04"
     assert d["meta"]["star"] is None
     assert d["meta"]["approach"] is None
 
 
-def test_case5_no_runway_picked_auto_selects_by_direction():
-    """No runway asked for at either end: each is picked from the direction
-    of flight, and reported back so the client knows which was flown."""
+def test_case5_no_star_flies_the_published_approach():
+    """No STAR and no runway asked for: the departure runway is picked from
+    the direction of flight, and the arrival flies VYTL's only published
+    approach (VOR/DME D22 → RW22) rather than an invented final."""
     d = _fly(adep="VYMD", ades="VYTL", route="VYMD DCT VYTL")
     # VYTL is ESE of VYMD (~107 deg): RW17 (171) points that way, RW35 (351)
     # would take off away from it.
     assert d["meta"]["dep_rwy"] == "RW17"
-    # Arriving from the WNW, RW04 (37) is the end it can land straight on.
-    assert d["meta"]["arr_rwy"] == "RW04"
     assert d["meta"]["dep_trajectory_source"] == "RUNWAY_HEURISTIC"
-    assert d["meta"]["arr_trajectory_source"] == "RUNWAY_HEURISTIC"
+    assert d["meta"]["approach"] == "D22"
+    assert d["meta"]["arr_rwy"] == "RW22"
+    assert d["meta"]["arr_trajectory_source"] == "PUBLISHED_APPROACH"
+
+
+def test_approach_is_not_preceded_by_the_aerodrome_reference_point():
+    """A route filed "… VYTL" into an approach must go from its last en-route
+    point to the IAF — not to the VYTL reference point (mid-runway) first and
+    then back out to the IAF."""
+    from trajectory_sim.geodesy import haversine_distance
+
+    d = _fly(adep="VYMD", ades="VYTL", route="VYMD DCT VYTL", approach="D22")
+    idents = [w["ident"] for w in d["route"]]
+    assert "VYTL" not in idents
+    # Arriving from the west, the D274M IAF (13 DME on the 274 radial) leads in.
+    assert idents[1] == "D274M"
+    assert idents[-1] == "RW22"
+    last = (d["points"][-1]["lat"], d["points"][-1]["lon"])
+    assert haversine_distance(*last, 20.49244722, 99.94104444) < 0.1
 
 
 def test_case6_airport_to_airport_route_still_lands_on_final():

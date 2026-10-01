@@ -1510,6 +1510,79 @@ def _approach_runway(name: str | None) -> str | None:
     return f"RW{m.group(1)}" if m else None
 
 
+#: Preference among several published approaches to one runway, by the ARINC
+#: approach-type prefix: ILS, then RNP/RNAV, then VOR(/DME), then the rest.
+_APPROACH_PREFERENCE = {"I": 0, "R": 1, "H": 1, "D": 2, "V": 2, "S": 2, "L": 3}
+
+
+def _drop_trailing_aerodrome(
+    route_pts: "list[tuple[str, float, float]]", ades: str
+) -> "list[tuple[str, float, float]]":
+    """Drop the destination aerodrome from the END of a route that flies a
+    STAR/approach. The procedure is what takes the aircraft to the runway; an
+    Item-15 "… VYTL" left in front of it sends the aircraft to the aerodrome
+    reference point first, then back out to the IAF."""
+    out = list(route_pts)
+    while len(out) > 1 and out[-1][0].strip().upper() == ades.upper():
+        out.pop()
+    return out
+
+
+def _auto_approach(
+    nav: NavData,
+    ades: str,
+    runway: str | None,
+    route_pts: "list[tuple[str, float, float]]",
+) -> "tuple[str, str] | None":
+    """The published approach to fly when the flight files no STAR and no
+    approach: ``(approach_name, runway)``, or ``None`` to fall back to the
+    synthetic runway arrival.
+
+    Arrival procedure priority: STAR (+approach) → published approach alone →
+    synthetic arrival. An approach (ILS, RNP, VOR/DME…) is published geometry
+    from AIXM, so it beats an invented final whenever the aerodrome has one.
+
+    * A requested runway with no published approach keeps the synthetic
+      arrival — the runway choice wins over the procedure.
+    * Otherwise, among runways that have an approach, the one pointing the way
+      the aircraft arrives (from the route's last point off the field).
+    """
+    by_rwy: dict[str, list[str]] = {}
+    for name in nav.list_procedures(ades, ProcedureType.APPROACH):
+        rwy = _approach_runway(name)
+        if rwy and runway_end(ades, rwy) is not None:
+            by_rwy.setdefault(rwy, []).append(name)
+    if not by_rwy:
+        return None
+    want = (runway or "").strip().upper()
+    if want:
+        want = want if want.startswith("RW") else f"RW{want}"
+        if want not in by_rwy:
+            return None
+        rwy = want
+    else:
+        ades_ll = _airport_ll(ades)
+        src = next(
+            (
+                p[1:] for p in reversed(route_pts)
+                if ades_ll is None or _sq_dist(p[1:], ades_ll) > _COINCIDENT_SQ
+            ),
+            None,
+        )
+        if src is None or ades_ll is None:
+            rwy = sorted(by_rwy)[0]
+        else:
+            track = compute_bearing(*src, *ades_ll)
+            rwy = min(
+                sorted(by_rwy),
+                key=lambda r: abs(
+                    signed_turn_deg(runway_end(ades, r).true_bearing, track)  # type: ignore[union-attr]
+                ),
+            )
+    name = min(by_rwy[rwy], key=lambda n: (_APPROACH_PREFERENCE.get(n[0], 9), n))
+    return name, rwy
+
+
 def _aerodrome_anchors(
     adep: str,
     ades: str,
@@ -1996,11 +2069,22 @@ def _splice_terminal_procedures(
     sid_name = (req.sid or "").strip()
     star_name = (req.star or "").strip()
     approach_name = (req.approach or "").strip()
+    approach_runway = req.star_runway
+    nav = _navdata()
+    if not star_name and not approach_name:
+        auto = _auto_approach(nav, ades, req.star_runway, route_pts)
+        if auto is not None:
+            approach_name, approach_runway = auto
+            warnings.append(
+                f"No STAR filed into {ades}: flying its published approach "
+                f"{approach_name} ({approach_runway}) from AIXM."
+            )
     if not sid_name and not star_name and not approach_name:
         return _finish(req, adep, ades, route_pts, _terminal_runways_only(req),
                        None, None, None, warnings)
+    if star_name or approach_name:
+        route_pts = _drop_trailing_aerodrome(route_pts, ades)
 
-    nav = _navdata()
     # The route's own fixes pick the right terminal-procedure transition when
     # several exist (a SID leaves on the route's first fix, a STAR is entered
     # on its last) — so OROM1A on "… W13 NPT DCT OROMO" uses the NPT transition
@@ -2035,7 +2119,7 @@ def _splice_terminal_procedures(
         ):
             route_pts, forced_appr_trans = _connect_route_to_terminal(
                 nav, ades, approach_name, ProcedureType.APPROACH,
-                req.star_runway, route_pts, warnings,
+                approach_runway, route_pts, warnings,
             )
     star_proc = (
         _resolve_proc_for_splice(
@@ -2057,7 +2141,7 @@ def _splice_terminal_procedures(
     approach_proc = (
         _resolve_proc_for_splice(
             nav, ades, approach_name, ProcedureType.APPROACH,
-            req.star_runway, forced_appr_trans, warnings,
+            approach_runway, forced_appr_trans, warnings,
             route_ctx=_route_ctx(approach_ctx_pts, ProcedureType.APPROACH),
         )
         if approach_name

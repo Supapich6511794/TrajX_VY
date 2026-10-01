@@ -35,7 +35,9 @@ def _fly(**kw):
 
 def test_route_between_two_myanmar_aerodromes_flies_ground_to_ground():
     d, alts = _fly(adep="VYMD", ades="VYTL", route="DCT VYMD DCT VYTL DCT", rfl=190)
-    assert [w["ident"] for w in d["route"]] == ["VYMD", "VYTL"]
+    idents = [w["ident"] for w in d["route"]]
+    # From VYMD, into VYTL on its published approach to the RW22 threshold.
+    assert idents[0] == "VYMD" and idents[-1] == "RW22"
     assert alts[0] < 2000 and alts[-1] < 2000  # aerodrome elevations, not FL
     assert max(alts) == pytest.approx(19000, abs=100)
 
