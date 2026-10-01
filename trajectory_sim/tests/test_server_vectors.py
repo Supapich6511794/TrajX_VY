@@ -559,7 +559,10 @@ class TestTheResponseSaysWhichSidWasFlown:
     ) -> None:
         meta = _generate(client)["meta"]
         assert meta["sid"] is None
-        assert meta["dep_rwy"] is None
+        # A runway is still flown — picked by direction (DOGIP lies south of
+        # VYMD, so RW17) — but it is a runway, not a SID.
+        assert meta["dep_rwy"] == "RW17"
+        assert meta["dep_trajectory_source"] == "RUNWAY_HEURISTIC"
 
 
 def _alt_at(payload: dict, ident: str) -> float:

@@ -11,7 +11,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   conflictBySectorCsv,
+  flightTrajectoryChart,
   flightTrajectoryCsv,
+  flightTrajectoryRows,
   standardVsMergedCsv,
   trafficBySectorCsv,
   trafficBySectorXlsx,
@@ -212,37 +214,61 @@ describe("flight trajectory", () => {
   ];
   const out = cells(flightTrajectoryCsv(events));
 
-  it("gives each flight its own X/Y pair of columns", () => {
-    expect(out[0]).toEqual(["lon_KBZ102", "lat_KBZ102", "lon_UBA100", "lat_UBA100"]);
+  it("lays the series out long: one row per event, X = lon, Y = lat", () => {
+    expect(out[0]).toEqual([
+      "flight_key",
+      "callsign",
+      "elapsed_s",
+      "lon",
+      "lat",
+      "altitude_ft",
+      "event",
+      "ident",
+    ]);
+    expect(out).toHaveLength(1 + 5);
+    expect(out[1]).toEqual(["KBZ102", "KBZ102", "0", "99", "12", "33000", "WAYPOINT", "P0"]);
   });
 
-  it("puts longitude before latitude, so X is X", () => {
-    expect(out[1].slice(2)).toEqual(["100", "13"]);
+  it("groups by flight_key and orders each group by elapsed_s", () => {
+    const shuffled = [...events].reverse();
+    const rows = cells(flightTrajectoryCsv(shuffled)).slice(1);
+    expect(rows.map((r) => r[0])).toEqual(["KBZ102", "KBZ102", "UBA100", "UBA100", "UBA100"]);
+    expect(rows.slice(2).map((r) => r[2])).toEqual(["0", "60", "120"]);
   });
 
-  it("follows the flight in time order", () => {
-    expect(out.slice(1).map((r) => r[2])).toEqual(["100", "101", "102"]);
+  it("keeps two routes of one callsign as two flights", () => {
+    const twoRoutes = [
+      ...ev("AAA1", [[100, 13]]),
+      ...ev("AAA1", [[101, 14]]).map((e) => ({ ...e, flightKey: "AAA1_R2" })),
+    ];
+    const series = flightTrajectoryRows(twoRoutes);
+    const spec = flightTrajectoryChart(series);
+    // Same callsign twice, so the legend names them by flight_key.
+    expect(spec.groups?.map((g) => g.name)).toEqual(["AAA1", "AAA1_R2"]);
   });
 
-  it("leaves a short flight's remaining rows EMPTY rather than zero", () => {
-    // A zero would draw the track back to (0,0) — the Gulf of Guinea.
-    expect(out[3][0]).toBe("");
-    expect(out[3][1]).toBe("");
+  it("gives the chart one series per flight, over that flight's rows", () => {
+    const spec = flightTrajectoryChart(flightTrajectoryRows(events));
+    expect(spec.groups).toEqual([
+      { name: "KBZ102", r0: 1, r1: 2 },
+      { name: "UBA100", r0: 3, r1: 5 },
+    ]);
+    expect(spec.xCol).toBe(3);
+    expect(spec.yCol).toBe(4);
+    // Hover: callsign, altitude_ft, event, ident.
+    expect(spec.hoverCols).toEqual([1, 5, 6, 7]);
   });
 
   it("caps how many flights go on one chart", () => {
     const many = Array.from({ length: 40 }, (_, i) =>
       ev("F" + String(i).padStart(3, "0"), [[100 + i * 0.01, 13]]),
     ).flat();
-    expect(cells(flightTrajectoryCsv(many))[0]).toHaveLength(25 * 2);
-    expect(cells(flightTrajectoryCsv(many, 3))[0]).toEqual([
-      "lon_F000",
-      "lat_F000",
-      "lon_F001",
-      "lat_F001",
-      "lon_F002",
-      "lat_F002",
-    ]);
+    expect(cells(flightTrajectoryCsv(many))).toHaveLength(1 + 25);
+    expect(
+      cells(flightTrajectoryCsv(many, 3))
+        .slice(1)
+        .map((r) => r[0]),
+    ).toEqual(["F000", "F001", "F002"]);
   });
 
   it("survives having no events at all", () => {
@@ -278,8 +304,8 @@ describe("flight trajectory", () => {
   });
 
   it("keeps every route of a callsign that flies more than one", () => {
-    // Two routes under one callsign are ONE series on the chart, so dropping
-    // either from the subset would change the line drawn.
+    // Two routes under one callsign are two series on the chart (grouped by
+    // flight_key), so dropping either from the subset would lose a line.
     const twoRoutes = [
       ...ev("AAA1", [[100, 13]]),
       ...ev("AAA1", [[101, 14]]).map((e) => ({ ...e, flightKey: "AAA1_R2" })),

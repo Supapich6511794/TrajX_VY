@@ -27,8 +27,9 @@
  * Three of the four are BAR charts: their X axis is a set of buckets — sectors,
  * or hours that were counted — and a line drawn between two buckets asserts a
  * path between them that nothing travelled. The trajectory chart is the
- * exception and stays a scatter, because there the X axis really is a number:
- * longitude. A bar chart of latitude against longitude is not a map.
+ * exception: a line per flight on two value axes, because there the X axis
+ * really is a number: longitude. A bar chart of latitude against longitude is
+ * not a map.
  */
 
 import {
@@ -309,8 +310,8 @@ export function trafficBySectorXlsx(
 
 // --- 4. Flight trajectory ---------------------------------------------------
 
-/** Most flights to put in one trajectory chart. Excel draws a scatter series
- *  per flight and the legend, not the maths, is what gives out first. */
+/** Most flights (flight_keys) to put in one trajectory chart. Excel draws a
+ *  series per flight and the legend, not the maths, is what gives out first. */
 export const TRAJECTORY_MAX_FLIGHTS = 25;
 
 /**
@@ -329,13 +330,38 @@ export function trajectoryChartCallsigns(
   );
 }
 
+/** Columns of the trajectory series, in order. X/Y first after the keys so
+ *  the block reads like the chart: one row per event, grouped by flight. */
+export const TRAJECTORY_COLUMNS = [
+  "flight_key",
+  "callsign",
+  "elapsed_s",
+  "lon",
+  "lat",
+  "altitude_ft",
+  "event",
+  "ident",
+] as const;
+
+const COL = {
+  flightKey: 0,
+  callsign: 1,
+  lon: 3,
+  lat: 4,
+  altitude: 5,
+  event: 6,
+  ident: 7,
+};
+
 /**
- * Flight tracks as X/Y pairs, one pair of columns per flight.
+ * Flight tracks as one row per event: X = lon, Y = lat, grouped by
+ * `flight_key` and ordered by `elapsed_s` inside each group.
  *
- * The layout Excel wants for a scatter chart with several series: each flight
- * gets `lon_<callsign>` and `lat_<callsign>` side by side, and shorter flights
- * simply run out of rows rather than being padded — a padded cell would draw a
- * line back to (0,0), i.e. to the Gulf of Guinea.
+ * Long rather than wide, so each point keeps its own callsign, level, event
+ * and fix — the hover reads them straight off the row — and a flight is a
+ * contiguous block of rows, which is all a chart series needs to point at.
+ * Flights are ordered by callsign then key; only the first `maxFlights` keys
+ * are kept.
  *
  * Points come from the event rows, so the track is the flight's own milestones
  * — takeoff, each filed fix, TOC/TOD, every sector boundary, landing — not a
@@ -348,50 +374,68 @@ export function flightTrajectoryRows(
 ): Cell[][] {
   const byFlight = new Map<string, FlightEventRow[]>();
   for (const e of events) {
-    const list = byFlight.get(e.callsign);
+    const list = byFlight.get(e.flightKey);
     if (list) list.push(e);
-    else byFlight.set(e.callsign, [e]);
+    else byFlight.set(e.flightKey, [e]);
   }
-  const keep = trajectoryChartCallsigns(byFlight.keys(), maxFlights);
-  const flights = [...byFlight.entries()]
-    .filter(([callsign]) => keep.has(callsign))
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(
-      ([callsign, rows]) =>
-        [
-          callsign,
-          [...rows].sort((a, b) => Date.parse(a.timeUtc) - Date.parse(b.timeUtc)),
-        ] as const,
-    );
+  const flights = [...byFlight.values()]
+    .sort(
+      (a, b) =>
+        a[0].callsign.localeCompare(b[0].callsign) ||
+        a[0].flightKey.localeCompare(b[0].flightKey),
+    )
+    .slice(0, maxFlights);
 
-  const header: string[] = [];
-  for (const [callsign] of flights) header.push("lon_" + callsign, "lat_" + callsign);
-
-  const depth = flights.reduce((m, [, rows]) => Math.max(m, rows.length), 0);
-  const out: Cell[][] = [header];
-  for (let i = 0; i < depth; i++) {
-    const line: Cell[] = [];
-    for (const [, rows] of flights) {
-      const p = rows[i];
-      line.push(p ? p.lonDeg : "", p ? p.latDeg : "");
+  const out: Cell[][] = [[...TRAJECTORY_COLUMNS]];
+  for (const rows of flights) {
+    for (const e of [...rows].sort((a, b) => a.elapsedSec - b.elapsedSec)) {
+      out.push([
+        e.flightKey,
+        e.callsign,
+        e.elapsedSec,
+        e.lonDeg,
+        e.latDeg,
+        e.altFt,
+        e.event,
+        e.ident,
+      ]);
     }
-    out.push(line);
   }
   return out;
 }
 
-/** A trajectory is X/Y geography: a line chart would space the longitudes
- *  evenly and draw a different map. Scatter, joined, is the only honest one. */
-export function flightTrajectoryChart(pairCount: number): ChartSpec {
+/**
+ * The chart for `flightTrajectoryRows`: one line per flight_key, joined in
+ * elapsed order. Longitude is a number, so the lines are drawn on two value
+ * axes (an Excel "scatter with straight lines") — a category-axis line chart
+ * would space the longitudes evenly and draw a different map.
+ *
+ * A series is named by its callsign, or by its flight_key when two of the
+ * flights drawn share a callsign and the legend could not tell them apart.
+ */
+export function flightTrajectoryChart(series: Cell[][]): ChartSpec {
+  const groups: { key: string; callsign: string; r0: number; r1: number }[] = [];
+  for (let r = 1; r < series.length; r++) {
+    const key = String(series[r][COL.flightKey] ?? "");
+    const last = groups[groups.length - 1];
+    if (last && last.key === key) last.r1 = r;
+    else groups.push({ key, callsign: String(series[r][COL.callsign] ?? ""), r0: r, r1: r });
+  }
+  const perCallsign = new Map<string, number>();
+  for (const g of groups) perCallsign.set(g.callsign, (perCallsign.get(g.callsign) ?? 0) + 1);
   return {
     kind: "scatter",
     title: "Flight trajectories",
     xTitle: "Longitude (deg E)",
     yTitle: "Latitude (deg N)",
-    pairs: Array.from({ length: pairCount }, (_, i) => ({
-      xCol: i * 2,
-      yCol: i * 2 + 1,
+    xCol: COL.lon,
+    yCol: COL.lat,
+    groups: groups.map((g) => ({
+      name: g.callsign && perCallsign.get(g.callsign) === 1 ? g.callsign : g.key,
+      r0: g.r0,
+      r1: g.r1,
     })),
+    hoverCols: [COL.callsign, COL.altitude, COL.event, COL.ident],
   };
 }
 
@@ -411,6 +455,6 @@ export function flightTrajectoryXlsx(
     "Flight events",
     flightEventsTable(events),
     series,
-    flightTrajectoryChart(Math.floor(series[0].length / 2)),
+    flightTrajectoryChart(series),
   );
 }

@@ -33,12 +33,16 @@ Matching, per row:
   * **STAR** (only when ``dest`` is procedure-published): the STAR whose
     EN_ROUTE transition (route_type 4) ENTERS at the flight's LAST crossing
     fix. Same COMMON-leg runway read.
-  * **Runway with no matching procedure**: falls back to the aerodrome's
-    first published runway (``runway_vy.csv`` — covers all 48 VY
-    aerodromes, procedures or not), so a domestic hop with no SID/STAR still
-    gets a runway Arrival Sequencing can use. A foreign ADEP/ADES (not in
-    the VY runway table at all) is left blank, same as an unfiled runway
-    today.
+  * **Runway with no matching procedure**: the runway end that points the
+    way the flight goes (``runway_vy.csv`` true bearings — covers all 48 VY
+    aerodromes, procedures or not), the same rule the generator's "Auto"
+    uses: a departure takes the end closest to the track from the aerodrome
+    to its first crossing fix (or to ``dest`` when the only "fixes" are the
+    two aerodromes), an arrival the end closest to the track from its last
+    crossing fix (or from ``dep``) into the aerodrome. So a domestic hop with
+    no SID/STAR still gets a runway Arrival Sequencing can use, and never one
+    that takes off away from its route. A foreign ADEP/ADES (not in the VY
+    runway table at all) is left blank, same as an unfiled runway today.
   * **Approach**: whichever resolved arrival runway (from a STAR match or
     the fallback above) has a published PBN approach at ``dest`` — the AIXM
     procedure identifier is just "R" + the runway number (``pbn_waypoint.
@@ -62,6 +66,8 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
+import struct
 from collections import defaultdict
 from pathlib import Path
 
@@ -71,6 +77,7 @@ _SID = _ROOT / "web" / "public" / "data" / "aixm_vy" / "sid_waypoint.geojson"
 _STAR = _ROOT / "web" / "public" / "data" / "aixm_vy" / "star_waypoint.geojson"
 _APPROACH = _ROOT / "web" / "public" / "data" / "aixm_vy" / "pbn_waypoint.geojson"
 _RUNWAYS = _ROOT / "web" / "public" / "data" / "airports" / "runway_vy.csv"
+_AIP = _ROOT / "web" / "public" / "data" / "aip_VY.json"
 _OUT = _ROOT / "vy_2025_07_01_to_07_dummy.csv"
 
 # DFD route_type per procedure kind (scripts/ingest_aixm_procedures.py):
@@ -128,16 +135,55 @@ def _procedures(
     return out
 
 
-def _runway_fallback(path: Path) -> dict[str, str]:
-    """airport -> its first published runway (ARINC form, e.g. "RW21L")."""
-    out: dict[str, str] = {}
+def _runway_ends(path: Path) -> dict[str, list[tuple[str, float]]]:
+    """airport -> [(runway ARINC ident e.g. "RW21L", true bearing deg), ...]."""
+    out: dict[str, list[tuple[str, float]]] = defaultdict(list)
     with path.open(newline="", encoding="utf-8-sig") as f:
         for row in csv.DictReader(f):
             ap = row["airport_identifier"].strip().upper()
             rwy = row["runway_identifier"].strip().upper()
-            if ap and rwy and ap not in out:
-                out[ap] = rwy
+            brg = (row.get("runway_true_bearing") or "").strip()
+            if ap and rwy and brg:
+                out[ap].append((rwy, float(brg)))
     return out
+
+
+def _airports(path: Path) -> dict[str, tuple[float, float]]:
+    """ICAO -> (lat, lon), from the AIP extract the generator also reads."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return {k: (v["lat"], v["lon"]) for k, v in data["airports"].items()}
+
+
+def _wkb_point(hexstr: str) -> tuple[float, float] | None:
+    """(lat, lon) of a hex (E)WKB POINT, as the ``wpN_geom`` columns hold."""
+    try:
+        raw = bytes.fromhex((hexstr or "").strip())
+    except ValueError:
+        return None
+    if len(raw) < 21:
+        return None
+    order = "<" if raw[0] == 1 else ">"
+    (geom_type,) = struct.unpack(order + "I", raw[1:5])
+    off = 9 if geom_type & 0x20000000 else 5  # EWKB carries a 4-byte SRID
+    if len(raw) < off + 16:
+        return None
+    lon, lat = struct.unpack(order + "dd", raw[off:off + 16])
+    return lat, lon
+
+
+def _bearing(a: tuple[float, float], b: tuple[float, float]) -> float:
+    """Initial great-circle bearing a -> b, degrees true."""
+    la1, la2 = math.radians(a[0]), math.radians(b[0])
+    dlon = math.radians(b[1] - a[1])
+    y = math.sin(dlon) * math.cos(la2)
+    x = math.cos(la1) * math.sin(la2) - math.sin(la1) * math.cos(la2) * math.cos(dlon)
+    return math.degrees(math.atan2(y, x)) % 360.0
+
+
+def _runway_for_track(ends: list[tuple[str, float]], track: float) -> str:
+    """The end whose true bearing is closest to ``track`` — the one that
+    points the way the flight goes."""
+    return min(ends, key=lambda e: abs((e[1] - track + 180.0) % 360.0 - 180.0))[0]
 
 
 def _approaches_by_airport(features: list[dict]) -> dict[str, set[str]]:
@@ -162,7 +208,8 @@ def enrich(rows: list[dict]) -> tuple[list[dict], dict[str, int]]:
     sid_by_airport = _procedures(_load_features(_SID), _SID_ENROUTE, _SID_COMMON)
     star_by_airport = _procedures(_load_features(_STAR), _STAR_ENROUTE, _STAR_COMMON)
     approaches_by_airport = _approaches_by_airport(_load_features(_APPROACH))
-    runway_fallback = _runway_fallback(_RUNWAYS)
+    runway_ends = _runway_ends(_RUNWAYS)
+    airports = _airports(_AIP)
 
     stats = {
         "sid_matched": 0,
@@ -180,6 +227,14 @@ def enrich(rows: list[dict]) -> tuple[list[dict], dict[str, int]]:
         dest = row["dest"].strip().upper()
         chain = [row.get(f"wp{i}", "").strip().upper() for i in (1, 2, 3)]
         chain = [w for w in chain if w]
+        # Each crossing fix with its position; an aerodrome resolves to the
+        # aerodrome itself.
+        points: list[tuple[str, tuple[float, float] | None]] = []
+        for i in (1, 2, 3):
+            ident = row.get(f"wp{i}", "").strip().upper()
+            if ident:
+                pos = airports.get(ident) or _wkb_point(row.get(f"wp{i}_geom", ""))
+                points.append((ident, pos))
 
         sid = star = dep_rwy = arr_rwy = ""
 
@@ -202,16 +257,36 @@ def enrich(rows: list[dict]) -> tuple[list[dict], dict[str, int]]:
                     stats["arr_rwy_from_star"] += 1
                     break
 
-        if not dep_rwy and dep in runway_fallback:
-            dep_rwy = runway_fallback[dep]
+        dep_ll, dest_ll = airports.get(dep), airports.get(dest)
+        if not dep_rwy and runway_ends.get(dep) and dep_ll:
+            # Towards the first crossing fix that is not the field itself.
+            toward = next(
+                (pos for ident, pos in points if ident != dep and pos), dest_ll
+            )
+            # Nothing to say which way it goes (a track whose only fixes are
+            # the field, to a destination outside the AIP): the first runway.
+            dep_rwy = (
+                _runway_for_track(runway_ends[dep], _bearing(dep_ll, toward))
+                if toward
+                else runway_ends[dep][0][0]
+            )
             stats["dep_rwy_fallback"] += 1
-        if not arr_rwy and dest in runway_fallback:
-            arr_rwy = runway_fallback[dest]
+        if not arr_rwy and runway_ends.get(dest) and dest_ll:
+            # From the last crossing fix that is not the field itself.
+            source = next(
+                (pos for ident, pos in reversed(points) if ident != dest and pos),
+                dep_ll,
+            )
+            arr_rwy = (
+                _runway_for_track(runway_ends[dest], _bearing(source, dest_ll))
+                if source
+                else runway_ends[dest][0][0]
+            )
             stats["arr_rwy_fallback"] += 1
 
         # Approach: STAR fixes -> IAF -> IF -> FAF -> MAPt -> runway. Only
         # meaningful once a runway is resolved at all, whichever way it got
-        # there (a real STAR match or the fallback above).
+        # there (a real STAR match or the direction pick above).
         approach = ""
         if arr_rwy:
             approach = _approach_for_runway(arr_rwy, approaches_by_airport.get(dest, set()))
@@ -258,8 +333,8 @@ def main() -> None:
     print(f"{n} rows -> {args.output}")
     print(f"  SID matched:  {stats['sid_matched']:4d}  (dep_rwy from SID: {stats['dep_rwy_from_sid']})")
     print(f"  STAR matched: {stats['star_matched']:4d}  (arr_rwy from STAR: {stats['arr_rwy_from_star']})")
-    print(f"  dep_rwy from fallback (no SID match, aerodrome known): {stats['dep_rwy_fallback']}")
-    print(f"  arr_rwy from fallback (no STAR match, aerodrome known): {stats['arr_rwy_fallback']}")
+    print(f"  dep_rwy by direction (no SID match, aerodrome known): {stats['dep_rwy_fallback']}")
+    print(f"  arr_rwy by direction (no STAR match, aerodrome known): {stats['arr_rwy_fallback']}")
     total_dep_rwy = stats["dep_rwy_from_sid"] + stats["dep_rwy_fallback"]
     total_arr_rwy = stats["arr_rwy_from_star"] + stats["arr_rwy_fallback"]
     print(f"  rows with a dep_rwy at all: {total_dep_rwy}/{n}   arr_rwy: {total_arr_rwy}/{n}")

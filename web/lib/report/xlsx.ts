@@ -225,6 +225,14 @@ export interface ChartSpec {
   valCols?: number[];
   /** scatter: explicit X/Y column pairs, one per series. */
   pairs?: { xCol: number; yCol: number }[];
+  /** scatter, long layout: one series per contiguous block of rows, all
+   *  reading X from `xCol` and Y from `yCol`. `r0`/`r1` are inclusive indexes
+   *  into the rows (the header is row 0). Used instead of `pairs`. */
+  groups?: { name: string; r0: number; r1: number }[];
+  xCol?: number;
+  yCol?: number;
+  /** Columns whose header and value the on-screen hover shows for a point. */
+  hoverCols?: number[];
 }
 
 const AX_CAT = 111111111;
@@ -242,6 +250,25 @@ function titleXml(text: string): string {
 
 function seriesXml(spec: ChartSpec, lastRow: number, sheet: string): string {
   const out: string[] = [];
+  if (spec.kind === "scatter" && spec.groups) {
+    // Row index i in the table is sheet row i + 1. A marker on each point, so
+    // the events the line joins stay visible.
+    const x = spec.xCol ?? 0;
+    const y = spec.yCol ?? 1;
+    spec.groups.forEach((g, i) => {
+      out.push(
+        "<c:ser>" +
+          '<c:idx val="' + i + '"/><c:order val="' + i + '"/>' +
+          "<c:tx><c:v>" + esc(g.name) + "</c:v></c:tx>" +
+          '<c:marker><c:symbol val="circle"/><c:size val="4"/></c:marker>' +
+          "<c:xVal><c:numRef><c:f>" + ref(sheet, x, g.r0 + 1, g.r1 + 1) + "</c:f></c:numRef></c:xVal>" +
+          "<c:yVal><c:numRef><c:f>" + ref(sheet, y, g.r0 + 1, g.r1 + 1) + "</c:f></c:numRef></c:yVal>" +
+          '<c:smooth val="0"/>' +
+          "</c:ser>",
+      );
+    });
+    return out.join("");
+  }
   if (spec.kind === "scatter") {
     (spec.pairs ?? []).forEach((p, i) => {
       out.push(

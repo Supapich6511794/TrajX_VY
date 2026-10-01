@@ -90,28 +90,42 @@ def test_case4_no_star_or_approach_but_known_runway_uses_the_heuristic():
     assert d["meta"]["approach"] is None
 
 
-def test_case5_no_runway_at_all_preserves_dct():
-    """Neither end has a runway to anchor to — the original straight-line
-    behaviour, unchanged."""
-    d = _fly(adep="VYNT", ades="VYTL", route="VYNT DCT VYTL")
-    assert d["meta"]["dep_trajectory_source"] == "DCT"
-    assert d["meta"]["arr_trajectory_source"] == "DCT"
+def test_case5_no_runway_picked_auto_selects_by_direction():
+    """No runway asked for at either end: each is picked from the direction
+    of flight, and reported back so the client knows which was flown."""
+    d = _fly(adep="VYMD", ades="VYTL", route="VYMD DCT VYTL")
+    # VYTL is ESE of VYMD (~107 deg): RW17 (171) points that way, RW35 (351)
+    # would take off away from it.
+    assert d["meta"]["dep_rwy"] == "RW17"
+    # Arriving from the WNW, RW04 (37) is the end it can land straight on.
+    assert d["meta"]["arr_rwy"] == "RW04"
+    assert d["meta"]["dep_trajectory_source"] == "RUNWAY_HEURISTIC"
+    assert d["meta"]["arr_trajectory_source"] == "RUNWAY_HEURISTIC"
 
 
-def test_case6_bad_geometry_falls_back_to_dct_instead_of_breaking():
-    """The route's own filed fixes are both bare airport codes (adjacent to
-    their own runways) — there is no meaningful arrival turn to synthesise
-    from a last fix that IS the destination, and the heuristic must decline
-    cleanly rather than emit broken geometry."""
+def test_case6_airport_to_airport_route_still_lands_on_final():
+    """A route filed ADEP DCT ADES has no fix to turn from — it must still
+    land along the runway onto the threshold, never fly to the aerodrome
+    reference point across the runway."""
+    from trajectory_sim.geodesy import compute_bearing, haversine_distance
+
     d = _fly(
         adep="VYNT", ades="VYTL", route="VYNT DCT VYTL",
         sid_runway="RW16", star_runway="RW04",
     )
-    # The departure DOES have a real target to turn towards (VYTL, the
-    # destination) and gets the heuristic; the arrival has no fix distinct
-    # from the destination itself to turn FROM, and must fall back.
     assert d["meta"]["dep_trajectory_source"] == "RUNWAY_HEURISTIC"
-    assert d["meta"]["arr_trajectory_source"] == "DCT"
+    assert d["meta"]["arr_trajectory_source"] == "RUNWAY_HEURISTIC"
+    pts = d["points"]
+    last = (pts[-1]["lat"], pts[-1]["lon"])
+    # Lands on RW04's threshold...
+    assert haversine_distance(*last, 20.477175, 99.92856667) < 0.1
+    # ...having flown the last few miles on the runway's own bearing (37).
+    back = next(
+        p for p in reversed(pts)
+        if haversine_distance(p["lat"], p["lon"], *last) > 3.0
+    )
+    track = compute_bearing(back["lat"], back["lon"], *last)
+    assert abs((track - 37.0 + 180.0) % 360.0 - 180.0) < 5.0
 
 
 def test_case7_expand_sid_departure_is_byte_for_byte_unmodified():
@@ -122,7 +136,7 @@ def test_case7_expand_sid_departure_is_byte_for_byte_unmodified():
     that :func:`expand_sid_departure` itself, the function that behaviour is
     built on, was not touched: only new, separate functions were added
     alongside it (`expand_runway_departure_heuristic` /
-    `expand_runway_arrival_heuristic`). Reruns the exact VTBD OLVU3C fixture
+    `runway_arrival_pattern`). Reruns the exact VTBD OLVU3C fixture
     `test_sid_departure.py` pins, unit-level, with no server/navdata-file
     dependency at all.
     """
