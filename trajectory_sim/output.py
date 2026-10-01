@@ -13,7 +13,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import geopandas as gpd
+import numpy as np
 import pandas as pd
+import shapely
 from shapely.geometry import Point
 
 from trajectory_sim.geodesy import compute_bearing, interpolate_great_circle
@@ -33,21 +35,16 @@ def assign_waypoint_column(
     n = len(gdf)
     col = [""] * n
     if fixes and n:
-        xs = [float(g.x) for g in gdf.geometry]
-        ys = [float(g.y) for g in gdf.geometry]
+        xs = gdf.geometry.x.to_numpy(dtype=float)
+        ys = gdf.geometry.y.to_numpy(dtype=float)
         for ident, flat, flon in fixes:
             if not ident:
                 continue
             cosl = math.cos(math.radians(flat))
-            best_i, best_d = -1, 1e30
-            for i in range(n):
-                dlat = ys[i] - flat
-                dlon = (xs[i] - flon) * cosl
-                d = dlat * dlat + dlon * dlon
-                if d < best_d:
-                    best_d, best_i = d, i
-            if best_i >= 0:
-                col[best_i] = str(ident)
+            dlat = ys - flat
+            dlon = (xs - flon) * cosl
+            # argmin returns the FIRST minimum, as the old strict-< scan did.
+            col[int(np.argmin(dlat * dlat + dlon * dlon))] = str(ident)
     gdf["waypoint"] = col
     return gdf
 
@@ -187,12 +184,18 @@ def build_trajectory_gdf(
                 "gs_kt": round(s.gs_kt, 1),
                 "track_deg": s.track_deg,
                 "phase": s.phase,
-                "geometry": Point(s.lon, s.lat, s.altitude_ft * 0.3048),
             }
             for s in timeline.samples
         ]
+        # One vectorised call instead of a shapely Point() per sample.
+        samples = timeline.samples
+        geometry = shapely.points(
+            [s.lon for s in samples],
+            [s.lat for s in samples],
+            [s.altitude_ft * 0.3048 for s in samples],
+        )
         return assign_waypoint_column(
-            gpd.GeoDataFrame(records, crs="EPSG:4326", geometry="geometry"), fixes
+            gpd.GeoDataFrame(records, crs="EPSG:4326", geometry=geometry), fixes
         )
 
     # Legacy constant-ground-speed path — kept for callers that opt out
