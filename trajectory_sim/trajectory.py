@@ -554,10 +554,17 @@ def build_flight_timeline(
         (climb_time_s + cruise_time_s, total_time_s, descent_distance_nm),
     )
 
+    # target_tas_kt is a pure function of (altitude, phase) for the duration of
+    # this build, and the profile rounds altitude to 0.1 ft — so across a cruise
+    # (thousands of 1 s integration steps at one level) it repeats constantly.
+    _tas_memo: dict[tuple[float, str], float] = {}
+
     def _speed_at(tt: float, dist_guess: "float | None") -> float:
         """Ground speed (kt) the sample loop will REPORT at this instant."""
         alt, ph = profile.at(tt)
-        tas = target_tas_kt(aircraft_type, alt, ph)
+        tas = _tas_memo.get((alt, ph))
+        if tas is None:
+            tas = _tas_memo[(alt, ph)] = target_tas_kt(aircraft_type, alt, ph)
         if dist_guess is not None:
             # Same shaping the emitted sample gets, so the speed we integrate is
             # the speed that ends up in the file.

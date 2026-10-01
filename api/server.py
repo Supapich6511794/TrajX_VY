@@ -34,7 +34,7 @@ from typing import NamedTuple
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from trajectory_sim.fpl import FlightPlan, parse_eobt, parse_route
@@ -2724,10 +2724,12 @@ def _generate_one(req: GenerateRequest) -> dict[str, object]:
     # map); the heavier file exports follow.
     # Phase 3: include `tas_kt` per point. `pd.isna` guards the legacy
     # constant-speed path where the column is None for every row.
+    # Coordinates come out as two float arrays in one call — reading `.x`/`.y`
+    # off each shapely Point was a large share of a flight's build time.
     points = [
         {
-            "lat": float(geom.y),
-            "lon": float(geom.x),
+            "lat": float(lat),
+            "lon": float(lon),
             "epoch_ts": ts.isoformat(),
             "altitude_ft": None if alt is None else float(alt),
             "gs_kt": float(gs),
@@ -2735,8 +2737,9 @@ def _generate_one(req: GenerateRequest) -> dict[str, object]:
             "track_deg": float(trk),
             "phase": str(ph),
         }
-        for geom, ts, alt, gs, tas, trk, ph in zip(
-            gdf.geometry,
+        for lat, lon, ts, alt, gs, tas, trk, ph in zip(
+            gdf.geometry.y.tolist(),
+            gdf.geometry.x.tolist(),
             gdf["epoch_ts"],
             gdf["altitude_ft"],
             gdf["gs_kt"],
@@ -2824,7 +2827,9 @@ def _generate_one(req: GenerateRequest) -> dict[str, object]:
     # gdf rather than re-running build_flight_timeline (one pass, all
     # the data already on hand).
     def _avg(col: str, phase: str) -> float | None:
-        rows = gdf[gdf["phase"] == phase][col].dropna()
+        # Filter the one column, not the whole GeoDataFrame (which copied
+        # every geometry six times per flight).
+        rows = gdf[col][gdf["phase"] == phase].dropna()
         if rows.empty:
             return None
         return float(rows.mean())
@@ -3101,8 +3106,8 @@ class BatchRequest(BaseModel):
     index_offset: int = 0
 
 
-@app.post("/api/generate_batch")
-def generate_batch(req: BatchRequest) -> dict[str, object]:
+@app.post("/api/generate_batch", response_model=None)
+def generate_batch(req: BatchRequest) -> JSONResponse:
     """Generate many trajectories in one request.
 
     Each flight is built with :func:`_generate_one`. A failing flight is
@@ -3130,7 +3135,12 @@ def generate_batch(req: BatchRequest) -> dict[str, object]:
                     "detail": str(e.detail),
                 }
             )
-    return {"results": results, "errors": errors, "count": len(results)}
+    # The payload is already plain JSON types. Returning a Response skips
+    # FastAPI's recursive jsonable_encoder pass over every point dict, which
+    # cost about as much as serialising the (multi-MB) body itself.
+    return JSONResponse(
+        {"results": results, "errors": errors, "count": len(results)}
+    )
 
 
 _MEDIA = {
