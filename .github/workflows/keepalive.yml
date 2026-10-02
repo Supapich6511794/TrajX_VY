@@ -21,7 +21,7 @@ jobs:
     steps:
       - name: Ping API health
         env:
-          API_URL: https://trajectory-api-zf51.onrender.com/api/health
+          API_URL: https://trajx-api.onrender.com/api/health
         # Render free-tier cold starts routinely overshoot 60 s, so a
         # single short curl exits 28 (timeout) whenever the cron missed a
         # window and the service slept. We try up to 3 times with 180 s

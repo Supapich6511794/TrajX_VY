@@ -11,8 +11,8 @@ need its URL for the Vercel step.
 2. https://render.com → **New → Blueprint** → pick this repo.
    Render reads [`render.yaml`](render.yaml), installs deps, runs uvicorn.
 3. Wait for the deploy to go green. Copy the service URL, e.g.
-   `https://trajectory-api.onrender.com`.
-4. Sanity check: open `https://trajectory-api.onrender.com/api/health` —
+   `https://trajx-api.onrender.com`.
+4. Sanity check: open `https://trajx-api.onrender.com/api/health` —
    it should return `{"ok":true,...}`.
 
 > Render free tier sleeps after ~15 min idle; the first request after
@@ -28,7 +28,7 @@ need its URL for the Vercel step.
 
    | Name | Value |
    |------|-------|
-   | `NEXT_PUBLIC_API_BASE` | `https://trajectory-api.onrender.com` (your Render URL, no trailing slash) |
+   | `NEXT_PUBLIC_API_BASE` | `https://trajx-api.onrender.com` (your Render URL, no trailing slash) |
    | `NEXT_PUBLIC_CARTO_API_KEY` | *(optional)* your CARTO API key, for the dark basemap — see below |
 
    This must be set **before** the build — `NEXT_PUBLIC_*` is inlined at
