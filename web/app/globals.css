@@ -810,6 +810,155 @@ body {
   color: var(--text);
 }
 
+.mnav-util-btn .nav-icon {
+  margin: 0 auto;
+}
+
+/* Alert sound: the speaker button and the popover it opens. Anchored to the
+   button's right edge — it sits at the far right of the bar. */
+.mnav-sound {
+  position: relative;
+}
+
+.mnav-util-btn.open {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.mnav-sound-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 2200;
+  width: 240px;
+  max-width: calc(100vw - 16px);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--material-strong);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55);
+  animation: tm-fade 0.14s ease;
+}
+
+.mnav-sound-head,
+.mnav-sound-foot,
+.mnav-sound-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mnav-sound-head,
+.mnav-sound-foot {
+  justify-content: space-between;
+}
+
+.mnav-sound-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.mnav-sound-pct {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.mnav-sound-pct.muted {
+  color: var(--text-faint);
+}
+
+.mnav-sound-mute {
+  display: inline-flex;
+  padding: 3px;
+  background: transparent;
+  color: var(--text-dim);
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.mnav-sound-mute:hover {
+  color: var(--text);
+}
+
+/* The slider: accent fill up to the thumb, a faint track after it. `--fill`
+   is set inline from the value. */
+.mnav-sound-slider {
+  flex: 1;
+  min-width: 0;
+  height: 6px;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  background: linear-gradient(
+    to right,
+    var(--accent) var(--fill, 50%),
+    rgba(255, 255, 255, 0.14) var(--fill, 50%)
+  );
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.mnav-sound-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  background: var(--accent);
+  border: 2px solid #fff;
+  border-radius: 50%;
+}
+
+.mnav-sound-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  background: var(--accent);
+  border: 2px solid #fff;
+  border-radius: 50%;
+}
+
+.mnav-sound-slider:focus-visible,
+.mnav-sound-mute:focus-visible,
+.mnav-sound-test:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.mnav-sound-foot {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.mnav-sound-test {
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mnav-sound-test:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.mnav-sound-test:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* --------------------------------------------------------------------------
    The dropdown
    --------------------------------------------------------------------------
@@ -1442,6 +1591,7 @@ body {
 
 .app.theme-light .mnav,
 .app.theme-light .mnav-pop,
+.app.theme-light .mnav-sound-pop,
 .app.theme-light .tm-menu,
 .app.theme-light .tm-submenu {
   background: #ffffff;
@@ -1464,6 +1614,23 @@ body {
 
 .app.theme-light .mnav-row {
   color: #0f172a;
+}
+
+.app.theme-light .mnav-sound-slider {
+  background: linear-gradient(
+    to right,
+    var(--accent) var(--fill, 50%),
+    #cbd5e1 var(--fill, 50%)
+  );
+}
+
+.app.theme-light .mnav-sound-test {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.app.theme-light .mnav-sound-test:hover:not(:disabled) {
+  background: #e2e8f0;
 }
 
 .app.theme-light .mnav-row:hover:not(:disabled),

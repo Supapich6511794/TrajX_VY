@@ -24,6 +24,7 @@ import {
   type ReactNode,
 } from "react";
 
+import AlertSoundControl from "@/components/nav/AlertSoundControl";
 import MainNavItem from "@/components/nav/MainNavItem";
 import NavIcon from "@/components/nav/NavIcon";
 import { MAIN_NAV_ITEMS } from "@/components/nav/mainNavItems";
@@ -143,8 +144,10 @@ function MainNavigation({
         })}
       </nav>
 
-      {/* Chrome that belongs to no tab: the UI theme and the map's zoom. */}
+      {/* Chrome that belongs to no tab: alert sound, the UI theme and the
+          map's zoom. */}
       <div className="mnav-util">
+        <AlertSoundControl onOpen={close} />
         <button
           type="button"
           className="mnav-util-btn"
