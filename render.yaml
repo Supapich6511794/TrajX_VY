@@ -12,7 +12,10 @@
 
 services:
   - type: web
-    name: trajectory-api
+    # Distinct from the older "trajectory-api" service, which deploys a
+    # different repo (ATC-Fast-Time-Simulation-Tool-Trajectory-Generator);
+    # reusing that name makes the Blueprint try to take it over.
+    name: trajx-api
     runtime: docker
     dockerfilePath: ./api/Dockerfile
     dockerContext: .
