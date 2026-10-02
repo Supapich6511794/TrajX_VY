@@ -53,13 +53,67 @@ const TONES: Record<Severity, { freq: number; beeps: number; gap: number }> = {
   MTCD: { freq: 520, beeps: 1, gap: 0 },
 };
 
-/** Play the alert tone for a severity. Muted → silent; safe to call anywhere. */
+/* --------------------------------------------------------------------------
+   Volume — a user preference, 0..1, kept in localStorage. 0.5 is the default
+   and maps to the original fixed blip gain (0.14), so an untouched setting
+   sounds exactly as it always did; 1 doubles it.
+   -------------------------------------------------------------------------- */
+
+const VOLUME_KEY = "trajx.alertVolume";
+const DEFAULT_VOLUME = 0.5;
+const MAX_GAIN = 0.28;
+
+let volume = DEFAULT_VOLUME;
+let volumeLoaded = false;
+const listeners = new Set<(v: number) => void>();
+
+function clamp01(v: number): number {
+  return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : DEFAULT_VOLUME;
+}
+
+/** Current alert volume, 0..1. Reads the saved value on first call. */
+export function getAlertVolume(): number {
+  if (!volumeLoaded && typeof window !== "undefined") {
+    volumeLoaded = true;
+    try {
+      const raw = window.localStorage.getItem(VOLUME_KEY);
+      if (raw !== null) volume = clamp01(Number(raw));
+    } catch {
+      // Storage blocked — keep the default.
+    }
+  }
+  return volume;
+}
+
+/** Set (and persist) the alert volume, 0..1. 0 mutes the alerts. */
+export function setAlertVolume(v: number): void {
+  volume = clamp01(v);
+  volumeLoaded = true;
+  try {
+    window.localStorage.setItem(VOLUME_KEY, String(volume));
+  } catch {
+    // Storage blocked — the value still holds for this session.
+  }
+  listeners.forEach((fn) => fn(volume));
+}
+
+/** Subscribe to volume changes; returns the unsubscribe. */
+export function onAlertVolume(fn: (v: number) => void): () => void {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+}
+
+/** Play the alert tone for a severity at the user's volume. Volume 0 or
+ *  `muted` → silent; safe to call anywhere. */
 export function playAlert(severity: Severity, muted = false): void {
-  if (muted) return;
+  const v = getAlertVolume();
+  if (muted || v <= 0) return;
   const c = audioCtx();
   if (!c) return;
   if (c.state === "suspended") void c.resume();
   const { freq, beeps, gap } = TONES[severity];
   const dur = 0.11;
-  for (let i = 0; i < beeps; i++) blip(c, freq, i * (dur + gap), dur, 0.14);
+  for (let i = 0; i < beeps; i++) blip(c, freq, i * (dur + gap), dur, v * MAX_GAIN);
 }
