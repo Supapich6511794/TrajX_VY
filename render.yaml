@@ -1,9 +1,11 @@
-# Render Blueprint — hosts the Python FastAPI engine (the Next.js front-end
-# is deployed separately on Vercel and points here via NEXT_PUBLIC_API_BASE).
+# Render Blueprint — hosts the Python FastAPI engine as a Docker container
+# built from api/Dockerfile (the Next.js front-end is deployed separately on
+# Vercel and points here via NEXT_PUBLIC_API_BASE).
 #
-# Deploy: render.com -> New -> Blueprint -> pick this repo. Render reads this
-# file, installs deps and runs uvicorn. geopandas/pyproj/shapely/pyogrio all
-# ship manylinux wheels, so no system GDAL install is needed.
+# Deploy: render.com -> New -> Blueprint -> pick this repo. Auto-deploy is
+# off: GitHub Actions (.github/workflows/ci.yml) calls this service's Deploy
+# Hook only after tests, front-end build and Docker build all pass. Copy the
+# hook URL (Settings -> Deploy Hook) into the RENDER_DEPLOY_HOOK repo secret.
 #
 # After it goes live, copy the service URL (https://<name>.onrender.com) and
 # set it as NEXT_PUBLIC_API_BASE in the Vercel project.
@@ -11,14 +13,13 @@
 services:
   - type: web
     name: trajectory-api
-    runtime: python
+    runtime: docker
+    dockerfilePath: ./api/Dockerfile
+    dockerContext: .
     plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn api.server:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health
+    autoDeployTrigger: "off"
     envVars:
-      - key: PYTHON_VERSION
-        value: "3.11.9"
       # Set this to the Vercel URL once the front-end is deployed so the
       # browser is allowed to call this API (CORS). *.vercel.app is already
       # allowed by default; set this only for a custom domain.
