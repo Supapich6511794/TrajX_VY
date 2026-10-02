@@ -41,3 +41,6 @@ aixm_export_*.xml.gz
 # Both hold run output, not source.
 /csv/
 /graphs/
+
+.vercel
+.env*
