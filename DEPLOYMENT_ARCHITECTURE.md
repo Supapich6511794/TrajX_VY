@@ -162,7 +162,7 @@ wake the service, not to test it.
 Two things to keep in mind:
 
 - The URL is hard-coded in the workflow
-  (`https://trajectory-api-zf51.onrender.com/api/health`). Update it if the
+  (`https://trajx-api.onrender.com/api/health`). Update it if the
   Render service is renamed or recreated.
 - GitHub pauses scheduled workflows in repositories with no activity for 60
   days.
